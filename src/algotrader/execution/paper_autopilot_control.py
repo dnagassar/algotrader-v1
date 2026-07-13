@@ -22,6 +22,10 @@ from algotrader.execution.order_journal import (
     RuntimeControl,
     SqliteOrderJournal,
 )
+from algotrader.execution.paper_cancellation_admission import (
+    PaperCancellationAdmissionRequest,
+    evaluate_paper_cancellation_admission,
+)
 from algotrader.execution.paper_cancellation_planning_adapter import (
     adapt_paper_lifecycle_to_cancellation_plan,
 )
@@ -31,6 +35,7 @@ from algotrader.execution.paper_cancellation_candidate_selector import (
     select_cancellation_candidate,
 )
 from algotrader.execution.paper_cancellation_handoff_preview import (
+    DurableCancellationHandoffPreview,
     DurableCancellationHandoffRequest,
     preview_durable_cancellation_handoff,
 )
@@ -44,7 +49,7 @@ from algotrader.orchestration.cancellation_planning_policy import (
 )
 
 
-PAPER_AUTOPILOT_CONTROL_SCHEMA_VERSION = "paper_autopilot_control_v6"
+PAPER_AUTOPILOT_CONTROL_SCHEMA_VERSION = "paper_autopilot_control_v7"
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +77,7 @@ class PaperAutopilotControlConfig:
     cancellation_planning_permitted: bool = False
     cancellation_handoff_preview_enabled: bool = False
     cancellation_handoff_permitted: bool = False
+    cancellation_admission_preview_enabled: bool = False
     cancellation_target_client_order_id: str = ""
     cancellation_target_broker_order_id: str = ""
     cancellation_target_symbol: str = ""
@@ -118,6 +124,7 @@ class PaperAutopilotControlConfig:
             "cancellation_planning_permitted",
             "cancellation_handoff_preview_enabled",
             "cancellation_handoff_permitted",
+            "cancellation_admission_preview_enabled",
         ):
             if type(getattr(self, field_name)) is not bool:
                 raise ValidationError(f"{field_name} must be a boolean.")
@@ -156,6 +163,13 @@ class PaperAutopilotControlConfig:
         ):
             raise ValidationError(
                 "offline cancellation handoff permission requires the handoff preview."
+            )
+        if (
+            self.cancellation_admission_preview_enabled
+            and not self.cancellation_handoff_preview_enabled
+        ):
+            raise ValidationError(
+                "cancellation admission preview requires the handoff preview."
             )
         if self.cancellation_preview_enabled:
             if action != "status":
@@ -472,12 +486,18 @@ def run_paper_autopilot_control(
         "cancellation_handoff_preview_enabled": (
             resolved.cancellation_handoff_preview_enabled
         ),
+        "cancellation_admission_preview_enabled": (
+            resolved.cancellation_admission_preview_enabled
+        ),
         "cancellation_planning_preview": _disabled_cancellation_preview(),
         "cancellation_handoff_preview": _disabled_cancellation_handoff_preview(),
+        "cancellation_admission_preview": (
+            _disabled_cancellation_admission_preview()
+        ),
     }
 
     if resolved.cancellation_preview_enabled:
-        planning_preview, handoff_preview = (
+        planning_preview, handoff_preview, admission_preview = (
             _journal_cancellation_planning_preview(
                 config=resolved,
                 journal=journal,
@@ -486,6 +506,7 @@ def run_paper_autopilot_control(
         )
         result["cancellation_planning_preview"] = planning_preview
         result["cancellation_handoff_preview"] = handoff_preview
+        result["cancellation_admission_preview"] = admission_preview
 
     if resolved.action == "backup":
         result["backup_path"] = str(backup_path)
@@ -514,7 +535,7 @@ def _journal_cancellation_planning_preview(
     config: PaperAutopilotControlConfig,
     journal: SqliteOrderJournal,
     control: RuntimeControl,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
     as_of = config.cancellation_as_of
     assert isinstance(as_of, datetime)
     records = journal.records()
@@ -537,13 +558,19 @@ def _journal_cancellation_planning_preview(
             ),
         )
         if not candidate_selection.selected:
-            return (
-                _blocked_candidate_selection_preview(candidate_selection),
-                _durable_cancellation_handoff_preview(
+            handoff_preview, admission_preview = (
+                _cancellation_handoff_and_admission_previews(
                     config=config,
                     planning_result=None,
                     record=None,
-                ),
+                    control=control,
+                    snapshot_fresh=False,
+                )
+            )
+            return (
+                _blocked_candidate_selection_preview(candidate_selection),
+                handoff_preview,
+                admission_preview,
             )
         candidate = candidate_selection.candidate
         assert candidate is not None
@@ -607,27 +634,38 @@ def _journal_cancellation_planning_preview(
     payload = artifact.to_dict()
     if candidate_selection is not None:
         payload["candidate_selection"] = candidate_selection.to_dict()
-    return (
-        payload,
-        _durable_cancellation_handoff_preview(
+    handoff_preview, admission_preview = (
+        _cancellation_handoff_and_admission_previews(
             config=config,
             planning_result=artifact.planning_result,
             record=record,
-        ),
+            control=control,
+            snapshot_fresh=snapshot_fresh,
+        )
+    )
+    return (
+        payload,
+        handoff_preview,
+        admission_preview,
     )
 
 
-def _durable_cancellation_handoff_preview(
+def _cancellation_handoff_and_admission_previews(
     *,
     config: PaperAutopilotControlConfig,
     planning_result: CancellationPlanningResult | None,
     record: OrderJournalRecord | None,
-) -> dict[str, object]:
+    control: RuntimeControl,
+    snapshot_fresh: bool,
+) -> tuple[dict[str, object], dict[str, object]]:
     if not config.cancellation_handoff_preview_enabled:
-        return _disabled_cancellation_handoff_preview()
+        return (
+            _disabled_cancellation_handoff_preview(),
+            _disabled_cancellation_admission_preview(),
+        )
     as_of = config.cancellation_as_of
     assert isinstance(as_of, datetime)
-    return preview_durable_cancellation_handoff(
+    handoff = preview_durable_cancellation_handoff(
         planning_result,
         record,
         DurableCancellationHandoffRequest(
@@ -636,6 +674,38 @@ def _durable_cancellation_handoff_preview(
                 config.cancellation_max_record_age_seconds
             ),
             handoff_permitted=config.cancellation_handoff_permitted,
+        ),
+    )
+    return (
+        handoff.to_dict(),
+        _paper_cancellation_admission_preview(
+            config=config,
+            handoff=handoff,
+            control=control,
+            snapshot_fresh=snapshot_fresh,
+        ),
+    )
+
+
+def _paper_cancellation_admission_preview(
+    *,
+    config: PaperAutopilotControlConfig,
+    handoff: DurableCancellationHandoffPreview,
+    control: RuntimeControl,
+    snapshot_fresh: bool,
+) -> dict[str, object]:
+    if not config.cancellation_admission_preview_enabled:
+        return _disabled_cancellation_admission_preview()
+    as_of = config.cancellation_as_of
+    assert isinstance(as_of, datetime)
+    return evaluate_paper_cancellation_admission(
+        handoff,
+        None,
+        PaperCancellationAdmissionRequest(
+            evaluated_at=as_of,
+            trading_enabled=control.trading_enabled,
+            stop_requested=control.stop_requested,
+            snapshot_fresh=snapshot_fresh,
         ),
     ).to_dict()
 
@@ -679,6 +749,27 @@ def _disabled_cancellation_handoff_preview() -> dict[str, object]:
         "broker_access_performed": False,
         "broker_mutation_performed": False,
         "journal_mutation_performed": False,
+    }
+
+
+def _disabled_cancellation_admission_preview() -> dict[str, object]:
+    return {
+        "status": "disabled",
+        "admission_ready": False,
+        "operator_authorization_validated": False,
+        "cancel_allowed": False,
+        "execution_authorized": False,
+        "execution_performed": False,
+        "broker_callback_present": False,
+        "coordinator_invoked": False,
+        "lease_acquired": False,
+        "cancel_intent_reserved": False,
+        "cancel_attempted": False,
+        "broker_access_performed": False,
+        "broker_mutation_performed": False,
+        "journal_mutation_performed": False,
+        "live_authorized": False,
+        "no_submit": True,
     }
 
 

@@ -8,6 +8,10 @@ from datetime import datetime
 from typing import Any
 
 from algotrader.errors import ValidationError
+from algotrader.execution.durable_cancel_contracts import (
+    DurableCancelEvidence,
+    DurableCancelIdentity,
+)
 from algotrader.execution.order_journal import (
     CancelIntent,
     CancelJournalRecord,
@@ -23,24 +27,6 @@ __all__ = [
     "DurableCancelObservation",
     "DurableCancelOutcome",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class DurableCancelIdentity:
-    cancel_intent_id: str
-    client_order_id: str
-    broker_order_id: str
-    reservation_run_id: str
-    reason: str
-
-    def intent(self) -> CancelIntent:
-        return CancelIntent(
-            cancel_intent_id=self.cancel_intent_id,
-            client_order_id=self.client_order_id,
-            broker_order_id=self.broker_order_id,
-            run_id=self.reservation_run_id,
-            reason=self.reason,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,18 +57,6 @@ class DurableCancelLease:
         if type(self.acquired) is not bool:
             raise ValidationError("acquired must be a boolean.")
         object.__setattr__(self, "blocker", str(self.blocker).strip())
-
-
-@dataclass(frozen=True, slots=True)
-class DurableCancelEvidence:
-    cancel_allowed: bool
-    snapshot_fresh: bool
-
-    def __post_init__(self) -> None:
-        if type(self.cancel_allowed) is not bool:
-            raise ValidationError("cancel_allowed must be a boolean.")
-        if type(self.snapshot_fresh) is not bool:
-            raise ValidationError("snapshot_fresh must be a boolean.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +106,16 @@ class DurableCancelCoordinator:
     ) -> CancelReservationResult:
         if not isinstance(identity, DurableCancelIdentity):
             raise ValidationError("identity must be DurableCancelIdentity.")
-        return self.journal.reserve_cancel_intent(identity.intent(), occurred_at)
+        return self.journal.reserve_cancel_intent(
+            CancelIntent(
+                cancel_intent_id=identity.cancel_intent_id,
+                client_order_id=identity.client_order_id,
+                broker_order_id=identity.broker_order_id,
+                run_id=identity.reservation_run_id,
+                reason=identity.reason,
+            ),
+            occurred_at,
+        )
 
     def acquire_lease(
         self,

@@ -2852,6 +2852,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     paper_autopilot_control_parser.add_argument(
+        "--cancellation-admission-preview",
+        action="store_true",
+        dest="cancellation_admission_preview_enabled",
+        help=(
+            "Evaluate the local admission boundary without authorization input; "
+            "status remains blocked and cannot execute cancellation."
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
         "--auto-select-cancellation-candidate",
         action="store_true",
         dest="cancellation_auto_select_enabled",
@@ -6578,6 +6587,7 @@ def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
             "cancellation_planning_permitted",
             "cancellation_handoff_preview_enabled",
             "cancellation_handoff_permitted",
+            "cancellation_admission_preview_enabled",
             "cancellation_target_client_order_id",
             "cancellation_target_broker_order_id",
             "cancellation_target_symbol",

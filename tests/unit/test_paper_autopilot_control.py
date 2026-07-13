@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import sqlite3
@@ -11,6 +12,9 @@ from algotrader.execution.order_journal import OrderReservation, SqliteOrderJour
 from algotrader.execution.paper_autopilot_control import (
     PaperAutopilotControlConfig,
     run_paper_autopilot_control,
+)
+from algotrader.execution.paper_cancellation_admission import (
+    PaperCancellationAdmissionBlocker,
 )
 from algotrader.execution.paper_cancellation_candidate_selector import (
     CancellationCandidateSelectionBlocker,
@@ -81,6 +85,7 @@ def test_status_cancellation_preview_is_default_disabled_without_record_scan(
     assert result["cancellation_planning_preview_enabled"] is False
     assert result["cancellation_candidate_auto_selection_enabled"] is False
     assert result["cancellation_handoff_preview_enabled"] is False
+    assert result["cancellation_admission_preview_enabled"] is False
     assert result["cancellation_planning_preview"] == {
         "status": "disabled",
         "no_submit": True,
@@ -100,6 +105,24 @@ def test_status_cancellation_preview_is_default_disabled_without_record_scan(
         "broker_access_performed": False,
         "broker_mutation_performed": False,
         "journal_mutation_performed": False,
+    }
+    assert result["cancellation_admission_preview"] == {
+        "status": "disabled",
+        "admission_ready": False,
+        "operator_authorization_validated": False,
+        "cancel_allowed": False,
+        "execution_authorized": False,
+        "execution_performed": False,
+        "broker_callback_present": False,
+        "coordinator_invoked": False,
+        "lease_acquired": False,
+        "cancel_intent_reserved": False,
+        "cancel_attempted": False,
+        "broker_access_performed": False,
+        "broker_mutation_performed": False,
+        "journal_mutation_performed": False,
+        "live_authorized": False,
+        "no_submit": True,
     }
 
 
@@ -609,7 +632,7 @@ def test_status_prepares_default_denied_durable_handoff_without_mutation(
 
     planning = first["cancellation_planning_preview"]
     handoff = first["cancellation_handoff_preview"]
-    assert first["schema_version"] == "paper_autopilot_control_v6"
+    assert first["schema_version"] == "paper_autopilot_control_v7"
     assert first["cancellation_handoff_preview_enabled"] is True
     assert planning["status"] == "planned"
     assert handoff["status"] == "prepared"
@@ -652,6 +675,95 @@ def test_status_prepares_default_denied_durable_handoff_without_mutation(
     assert first["network_access_attempted"] is False
     assert first["broker_access_attempted"] is False
     assert first["broker_mutation_performed"] is False
+
+
+@pytest.mark.parametrize("auto_select", [False, True])
+def test_status_admission_preview_has_no_authorization_input_or_mutation(
+    tmp_path: Path,
+    auto_select: bool,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    before_records = tuple(record.to_dict() for record in journal.records())
+    before_control = journal.get_runtime_control().to_dict()
+    before_cancel_intents = tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    )
+    config_factory = _auto_preview_config if auto_select else _preview_config
+    config = config_factory(
+        path,
+        cancellation_handoff_preview_enabled=True,
+        cancellation_handoff_permitted=True,
+        cancellation_admission_preview_enabled=True,
+    )
+
+    def fail_broker_factory(_config: object) -> object:
+        raise AssertionError("admission preview must not construct a broker client")
+
+    first = run_paper_autopilot_control(
+        config,
+        timestamp=NOW + timedelta(minutes=5),
+        broker_client_factory=fail_broker_factory,
+    )
+    second = run_paper_autopilot_control(
+        config,
+        timestamp=NOW + timedelta(minutes=5),
+        broker_client_factory=fail_broker_factory,
+    )
+
+    handoff = first["cancellation_handoff_preview"]
+    admission = first["cancellation_admission_preview"]
+    assert first["cancellation_admission_preview_enabled"] is True
+    assert handoff["status"] == "prepared"
+    assert admission["status"] == "blocked"
+    assert admission["blocker"] == (
+        PaperCancellationAdmissionBlocker.AUTHORIZATION_MISSING.value
+    )
+    assert admission["source_handoff_artifact_id"] == handoff["artifact_id"]
+    assert admission["source_plan_id"] == handoff["source_plan_id"]
+    assert admission["authorization_id"] == ""
+    assert admission["identity"] == {}
+    assert admission["evidence"] == {}
+    for field_name in (
+        "admission_ready",
+        "operator_authorization_validated",
+        "cancel_allowed",
+        "execution_authorized",
+        "execution_performed",
+        "broker_callback_present",
+        "coordinator_invoked",
+        "lease_acquired",
+        "cancel_intent_reserved",
+        "cancel_attempted",
+        "broker_access_performed",
+        "broker_mutation_performed",
+        "journal_mutation_performed",
+        "live_authorized",
+    ):
+        assert admission[field_name] is False
+    assert second["cancellation_admission_preview"] == admission
+    assert tuple(record.to_dict() for record in journal.records()) == before_records
+    assert journal.get_runtime_control().to_dict() == before_control
+    assert tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    ) == before_cancel_intents
+    assert first["network_access_attempted"] is False
+    assert first["broker_access_attempted"] is False
+    assert first["broker_mutation_performed"] is False
+
+
+def test_control_and_cli_expose_no_cancellation_authorization_channel() -> None:
+    config_fields = tuple(PaperAutopilotControlConfig.__dataclass_fields__)
+    run_parameters = tuple(inspect.signature(run_paper_autopilot_control).parameters)
+    cli_path = Path(inspect.getsourcefile(main) or "")
+    cli_source = cli_path.read_text(encoding="utf-8")
+
+    assert all("authorization" not in field_name for field_name in config_fields)
+    assert all("authorization" not in name for name in run_parameters)
+    assert "--cancellation-authorization" not in cli_source
+    assert "--operator-cancellation-authorization" not in cli_source
+    assert "cancellation_authorization_path" not in cli_source
+    assert "cancellation_authorization_file" not in cli_source
 
 
 @pytest.mark.parametrize(
@@ -734,6 +846,17 @@ def test_handoff_configuration_requires_explicit_preview_chain(
             path,
             cancellation_handoff_preview_enabled=1,
         )
+    with pytest.raises(ValidationError, match="requires the handoff preview"):
+        _preview_config(
+            path,
+            cancellation_admission_preview_enabled=True,
+        )
+    with pytest.raises(ValidationError, match="must be a boolean"):
+        _preview_config(
+            path,
+            cancellation_handoff_preview_enabled=True,
+            cancellation_admission_preview_enabled=1,
+        )
 
 
 def test_cli_status_exposes_auto_selection_and_handoff_without_target_ids(
@@ -754,6 +877,7 @@ def test_cli_status_exposes_auto_selection_and_handoff_without_target_ids(
             "--allow-offline-cancellation-planning",
             "--cancellation-handoff-preview",
             "--allow-offline-cancellation-handoff",
+            "--cancellation-admission-preview",
             "--cancellation-target-symbol",
             "SPY",
             "--cancellation-reason",
@@ -786,6 +910,24 @@ def test_cli_status_exposes_auto_selection_and_handoff_without_target_ids(
     assert handoff["broker_access_performed"] is False
     assert handoff["broker_mutation_performed"] is False
     assert handoff["journal_mutation_performed"] is False
+    admission = payload["cancellation_admission_preview"]
+    assert payload["cancellation_admission_preview_enabled"] is True
+    assert admission["status"] == "blocked"
+    assert admission["blocker"] == (
+        PaperCancellationAdmissionBlocker.AUTHORIZATION_MISSING.value
+    )
+    assert admission["authorization_id"] == ""
+    assert admission["identity"] == {}
+    assert admission["evidence"] == {}
+    assert admission["cancel_allowed"] is False
+    assert admission["execution_authorized"] is False
+    assert admission["execution_performed"] is False
+    assert admission["broker_callback_present"] is False
+    assert admission["coordinator_invoked"] is False
+    assert admission["cancel_attempted"] is False
+    assert admission["broker_access_performed"] is False
+    assert admission["broker_mutation_performed"] is False
+    assert admission["journal_mutation_performed"] is False
 
 
 def test_control_backup_and_restore(tmp_path: Path) -> None:

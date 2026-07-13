@@ -267,6 +267,7 @@ python -m algotrader.cli paper-autopilot-control status `
   --allow-offline-cancellation-planning `
   --cancellation-handoff-preview `
   --allow-offline-cancellation-handoff `
+  --cancellation-admission-preview `
   --cancellation-target-symbol SPY `
   --cancellation-reason <LOCAL_PLANNING_REASON> `
   --cancellation-as-of <ISO_8601_UTC_TIMESTAMP> `
@@ -284,6 +285,24 @@ prepared artifact must retain `cancel_allowed=false`,
 plan, stale or terminal records, invalid timestamps, or any plan/record identity
 or observation mismatch returns a typed blocked artifact with no durable
 identity inputs.
+
+`--cancellation-admission-preview` evaluates the next local boundary but
+deliberately supplies no operator-authorization evidence. When planning and
+handoff preparation succeed, its expected result is the typed
+`authorization_missing` blocker with empty `identity` and `evidence` values.
+There is no CLI argument, environment variable, file path, or status-control
+field that can manufacture or load authorization. Do not interpret this preview
+as a cancellation approval workflow.
+
+The underlying pure admission contract accepts only a caller-supplied immutable
+authorization object that is affirmative, unexpired, paper-mode, cancel-scoped,
+and exactly bound to the handoff's source-plan, cancel-intent, client-order, and
+broker-order identities. Even a successfully admitted in-memory result records
+`execution_performed=false`, `broker_callback_present=false`,
+`coordinator_invoked=false`, `lease_acquired=false`,
+`cancel_intent_reserved=false`, `cancel_attempted=false`, and no broker or
+journal mutation. Actual coordinator invocation remains a separate operator
+gate for one exact cancellation.
 
 ## Safety Declarations
 

@@ -563,6 +563,137 @@ def test_paper_cancellation_handoff_preview_has_no_coordinator_or_io_boundary() 
     )
 
 
+def test_paper_cancellation_admission_imports_only_durable_input_contracts() -> None:
+    path = _module_path("algotrader.execution.paper_cancellation_admission")
+    rule = DependencyRule(
+        source="paper cancellation admission",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.order_journal",
+            "algotrader.execution.paper_autopilot_control",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    contract_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "algotrader.execution.durable_cancel_contracts"
+        for alias in node.names
+    }
+    coordinator_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "algotrader.execution.durable_cancel"
+        for alias in node.names
+    }
+    referenced_names = {
+        name
+        for node in ast.walk(tree)
+        for name in _node_reference_names(node)
+    }
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+
+    assert _dependency_violations(rule) == []
+    assert contract_imports == {"DurableCancelEvidence", "DurableCancelIdentity"}
+    assert coordinator_imports == set()
+    assert referenced_names.isdisjoint(
+        {
+            "DurableCancelCoordinator",
+            "SqliteOrderJournal",
+            "broker_client",
+            "cancel",
+            "cancel_order",
+            "callback",
+        }
+    )
+    assert call_names.isdisjoint(
+        {
+            "acquire_lease",
+            "cancel_order",
+            "connect",
+            "datetime.now",
+            "execute",
+            "open",
+            "reserve",
+            "submit_order",
+            "write",
+        }
+    )
+
+
+def test_durable_cancel_input_contracts_have_no_journal_or_coordinator_boundary() -> None:
+    path = _module_path("algotrader.execution.durable_cancel_contracts")
+    rule = DependencyRule(
+        source="durable cancellation input contracts",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.order_journal",
+            "algotrader.execution.paper_autopilot_control",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    referenced_names = {
+        name
+        for node in ast.walk(tree)
+        for name in _node_reference_names(node)
+    }
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+
+    assert _dependency_violations(rule) == []
+    assert referenced_names.isdisjoint(
+        {
+            "CancelIntent",
+            "DurableCancelCoordinator",
+            "SqliteOrderJournal",
+            "cancel_order",
+            "callback",
+        }
+    )
+    assert call_names.isdisjoint(
+        {
+            "connect",
+            "datetime.now",
+            "execute",
+            "open",
+            "reserve",
+            "write",
+        }
+    )
+
+
 def test_paper_lab_revalidation_brief_has_no_network_or_broker_sdk_paths() -> None:
     path = _module_path("algotrader.execution.paper_lab_revalidation_brief")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

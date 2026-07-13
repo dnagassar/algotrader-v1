@@ -141,6 +141,16 @@ This flow is a contract boundary, not permission to trade.
   `execution_authorized=false`, no callback, no coordinator invocation, and no
   journal or broker mutation. The module cannot import `durable_cancel`, a
   broker adapter, network I/O, or the status control.
+- The pure paper-cancellation admission contract is the last typed boundary
+  before durable execution. It consumes a prepared handoff, explicit UTC
+  evaluation time, trading/stop/snapshot facts, and optional immutable
+  operator-authorization evidence. Authorization must be affirmative, unexpired,
+  paper-mode, cancel-scoped, and exactly bound to source plan, cancel-intent,
+  client-order, and broker-order identity. Only exact evidence emits typed
+  `DurableCancelIdentity` and `DurableCancelEvidence`; every mismatch returns one
+  typed blocker and no durable inputs. The module imports only those two durable
+  input types and cannot instantiate a coordinator, accept a callback, acquire a
+  lease, reserve an intent, read a journal, perform I/O, or execute cancellation.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.
@@ -153,7 +163,10 @@ This flow is a contract boundary, not permission to trade.
   plan, but it cannot reserve an intent, acquire a lease, accept a callback,
   instantiate `DurableCancelCoordinator`, construct a broker client, mutate
   journal state, or grant broker cancellation permission. Control output schema
-  is `paper_autopilot_control_v6`.
+  is `paper_autopilot_control_v7`. A separately default-disabled admission
+  preview intentionally supplies no authorization object and therefore can only
+  expose the typed `authorization_missing` gate; status and CLI have no path to
+  manufacture or load cancellation authorization.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
 - Direct production submit and cancel call sites are a closed, executable
