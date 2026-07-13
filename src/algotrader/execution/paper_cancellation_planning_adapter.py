@@ -160,6 +160,7 @@ def adapt_paper_lifecycle_to_cancellation_plan(
     *,
     request: CancellationPlanningRequest,
     as_of: datetime,
+    observation_symbol: str | None = None,
 ) -> PaperCancellationPlanningArtifact:
     """Replay explicit local events and emit one no-submit planning artifact."""
 
@@ -255,7 +256,11 @@ def adapt_paper_lifecycle_to_cancellation_plan(
     latest_observation = CancellationOrderObservation(
         client_order_id=client_order_id,
         broker_order_id=broker_order_id,
-        symbol=request.target_symbol,
+        symbol=(
+            request.target_symbol
+            if observation_symbol is None
+            else observation_symbol
+        ),
         broker_status=_canonical_status(latest.status),
         observed_at=parsed_times[-1],
     )

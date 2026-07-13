@@ -15,12 +15,26 @@ import sys
 from typing import Any
 import hashlib
 
+from algotrader.core.time import require_utc_datetime
 from algotrader.errors import ValidationError
-from algotrader.execution.order_journal import SqliteOrderJournal
+from algotrader.execution.order_journal import (
+    OrderJournalRecord,
+    RuntimeControl,
+    SqliteOrderJournal,
+)
+from algotrader.execution.paper_cancellation_planning_adapter import (
+    adapt_paper_lifecycle_to_cancellation_plan,
+)
 from algotrader.execution.paper_autopilot_operator import PaperAutopilotOperatorConfig
+from algotrader.execution.paper_order_lifecycle_replay import (
+    PaperOrderLifecycleEvent,
+)
+from algotrader.orchestration.cancellation_planning_policy import (
+    CancellationPlanningRequest,
+)
 
 
-PAPER_AUTOPILOT_CONTROL_SCHEMA_VERSION = "paper_autopilot_control_v3"
+PAPER_AUTOPILOT_CONTROL_SCHEMA_VERSION = "paper_autopilot_control_v4"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +57,14 @@ class PaperAutopilotControlConfig:
     readiness_packet_path: Path | str | None = None
     no_submit: bool = False
     runtime_lease_seconds: int = 60
+    cancellation_preview_enabled: bool = False
+    cancellation_planning_permitted: bool = False
+    cancellation_target_client_order_id: str = ""
+    cancellation_target_broker_order_id: str = ""
+    cancellation_target_symbol: str = ""
+    cancellation_reason: str = ""
+    cancellation_as_of: datetime | str | None = None
+    cancellation_max_record_age_seconds: int = 900
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "journal_path", Path(self.journal_path))
@@ -76,6 +98,45 @@ class PaperAutopilotControlConfig:
         if symbol != "SPY":
             raise ValidationError("paper autopilot control is restricted to SPY.")
         object.__setattr__(self, "symbol", symbol)
+        for field_name in (
+            "cancellation_preview_enabled",
+            "cancellation_planning_permitted",
+        ):
+            if type(getattr(self, field_name)) is not bool:
+                raise ValidationError(f"{field_name} must be a boolean.")
+        if (
+            type(self.cancellation_max_record_age_seconds) is not int
+            or self.cancellation_max_record_age_seconds <= 0
+        ):
+            raise ValidationError(
+                "cancellation_max_record_age_seconds must be a positive integer."
+            )
+        if self.cancellation_preview_enabled:
+            if action != "status":
+                raise ValidationError(
+                    "cancellation preview is available only for status action."
+                )
+            for field_name in (
+                "cancellation_target_client_order_id",
+                "cancellation_target_broker_order_id",
+                "cancellation_target_symbol",
+                "cancellation_reason",
+            ):
+                object.__setattr__(
+                    self,
+                    field_name,
+                    _required_preview_text(getattr(self, field_name), field_name),
+                )
+            object.__setattr__(
+                self,
+                "cancellation_target_symbol",
+                self.cancellation_target_symbol.upper(),
+            )
+            object.__setattr__(
+                self,
+                "cancellation_as_of",
+                _preview_utc_datetime(self.cancellation_as_of),
+            )
 
     def to_operator_config(self) -> PaperAutopilotOperatorConfig:
         return PaperAutopilotOperatorConfig(
@@ -340,7 +401,20 @@ def run_paper_autopilot_control(
         "broker_access_attempted": resolved.action in {"one-cycle"},
         "broker_mutation_performed": False,
         "live_authorized": False,
+        "cancellation_planning_preview_enabled": (
+            resolved.cancellation_preview_enabled
+        ),
+        "cancellation_planning_preview": _disabled_cancellation_preview(),
     }
+
+    if resolved.cancellation_preview_enabled:
+        result["cancellation_planning_preview"] = (
+            _journal_cancellation_planning_preview(
+                config=resolved,
+                journal=journal,
+                control=control,
+            )
+        )
 
     if resolved.action == "backup":
         result["backup_path"] = str(backup_path)
@@ -362,6 +436,111 @@ def run_paper_autopilot_control(
         result["lease_released"] = lease_released
 
     return result
+
+
+def _journal_cancellation_planning_preview(
+    *,
+    config: PaperAutopilotControlConfig,
+    journal: SqliteOrderJournal,
+    control: RuntimeControl,
+) -> dict[str, object]:
+    as_of = config.cancellation_as_of
+    assert isinstance(as_of, datetime)
+    records = journal.records()
+    client_matches = tuple(
+        record
+        for record in records
+        if record.client_order_id == config.cancellation_target_client_order_id
+    )
+    broker_matches = tuple(
+        record
+        for record in records
+        if record.broker_order_id == config.cancellation_target_broker_order_id
+    )
+    record: OrderJournalRecord | None = None
+    if len(broker_matches) <= 1:
+        if len(client_matches) == 1:
+            record = client_matches[0]
+        elif len(broker_matches) == 1:
+            record = broker_matches[0]
+
+    events: tuple[PaperOrderLifecycleEvent, ...] = ()
+    observation_symbol: str | None = None
+    snapshot_fresh = False
+    if record is not None:
+        age_seconds = (as_of - record.updated_at).total_seconds()
+        snapshot_fresh = (
+            0 <= age_seconds <= config.cancellation_max_record_age_seconds
+        )
+        events = (
+            PaperOrderLifecycleEvent(
+                observed_at=record.updated_at.isoformat(),
+                client_order_id=record.client_order_id,
+                broker_order_id=record.broker_order_id,
+                status=record.broker_status,
+                filled_qty=record.filled_quantity,
+                submitted=bool(record.broker_order_id),
+                mutated=bool(record.broker_order_id),
+                source="local_order_journal_record",
+            ),
+        )
+        observation_symbol = record.symbol
+
+    artifact = adapt_paper_lifecycle_to_cancellation_plan(
+        events,
+        request=CancellationPlanningRequest(
+            target_client_order_id=config.cancellation_target_client_order_id,
+            target_broker_order_id=config.cancellation_target_broker_order_id,
+            target_symbol=config.cancellation_target_symbol,
+            reason=config.cancellation_reason,
+            cancellation_permitted=config.cancellation_planning_permitted,
+            snapshot_fresh=snapshot_fresh,
+            trading_enabled=control.trading_enabled,
+            stop_requested=control.stop_requested,
+        ),
+        as_of=as_of,
+        observation_symbol=observation_symbol,
+    )
+    return artifact.to_dict()
+
+
+def _disabled_cancellation_preview() -> dict[str, object]:
+    return {
+        "status": "disabled",
+        "no_submit": True,
+        "cancel_attempted": False,
+        "broker_access_performed": False,
+        "broker_mutation_performed": False,
+    }
+
+
+def _required_preview_text(value: object, field_name: str) -> str:
+    text = str(value).strip()
+    if not text:
+        raise ValidationError(f"{field_name} is required when preview is enabled.")
+    return text
+
+
+def _preview_utc_datetime(value: datetime | str | None) -> datetime:
+    parsed = value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValidationError(
+                "cancellation_as_of is required when preview is enabled."
+            )
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValidationError(
+                "cancellation_as_of must be an ISO-8601 UTC datetime."
+            ) from exc
+    try:
+        return require_utc_datetime(parsed)  # type: ignore[arg-type]
+    except ValidationError as exc:
+        raise ValidationError(
+            "cancellation_as_of must be an ISO-8601 UTC datetime."
+        ) from exc
 
 
 __all__ = [

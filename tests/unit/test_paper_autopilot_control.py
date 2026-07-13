@@ -5,15 +5,21 @@ from pathlib import Path
 import sqlite3
 import pytest
 
+from algotrader.cli import main
 from algotrader.errors import ValidationError
 from algotrader.execution.order_journal import OrderReservation, SqliteOrderJournal
 from algotrader.execution.paper_autopilot_control import (
     PaperAutopilotControlConfig,
     run_paper_autopilot_control,
 )
+from algotrader.orchestration.cancellation_planning_policy import (
+    CancellationPlanningBlocker,
+)
 
 
 NOW = datetime(2026, 7, 11, 15, 0, tzinfo=UTC)
+CLIENT_ORDER_ID = "preview-client-1"
+BROKER_ORDER_ID = "preview-broker-1"
 
 
 def test_pause_status_and_resume_are_durable_and_offline(tmp_path: Path) -> None:
@@ -48,6 +54,333 @@ def test_pause_status_and_resume_are_durable_and_offline(tmp_path: Path) -> None
         assert result["broker_access_attempted"] is False
         assert result["broker_mutation_performed"] is False
         assert result["live_authorized"] is False
+
+
+def test_status_cancellation_preview_is_default_disabled_without_record_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "state" / "orders.sqlite3"
+
+    def fail_record_scan(_journal: SqliteOrderJournal) -> tuple[object, ...]:
+        raise AssertionError("default-disabled status must not scan order records")
+
+    monkeypatch.setattr(SqliteOrderJournal, "records", fail_record_scan)
+
+    result = run_paper_autopilot_control(
+        PaperAutopilotControlConfig(journal_path=path, action="status"),
+        timestamp=NOW,
+    )
+
+    assert result["cancellation_planning_preview_enabled"] is False
+    assert result["cancellation_planning_preview"] == {
+        "status": "disabled",
+        "no_submit": True,
+        "cancel_attempted": False,
+        "broker_access_performed": False,
+        "broker_mutation_performed": False,
+    }
+
+
+def test_status_builds_journal_backed_no_submit_cancellation_plan(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "state" / "orders.sqlite3"
+    journal = _observed_journal(path)
+    before_records = tuple(record.to_dict() for record in journal.records())
+    before_control = journal.get_runtime_control().to_dict()
+    before_cancel_intents = tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    )
+
+    def fail_broker_factory(_config: object) -> object:
+        raise AssertionError("status preview must not construct a broker client")
+
+    result = run_paper_autopilot_control(
+        _preview_config(path),
+        timestamp=NOW + timedelta(minutes=5),
+        broker_client_factory=fail_broker_factory,
+    )
+
+    preview = result["cancellation_planning_preview"]
+    assert result["cancellation_planning_preview_enabled"] is True
+    assert preview["status"] == "planned"
+    assert preview["no_submit"] is True
+    assert preview["cancel_attempted"] is False
+    assert preview["broker_access_performed"] is False
+    assert preview["broker_mutation_performed"] is False
+    assert preview["planning_result"]["plan"]["client_order_id"] == (
+        CLIENT_ORDER_ID
+    )
+    assert preview["planning_result"]["plan"]["broker_order_id"] == (
+        BROKER_ORDER_ID
+    )
+    assert result["network_access_attempted"] is False
+    assert result["broker_access_attempted"] is False
+    assert result["broker_mutation_performed"] is False
+    assert tuple(record.to_dict() for record in journal.records()) == before_records
+    assert journal.get_runtime_control().to_dict() == before_control
+    assert tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    ) == before_cancel_intents
+
+
+def test_status_preview_without_offline_planning_permission_fails_closed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    result = run_paper_autopilot_control(
+        _preview_config(path, cancellation_planning_permitted=False),
+        timestamp=NOW,
+    )
+
+    assert _preview_policy_blocker(result) == (
+        CancellationPlanningBlocker.CANCELLATION_NOT_PERMITTED.value
+    )
+
+
+@pytest.mark.parametrize(
+    ("trading_enabled", "stop_requested", "expected"),
+    [
+        (False, False, CancellationPlanningBlocker.TRADING_PAUSED),
+        (True, True, CancellationPlanningBlocker.STOP_REQUESTED),
+    ],
+)
+def test_status_preview_derives_runtime_controls_from_local_journal(
+    tmp_path: Path,
+    trading_enabled: bool,
+    stop_requested: bool,
+    expected: CancellationPlanningBlocker,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    journal.set_runtime_control(
+        trading_enabled=trading_enabled,
+        reason="local runtime control",
+        occurred_at=NOW + timedelta(minutes=1),
+        stop_requested=stop_requested,
+    )
+
+    result = run_paper_autopilot_control(
+        _preview_config(path),
+        timestamp=NOW + timedelta(minutes=5),
+    )
+
+    assert _preview_policy_blocker(result) == expected.value
+
+
+def test_status_preview_derives_staleness_from_record_and_explicit_as_of(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    result = run_paper_autopilot_control(
+        _preview_config(
+            path,
+            cancellation_as_of=NOW + timedelta(hours=1),
+            cancellation_max_record_age_seconds=60,
+        ),
+        timestamp=NOW,
+    )
+
+    assert _preview_policy_blocker(result) == (
+        CancellationPlanningBlocker.SNAPSHOT_NOT_FRESH.value
+    )
+
+
+@pytest.mark.parametrize(
+    ("config_changes", "expected"),
+    [
+        (
+            {"cancellation_target_client_order_id": "missing-client"},
+            CancellationPlanningBlocker.CLIENT_ORDER_ID_MISMATCH,
+        ),
+        (
+            {"cancellation_target_broker_order_id": "other-broker"},
+            CancellationPlanningBlocker.BROKER_ORDER_ID_MISMATCH,
+        ),
+        (
+            {"cancellation_target_symbol": "BTC/USD"},
+            CancellationPlanningBlocker.SYMBOL_MISMATCH,
+        ),
+    ],
+)
+def test_status_preview_fails_closed_on_target_mismatch(
+    tmp_path: Path,
+    config_changes: dict[str, object],
+    expected: CancellationPlanningBlocker,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    result = run_paper_autopilot_control(
+        _preview_config(path, **config_changes),
+        timestamp=NOW,
+    )
+
+    assert _preview_policy_blocker(result) == expected.value
+
+
+def test_status_preview_missing_record_fails_closed(tmp_path: Path) -> None:
+    path = tmp_path / "orders.sqlite3"
+
+    result = run_paper_autopilot_control(
+        _preview_config(path),
+        timestamp=NOW,
+    )
+
+    assert _preview_policy_blocker(result) == (
+        CancellationPlanningBlocker.OBSERVATION_MISSING.value
+    )
+
+
+def test_status_preview_duplicate_broker_identity_fails_closed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    _add_observed_order(
+        journal,
+        client_order_id="preview-client-2",
+        broker_order_id=BROKER_ORDER_ID,
+    )
+
+    result = run_paper_autopilot_control(
+        _preview_config(path),
+        timestamp=NOW,
+    )
+
+    assert _preview_policy_blocker(result) == (
+        CancellationPlanningBlocker.OBSERVATION_MISSING.value
+    )
+
+
+def test_status_preview_terminal_record_fails_closed(tmp_path: Path) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path, broker_status="filled", filled_quantity="1")
+
+    result = run_paper_autopilot_control(
+        _preview_config(path),
+        timestamp=NOW,
+    )
+
+    assert _preview_policy_blocker(result) == (
+        CancellationPlanningBlocker.ORDER_TERMINAL.value
+    )
+
+
+def test_status_preview_ambiguous_journal_record_fails_closed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = SqliteOrderJournal(path)
+    reservation = journal.reserve(
+        OrderReservation(
+            client_order_id=CLIENT_ORDER_ID,
+            execution_plan_id="preview-plan",
+            run_id="preview-run",
+            symbol="SPY",
+            side="buy",
+            quantity=None,
+            notional="25",
+        ),
+        NOW - timedelta(minutes=2),
+    )
+    journal.mark_submit_attempted(
+        reservation.record.client_order_id,
+        NOW - timedelta(minutes=1),
+    )
+    journal.mark_submit_ambiguous(
+        reservation.record.client_order_id,
+        NOW,
+        reason="local ambiguous submit",
+    )
+
+    result = run_paper_autopilot_control(
+        _preview_config(path),
+        timestamp=NOW,
+    )
+
+    preview = result["cancellation_planning_preview"]
+    assert preview["status"] == "blocked"
+    assert preview["adapter_blocker"] == "lifecycle_inconsistent"
+    assert preview["planning_result"] == {}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"action": "pause"},
+        {"cancellation_target_client_order_id": ""},
+        {"cancellation_target_broker_order_id": ""},
+        {"cancellation_target_symbol": ""},
+        {"cancellation_reason": ""},
+        {"cancellation_as_of": None},
+        {"cancellation_as_of": datetime(2026, 7, 11, 15, 0)},
+        {"cancellation_max_record_age_seconds": 0},
+        {"cancellation_max_record_age_seconds": True},
+    ],
+)
+def test_enabled_preview_configuration_requires_complete_offline_inputs(
+    tmp_path: Path,
+    changes: dict[str, object],
+) -> None:
+    values: dict[str, object] = {
+        "journal_path": tmp_path / "orders.sqlite3",
+        "action": "status",
+        "cancellation_preview_enabled": True,
+        "cancellation_planning_permitted": True,
+        "cancellation_target_client_order_id": CLIENT_ORDER_ID,
+        "cancellation_target_broker_order_id": BROKER_ORDER_ID,
+        "cancellation_target_symbol": "SPY",
+        "cancellation_reason": "offline planning preview",
+        "cancellation_as_of": NOW + timedelta(minutes=5),
+        "cancellation_max_record_age_seconds": 900,
+    }
+    values.update(changes)
+
+    with pytest.raises(ValidationError):
+        PaperAutopilotControlConfig(**values)  # type: ignore[arg-type]
+
+
+def test_cli_status_exposes_explicit_offline_cancellation_preview(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    exit_code = main(
+        [
+            "paper-autopilot-control",
+            "status",
+            "--order-journal-path",
+            str(path),
+            "--cancellation-preview",
+            "--allow-offline-cancellation-planning",
+            "--cancellation-target-client-order-id",
+            CLIENT_ORDER_ID,
+            "--cancellation-target-broker-order-id",
+            BROKER_ORDER_ID,
+            "--cancellation-target-symbol",
+            "SPY",
+            "--cancellation-reason",
+            "offline planning preview",
+            "--cancellation-as-of",
+            (NOW + timedelta(minutes=5)).isoformat(),
+            "--format",
+            "json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["cancellation_planning_preview_enabled"] is True
+    assert payload["cancellation_planning_preview"]["status"] == "planned"
+    assert payload["cancellation_planning_preview"]["no_submit"] is True
 
 
 def test_control_backup_and_restore(tmp_path: Path) -> None:
@@ -439,3 +772,84 @@ def test_restore_rejects_schema_v4_without_cancel_tables(tmp_path: Path) -> None
             env={},
             timestamp=NOW,
         )
+
+
+def _preview_config(
+    path: Path,
+    **overrides: object,
+) -> PaperAutopilotControlConfig:
+    values: dict[str, object] = {
+        "journal_path": path,
+        "action": "status",
+        "cancellation_preview_enabled": True,
+        "cancellation_planning_permitted": True,
+        "cancellation_target_client_order_id": CLIENT_ORDER_ID,
+        "cancellation_target_broker_order_id": BROKER_ORDER_ID,
+        "cancellation_target_symbol": "SPY",
+        "cancellation_reason": "offline planning preview",
+        "cancellation_as_of": NOW + timedelta(minutes=5),
+        "cancellation_max_record_age_seconds": 900,
+    }
+    values.update(overrides)
+    return PaperAutopilotControlConfig(**values)  # type: ignore[arg-type]
+
+
+def _observed_journal(
+    path: Path,
+    *,
+    broker_status: str = "accepted",
+    filled_quantity: str = "0",
+) -> SqliteOrderJournal:
+    journal = SqliteOrderJournal(path)
+    _add_observed_order(
+        journal,
+        client_order_id=CLIENT_ORDER_ID,
+        broker_order_id=BROKER_ORDER_ID,
+        broker_status=broker_status,
+        filled_quantity=filled_quantity,
+    )
+    return journal
+
+
+def _add_observed_order(
+    journal: SqliteOrderJournal,
+    *,
+    client_order_id: str,
+    broker_order_id: str,
+    broker_status: str = "accepted",
+    filled_quantity: str = "0",
+) -> None:
+    reservation = journal.reserve(
+        OrderReservation(
+            client_order_id=client_order_id,
+            execution_plan_id=f"plan-{client_order_id}",
+            run_id=f"run-{client_order_id}",
+            symbol="SPY",
+            side="buy",
+            quantity=None,
+            notional="25",
+        ),
+        NOW - timedelta(minutes=2),
+    )
+    journal.mark_submit_attempted(
+        reservation.record.client_order_id,
+        NOW - timedelta(minutes=1),
+    )
+    journal.record_broker_observation(
+        reservation.record.client_order_id,
+        NOW,
+        broker_order_id=broker_order_id,
+        broker_status=broker_status,
+        filled_quantity=filled_quantity,
+        filled_average_price=("100" if filled_quantity != "0" else None),
+    )
+
+
+def _preview_policy_blocker(result: dict[str, object]) -> str:
+    preview = result["cancellation_planning_preview"]
+    assert isinstance(preview, dict)
+    planning_result = preview["planning_result"]
+    assert isinstance(planning_result, dict)
+    blocker = planning_result["blocker"]
+    assert isinstance(blocker, str)
+    return blocker

@@ -199,6 +199,34 @@ Upon completion, the launcher prints a compact final summary:
 * **Git Artifact Verification**: Confirms that no generated artifacts are tracked or staged.
 * **Key Output Artifact Paths**: List of generated files relative and POSIX-style.
 
+## Read-Only Journal Cancellation-Planning Preview
+
+The paper-autopilot status command can build one local no-submit cancellation
+planning artifact from an existing journal record. The preview is disabled by
+default and requires the exact local client-order ID, broker-order ID, symbol,
+reason, and an explicit UTC evaluation time:
+
+```powershell
+python -m algotrader.cli paper-autopilot-control status `
+  --order-journal-path <LOCAL_ORDER_JOURNAL_PATH> `
+  --cancellation-preview `
+  --allow-offline-cancellation-planning `
+  --cancellation-target-client-order-id <CLIENT_ORDER_ID> `
+  --cancellation-target-broker-order-id <BROKER_ORDER_ID> `
+  --cancellation-target-symbol SPY `
+  --cancellation-reason <LOCAL_PLANNING_REASON> `
+  --cancellation-as-of <ISO_8601_UTC_TIMESTAMP> `
+  --format json
+```
+
+`--allow-offline-cancellation-planning` authorizes creation of this local
+artifact only. It does not authorize broker access or cancellation. The output
+must retain `no_submit=true`, `cancel_attempted=false`,
+`broker_access_performed=false`, and `broker_mutation_performed=false`.
+Missing, duplicate, stale, ambiguous, terminal, mismatched, paused, stopped, or
+otherwise ineligible local state returns a blocked artifact. Do not treat a
+planned artifact as an executable cancellation request.
+
 ## Safety Declarations
 
 > [!WARNING]

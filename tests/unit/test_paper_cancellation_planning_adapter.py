@@ -268,6 +268,23 @@ def test_target_identity_mismatch_is_blocked_by_existing_policy(
     assert artifact.planning_result.blocker is expected
 
 
+def test_explicit_observation_symbol_mismatch_is_blocked_by_policy() -> None:
+    artifact = adapt_paper_lifecycle_to_cancellation_plan(
+        (event(),),
+        request=planning_request(),
+        as_of=AS_OF,
+        observation_symbol="ETH/USD",
+    )
+
+    assert artifact.adapter_blocker is None
+    assert artifact.latest_observation is not None
+    assert artifact.latest_observation.symbol == "ETH/USD"
+    assert artifact.planning_result is not None
+    assert artifact.planning_result.blocker is (
+        CancellationPlanningBlocker.SYMBOL_MISMATCH
+    )
+
+
 def test_missing_observed_broker_identity_fails_closed_in_policy() -> None:
     artifact = adapt((event(broker_order_id=""),))
 
@@ -459,7 +476,7 @@ def test_adapter_signature_has_no_callback_io_or_broker_parameter() -> None:
         inspect.signature(
             adapt_paper_lifecycle_to_cancellation_plan
         ).parameters
-    ) == ("events", "request", "as_of")
+    ) == ("events", "request", "as_of", "observation_symbol")
 
 
 def test_module_has_no_io_network_broker_or_mutation_boundary() -> None:

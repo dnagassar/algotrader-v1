@@ -2816,6 +2816,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the broker snapshot JSON file for offline reconciliation.",
     )
     paper_autopilot_control_parser.add_argument(
+        "--cancellation-preview",
+        action="store_true",
+        dest="cancellation_preview_enabled",
+        help=(
+            "Build a read-only local-journal cancellation-planning preview for "
+            "status; this never authorizes or performs broker cancellation."
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--allow-offline-cancellation-planning",
+        action="store_true",
+        dest="cancellation_planning_permitted",
+        help=(
+            "Permit creation of the offline plan artifact only; this is not "
+            "broker cancellation permission."
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-target-client-order-id",
+        default="",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-target-broker-order-id",
+        default="",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-target-symbol",
+        default="",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-reason",
+        default="",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-as-of",
+        default=None,
+        help="Explicit ISO-8601 UTC evaluation time for the local preview.",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-max-record-age-seconds",
+        type=int,
+        default=900,
+    )
+    paper_autopilot_control_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -6497,6 +6541,14 @@ def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
             "readiness_packet_path",
             "no_submit",
             "runtime_lease_seconds",
+            "cancellation_preview_enabled",
+            "cancellation_planning_permitted",
+            "cancellation_target_client_order_id",
+            "cancellation_target_broker_order_id",
+            "cancellation_target_symbol",
+            "cancellation_reason",
+            "cancellation_as_of",
+            "cancellation_max_record_age_seconds",
         ):
             if hasattr(args, name) and getattr(args, name) is not None:
                 config_args[name] = getattr(args, name)

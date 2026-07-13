@@ -123,6 +123,13 @@ This flow is a contract boundary, not permission to trade.
   that policy. Its immutable primitive artifact always records no-submit,
   no-broker-access, and no-mutation facts. The adapter performs no file or
   journal reads and remains disconnected from `DurableCancelCoordinator`.
+- `paper-autopilot-control status` may optionally project one explicitly
+  targeted local journal record into that adapter. The preview is default-off,
+  requires an explicit UTC as-of and a planning-only permission, derives
+  freshness plus stop/trading controls from local state, and fails closed on
+  missing or duplicate records and every policy blocker. Status emits only the
+  primitive no-submit artifact; it does not construct a broker client, mutate
+  journal state, or grant broker cancellation permission.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
 - Direct production submit and cancel call sites are a closed, executable
