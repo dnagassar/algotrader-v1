@@ -185,7 +185,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_daily_lab_acce
 * `-BarsCsv` (Optional): Path to the daily price bars CSV file.
 * `-ReconciliationStatePath` (Optional): Path to the offline reconciliation state JSONL file.
 * `-OutputRoot` (Optional): Target directory for soak and rollup output files (default: `runs/daily_soak`).
-* `-FullVerify` (Optional): Runs full offline pytest suite inside `verify_offline.ps1` instead of targeted guard tests only.
+* `-FullVerify` (Optional): Runs the complete exact-node bounded pytest suite inside `verify_offline.ps1` instead of targeted guard tests only.
 
 ### Acceptance Summary Output
 
@@ -198,6 +198,23 @@ Upon completion, the launcher prints a compact final summary:
 * **Safety Authorization Booleans**: Confirms authorization gates remain safely locked (`False`).
 * **Git Artifact Verification**: Confirms that no generated artifacts are tracked or staged.
 * **Key Output Artifact Paths**: List of generated files relative and POSIX-style.
+
+### Complete Offline Verification
+
+Run the canonical full default collection with bounded deterministic sharding:
+
+```powershell
+.\scripts\verify_offline.ps1 -Full
+```
+
+The full verifier collects the default suite once, partitions every node ID
+exactly once across four balanced argument files, recollects each shard to prove
+there are no missing, duplicate, or extra tests, and then executes the shards
+with isolated temporary state and per-shard timeouts. It fails on any collection
+drift, timeout, nonzero pytest exit, missing JUnit result, or aggregate testcase
+count mismatch. The summary includes shard wall times and the slowest files by
+aggregate testcase seconds. It does not add skip, deselect, marker, network, or
+credential overrides.
 
 ## Read-Only Journal Cancellation-Planning Preview
 
