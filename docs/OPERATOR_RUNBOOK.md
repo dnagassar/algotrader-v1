@@ -252,6 +252,39 @@ duplicated, or when local state is incomplete, unknown, terminal-only, paused,
 stopped, future-dated, or inconsistent. It performs no broker access, no
 cancellation attempt, and no journal mutation.
 
+## Default-Denied Durable Cancellation Handoff Preview
+
+After a successful explicit or automatically selected cancellation plan,
+status can optionally emit the exact primitive inputs that a future durable
+cancellation admission boundary would need. This remains a local mapping
+artifact and is disabled by default:
+
+```powershell
+python -m algotrader.cli paper-autopilot-control status `
+  --order-journal-path <LOCAL_ORDER_JOURNAL_PATH> `
+  --cancellation-preview `
+  --auto-select-cancellation-candidate `
+  --allow-offline-cancellation-planning `
+  --cancellation-handoff-preview `
+  --allow-offline-cancellation-handoff `
+  --cancellation-target-symbol SPY `
+  --cancellation-reason <LOCAL_PLANNING_REASON> `
+  --cancellation-as-of <ISO_8601_UTC_TIMESTAMP> `
+  --cancellation-candidate-minimum-open-age-seconds 900 `
+  --format json
+```
+
+`--allow-offline-cancellation-handoff` permits artifact creation only. It is
+not cancellation authorization and cannot enable a broker callback. Even a
+prepared artifact must retain `cancel_allowed=false`,
+`execution_authorized=false`, `broker_callback_present=false`,
+`coordinator_invoked=false`, `cancel_attempted=false`,
+`broker_access_performed=false`, `broker_mutation_performed=false`, and
+`journal_mutation_performed=false`. Missing permission, a blocked or missing
+plan, stale or terminal records, invalid timestamps, or any plan/record identity
+or observation mismatch returns a typed blocked artifact with no durable
+identity inputs.
+
 ## Safety Declarations
 
 > [!WARNING]

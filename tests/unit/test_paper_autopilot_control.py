@@ -15,6 +15,9 @@ from algotrader.execution.paper_autopilot_control import (
 from algotrader.execution.paper_cancellation_candidate_selector import (
     CancellationCandidateSelectionBlocker,
 )
+from algotrader.execution.paper_cancellation_handoff_preview import (
+    DurableCancellationHandoffBlocker,
+)
 from algotrader.orchestration.cancellation_planning_policy import (
     CancellationPlanningBlocker,
 )
@@ -77,12 +80,26 @@ def test_status_cancellation_preview_is_default_disabled_without_record_scan(
 
     assert result["cancellation_planning_preview_enabled"] is False
     assert result["cancellation_candidate_auto_selection_enabled"] is False
+    assert result["cancellation_handoff_preview_enabled"] is False
     assert result["cancellation_planning_preview"] == {
         "status": "disabled",
         "no_submit": True,
         "cancel_attempted": False,
         "broker_access_performed": False,
         "broker_mutation_performed": False,
+    }
+    assert result["cancellation_handoff_preview"] == {
+        "status": "disabled",
+        "no_submit": True,
+        "handoff_prepared": False,
+        "cancel_allowed": False,
+        "execution_authorized": False,
+        "broker_callback_present": False,
+        "coordinator_invoked": False,
+        "cancel_attempted": False,
+        "broker_access_performed": False,
+        "broker_mutation_performed": False,
+        "journal_mutation_performed": False,
     }
 
 
@@ -557,7 +574,169 @@ def test_auto_selection_configuration_is_explicit_and_unmixed(
         )
 
 
-def test_cli_status_exposes_default_off_auto_selection_without_target_ids(
+@pytest.mark.parametrize("auto_select", [False, True])
+def test_status_prepares_default_denied_durable_handoff_without_mutation(
+    tmp_path: Path,
+    auto_select: bool,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    before_records = tuple(record.to_dict() for record in journal.records())
+    before_control = journal.get_runtime_control().to_dict()
+    before_cancel_intents = tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    )
+    config_factory = _auto_preview_config if auto_select else _preview_config
+    config = config_factory(
+        path,
+        cancellation_handoff_preview_enabled=True,
+        cancellation_handoff_permitted=True,
+    )
+
+    def fail_broker_factory(_config: object) -> object:
+        raise AssertionError("handoff preview must not construct a broker client")
+
+    first = run_paper_autopilot_control(
+        config,
+        timestamp=NOW + timedelta(minutes=5),
+        broker_client_factory=fail_broker_factory,
+    )
+    second = run_paper_autopilot_control(
+        config,
+        timestamp=NOW + timedelta(minutes=5),
+        broker_client_factory=fail_broker_factory,
+    )
+
+    planning = first["cancellation_planning_preview"]
+    handoff = first["cancellation_handoff_preview"]
+    assert first["schema_version"] == "paper_autopilot_control_v6"
+    assert first["cancellation_handoff_preview_enabled"] is True
+    assert planning["status"] == "planned"
+    assert handoff["status"] == "prepared"
+    assert handoff["handoff_prepared"] is True
+    assert handoff["source_plan_id"] == planning["planning_result"]["plan"][
+        "plan_id"
+    ]
+    assert handoff["identity"]["client_order_id"] == CLIENT_ORDER_ID
+    assert handoff["identity"]["broker_order_id"] == BROKER_ORDER_ID
+    assert handoff["identity"]["reservation_run_id"] == (
+        f"run-{CLIENT_ORDER_ID}"
+    )
+    assert handoff["coordinator_identity_inputs"] == {
+        key: handoff["identity"][key]
+        for key in (
+            "cancel_intent_id",
+            "client_order_id",
+            "broker_order_id",
+            "reservation_run_id",
+            "reason",
+        )
+    }
+    for field_name in (
+        "cancel_allowed",
+        "execution_authorized",
+        "broker_callback_present",
+        "coordinator_invoked",
+        "cancel_attempted",
+        "broker_access_performed",
+        "broker_mutation_performed",
+        "journal_mutation_performed",
+    ):
+        assert handoff[field_name] is False
+    assert second["cancellation_handoff_preview"] == handoff
+    assert tuple(record.to_dict() for record in journal.records()) == before_records
+    assert journal.get_runtime_control().to_dict() == before_control
+    assert tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    ) == before_cancel_intents
+    assert first["network_access_attempted"] is False
+    assert first["broker_access_attempted"] is False
+    assert first["broker_mutation_performed"] is False
+
+
+@pytest.mark.parametrize(
+    ("config_changes", "expected"),
+    [
+        (
+            {"cancellation_handoff_permitted": False},
+            DurableCancellationHandoffBlocker.HANDOFF_NOT_PERMITTED,
+        ),
+        (
+            {"cancellation_planning_permitted": False},
+            DurableCancellationHandoffBlocker.PLAN_NOT_AVAILABLE,
+        ),
+    ],
+)
+def test_status_handoff_preview_fails_closed_before_identity_emission(
+    tmp_path: Path,
+    config_changes: dict[str, object],
+    expected: DurableCancellationHandoffBlocker,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+    handoff_config: dict[str, object] = {
+        "cancellation_handoff_preview_enabled": True,
+        "cancellation_handoff_permitted": True,
+    }
+    handoff_config.update(config_changes)
+
+    result = run_paper_autopilot_control(
+        _preview_config(path, **handoff_config),
+        timestamp=NOW + timedelta(minutes=5),
+    )
+
+    handoff = result["cancellation_handoff_preview"]
+    assert handoff["status"] == "blocked"
+    assert handoff["blocker"] == expected.value
+    assert handoff["identity"] == {}
+    assert handoff["coordinator_identity_inputs"] == {}
+    assert handoff["cancel_allowed"] is False
+    assert handoff["coordinator_invoked"] is False
+
+
+def test_auto_selection_blocker_cannot_reach_handoff_identity(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    result = run_paper_autopilot_control(
+        _auto_preview_config(
+            path,
+            cancellation_candidate_minimum_open_age_seconds=600,
+            cancellation_handoff_preview_enabled=True,
+            cancellation_handoff_permitted=True,
+        ),
+        timestamp=NOW + timedelta(minutes=5),
+    )
+
+    handoff = result["cancellation_handoff_preview"]
+    assert handoff["status"] == "blocked"
+    assert handoff["blocker"] == (
+        DurableCancellationHandoffBlocker.PLANNING_RESULT_MISSING.value
+    )
+    assert handoff["identity"] == {}
+    assert handoff["cancel_attempted"] is False
+
+
+def test_handoff_configuration_requires_explicit_preview_chain(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    with pytest.raises(ValidationError, match="requires cancellation preview"):
+        PaperAutopilotControlConfig(
+            cancellation_handoff_preview_enabled=True,
+        )
+    with pytest.raises(ValidationError, match="requires the handoff preview"):
+        _preview_config(path, cancellation_handoff_permitted=True)
+    with pytest.raises(ValidationError, match="must be a boolean"):
+        _preview_config(
+            path,
+            cancellation_handoff_preview_enabled=1,
+        )
+
+
+def test_cli_status_exposes_auto_selection_and_handoff_without_target_ids(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -573,6 +752,8 @@ def test_cli_status_exposes_default_off_auto_selection_without_target_ids(
             "--cancellation-preview",
             "--auto-select-cancellation-candidate",
             "--allow-offline-cancellation-planning",
+            "--cancellation-handoff-preview",
+            "--allow-offline-cancellation-handoff",
             "--cancellation-target-symbol",
             "SPY",
             "--cancellation-reason",
@@ -594,6 +775,17 @@ def test_cli_status_exposes_default_off_auto_selection_without_target_ids(
         "status"
     ] == "selected"
     assert payload["cancellation_planning_preview"]["no_submit"] is True
+    handoff = payload["cancellation_handoff_preview"]
+    assert payload["cancellation_handoff_preview_enabled"] is True
+    assert handoff["status"] == "prepared"
+    assert handoff["cancel_allowed"] is False
+    assert handoff["execution_authorized"] is False
+    assert handoff["broker_callback_present"] is False
+    assert handoff["coordinator_invoked"] is False
+    assert handoff["cancel_attempted"] is False
+    assert handoff["broker_access_performed"] is False
+    assert handoff["broker_mutation_performed"] is False
+    assert handoff["journal_mutation_performed"] is False
 
 
 def test_control_backup_and_restore(tmp_path: Path) -> None:

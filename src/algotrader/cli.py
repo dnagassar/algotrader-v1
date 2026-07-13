@@ -2834,6 +2834,24 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     paper_autopilot_control_parser.add_argument(
+        "--cancellation-handoff-preview",
+        action="store_true",
+        dest="cancellation_handoff_preview_enabled",
+        help=(
+            "Build default-denied durable cancellation identity inputs from "
+            "the local plan; this never reserves, authorizes, or executes a cancel."
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--allow-offline-cancellation-handoff",
+        action="store_true",
+        dest="cancellation_handoff_permitted",
+        help=(
+            "Permit creation of the local handoff artifact only; this does not "
+            "authorize a broker callback or cancellation."
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
         "--auto-select-cancellation-candidate",
         action="store_true",
         dest="cancellation_auto_select_enabled",
@@ -6558,6 +6576,8 @@ def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
             "cancellation_preview_enabled",
             "cancellation_auto_select_enabled",
             "cancellation_planning_permitted",
+            "cancellation_handoff_preview_enabled",
+            "cancellation_handoff_permitted",
             "cancellation_target_client_order_id",
             "cancellation_target_broker_order_id",
             "cancellation_target_symbol",

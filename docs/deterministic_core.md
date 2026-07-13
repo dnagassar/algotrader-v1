@@ -131,6 +131,16 @@ This flow is a contract boundary, not permission to trade.
   state, incomplete identity, terminal-only state, and disabled controls each
   return a typed blocker. Selection performs no journal read, broker access,
   mutation callback, ranking, or cancellation.
+- The pure durable-cancellation handoff preview consumes only one typed
+  cancellation-planning result, its matching local `OrderJournalRecord`, an
+  explicit UTC as-of, a record-age bound, and a separate offline handoff
+  permission. A prepared artifact binds the plan ID to deterministic
+  `DurableCancelIdentity`-compatible primitives, including the originating
+  reservation run ID. Plan/record identity, status, and observation time must
+  match exactly. The artifact always records `cancel_allowed=false`,
+  `execution_authorized=false`, no callback, no coordinator invocation, and no
+  journal or broker mutation. The module cannot import `durable_cancel`, a
+  broker adapter, network I/O, or the status control.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.
@@ -138,8 +148,12 @@ This flow is a contract boundary, not permission to trade.
   freshness plus stop/trading controls from local state, and fail closed on
   missing, duplicate, multiple, ambiguous, or otherwise ineligible records.
   Explicit and automatic target modes cannot be mixed. Status emits only the
-  primitive no-submit artifact; it does not construct a broker client, mutate
-  journal state, or grant broker cancellation permission.
+  primitive no-submit artifact. A separately default-disabled handoff preview
+  may expose the default-denied durable identity inputs after a successful
+  plan, but it cannot reserve an intent, acquire a lease, accept a callback,
+  instantiate `DurableCancelCoordinator`, construct a broker client, mutate
+  journal state, or grant broker cancellation permission. Control output schema
+  is `paper_autopilot_control_v6`.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
 - Direct production submit and cancel call sites are a closed, executable
