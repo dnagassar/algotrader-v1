@@ -417,6 +417,34 @@ def test_execution_planning_modules_do_not_call_runtime_or_broker_boundaries() -
         )
 
 
+def test_paper_cancellation_planning_adapter_has_no_mutation_or_io_imports() -> None:
+    rule = DependencyRule(
+        source="paper cancellation planning adapter",
+        paths=(
+            _module_path(
+                "algotrader.execution.paper_cancellation_planning_adapter"
+            ),
+        ),
+        forbidden_prefixes=(
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.order_journal",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "urllib",
+        ),
+    )
+
+    assert _dependency_violations(rule) == []
+
+
 def test_paper_lab_revalidation_brief_has_no_network_or_broker_sdk_paths() -> None:
     path = _module_path("algotrader.execution.paper_lab_revalidation_brief")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

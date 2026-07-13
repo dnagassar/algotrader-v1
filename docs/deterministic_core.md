@@ -117,6 +117,12 @@ This flow is a contract boundary, not permission to trade.
   and cancelable status all agree; otherwise it returns one typed fail-closed
   blocker. It is deliberately not connected to `DurableCancelCoordinator`, a
   broker adapter, or any mutation callback and grants no cancellation authority.
+- The pure paper cancellation-planning adapter replays only caller-supplied
+  `PaperOrderLifecycleEvent` values, validates explicit as-of ordering and a
+  conflict-free order identity, and feeds one latest usable observation into
+  that policy. Its immutable primitive artifact always records no-submit,
+  no-broker-access, and no-mutation facts. The adapter performs no file or
+  journal reads and remains disconnected from `DurableCancelCoordinator`.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
 - Direct production submit and cancel call sites are a closed, executable
