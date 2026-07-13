@@ -810,6 +810,43 @@ def test_paper_cancellation_seed_is_submit_only_and_cli_independent() -> None:
     )
 
 
+def test_exact_paper_cancellation_is_the_narrow_broker_binding() -> None:
+    path = _module_path("algotrader.execution.paper_exact_cancellation")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imports = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    calls = [
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    ]
+
+    assert "algotrader.cli" not in imports
+    assert "algotrader.execution.paper_mutation_oms" not in imports
+    assert "algotrader.execution.paper_cancellation_seed" not in imports
+    assert {
+        "algotrader.execution.paper_cancellation_admission",
+        "algotrader.execution.paper_cancellation_handoff_preview",
+        "algotrader.execution.paper_cancellation_invocation",
+        "algotrader.execution.paper_cancellation_planning_adapter",
+    }.issubset(imports)
+    assert calls.count("cancel_order_by_id") == 1
+    assert all(
+        call not in {
+            "submit_order",
+            "submit_order_request",
+            "replace_order",
+            "close_position",
+            "close_all_positions",
+            "liquidate",
+        }
+        for call in calls
+    )
+
+
 def test_paper_lab_revalidation_brief_has_no_network_or_broker_sdk_paths() -> None:
     path = _module_path("algotrader.execution.paper_lab_revalidation_brief")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

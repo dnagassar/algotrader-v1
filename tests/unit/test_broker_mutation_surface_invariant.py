@@ -72,6 +72,11 @@ EXPECTED_DIRECT_MUTATION_CALLS = frozenset(
         ("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py", "_submit_once", "submit_order_request"),
         ("src/algotrader/execution/etf_sma_v199_authorized_bounded_spy_paper_drill.py", "_submit_cancel_reconcile", "submit_order"),
         ("src/algotrader/execution/paper_cancellation_seed.py", "send", "submit_order"),
+        (
+            "src/algotrader/execution/paper_exact_cancellation.py",
+            "execute_exact",
+            "cancel_order_by_id",
+        ),
         ("src/algotrader/execution/paper_autopilot_loop.py", "_execute_plan", "submit_order"),
         ("src/algotrader/execution/paper_mutation_oms.py", "submit_order", "submit_order"),
         ("src/algotrader/execution/paper_mutation_oms.py", "run_paper_certification_drill", "submit_order"),
@@ -308,6 +313,9 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
     invocation_path = (
         "src/algotrader/execution/paper_cancellation_invocation.py"
     )
+    exact_binding_path = (
+        "src/algotrader/execution/paper_exact_cancellation.py"
+    )
     v199_path = (
         "src/algotrader/execution/"
         "etf_sma_v199_authorized_bounded_spy_paper_drill.py"
@@ -315,6 +323,7 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
     assert consumers == {
         certification_path,
         crypto_drill_path,
+        exact_binding_path,
         invocation_path,
         oms_path,
         v199_path,

@@ -248,6 +248,43 @@ does not authorize cancellation. The operator must separately authorize the
 exact returned identity before the cancellation binding may run. Do not run
 pytest or offline verification in the credentialed shell.
 
+### Exact Operator-Authorized Paper Cancellation
+
+Only after the operator authorizes one cancellation attempt for the exact
+client-order ID, broker-order ID, and SPY symbol may the repository-owned
+binding run:
+
+```powershell
+. .\scripts\dev\load_env.ps1 -Quiet
+python -m algotrader.execution.paper_exact_cancellation `
+  --target-client-order-id <EXACT_CLIENT_ORDER_ID> `
+  --target-broker-order-id <EXACT_BROKER_ORDER_ID> `
+  --target-symbol SPY `
+  --paper-cancel-authorized `
+  --authorization-phrase "AUTHORIZE ONE EXACT ALPACA PAPER CANCELLATION ATTEMPT NO RETRY"
+```
+
+The command requires the exact Alpaca paper endpoint, paper profile, loaded
+paper credentials, and an expected account identity. It first verifies the
+local journal identity and runtime controls, then performs one account read and
+one exact broker-order read. Missing, terminal, non-cancelable, mismatched,
+paused, stopped, stale, or wrong-account state stops before broker mutation.
+
+For a valid fresh target, the command reuses the deterministic planning,
+handoff, exact-authorization admission, and durable invocation pipeline. The
+fixed `paper-autopilot-cancellation` lease, cancellation reservation, and
+atomic pre-mutation journal claim must all succeed before the single SDK cancel
+call is reachable. The command performs at most one exact post-cancel read,
+persists the observed order and cancel-intent states, releases the lease in a
+`finally` path, and never retries. It exposes no submit, replace, close,
+liquidation, target-selection, or live capability. Its ignored result is
+written to
+`runs/paper_exact_cancellation/latest/cancellation_result.json`.
+
+Do not run this command from a default verification shell, substitute another
+target, or repeat it after an ambiguous result. Reconciliation after an
+ambiguous response is read-only and non-retryable.
+
 The paper-autopilot status command can build one local no-submit cancellation
 planning artifact from an existing journal record. The preview is disabled by
 default and requires the exact local client-order ID, broker-order ID, symbol,
@@ -352,19 +389,18 @@ journal mutation. Actual coordinator invocation remains a separate operator
 gate for one exact cancellation.
 
 The internal `paper_cancellation_invocation` bridge implements that gated
-coordinator sequence but is not an operator command and is not connected to a
-broker adapter. An invocation caller must provide the exact admitted artifact
+coordinator sequence. Its only Alpaca binding is the exact operator command
+described above. An invocation caller must provide the exact admitted artifact
 ID, an explicit UTC occurrence time before authorization expiry, a fresh
 snapshot assertion, a bounded lease TTL, a separate affirmative invocation
 permission, and injected cancel/observation callbacks. It then uses the fixed
 `paper-autopilot-cancellation` lease, durable reservation, atomic pre-mutation
-claim, observation persistence, and `finally`-based lease release. Offline tests
-use local SQLite journals and fake callbacks only.
+claim, observation persistence, and `finally`-based lease release. Offline
+tests use local SQLite journals and fake callbacks only.
 
-Do not wire a broker callback, add an executable cancellation command, load
-paper credentials, or attempt cancellation without operator authorization for
-the exact target order and mutation scope. A status admission preview remains
-non-executable even when the internal bridge exists.
+Do not load paper credentials or attempt cancellation without operator
+authorization for the exact target order and mutation scope. A status admission
+preview remains non-executable even when the internal bridge exists.
 
 ## Safety Declarations
 
