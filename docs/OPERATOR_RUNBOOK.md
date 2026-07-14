@@ -285,6 +285,54 @@ Do not run this command from a default verification shell, substitute another
 target, or repeat it after an ambiguous result. Reconciliation after an
 ambiguous response is read-only and non-retryable.
 
+### Exact Read-Only Cancellation Reconciliation
+
+The dedicated reconciliation command is for one already-unresolved durable
+cancel intent after the operator supplies a separate existing read-only
+authorization artifact. The command cannot create that artifact, infer a
+target from it, enumerate unresolved intents, or enter the general CLI. Both
+permission flags default to false and are checked before the artifact,
+environment, journal, or broker reader can be accessed.
+
+Do not run this command merely because an unresolved cancel intent exists. An
+actual paper-broker read is a new exact operation and requires operator
+authorization for the named cancel-intent, client-order, broker-order, account,
+authorization ID, journal, and bounded UTC occurrence time, plus explicit
+credential loading and network access. After those exact facts and that
+operation are authorized, the standalone form is:
+
+```powershell
+. .\scripts\dev\load_env.ps1 -Quiet
+python .\scripts\run_exact_paper_cancellation_reconciliation.py `
+  --authorization-artifact <EXACT_EXISTING_AUTHORIZATION_JSON> `
+  --journal-path <EXACT_LOCAL_ORDER_JOURNAL> `
+  --cancel-intent-id <EXACT_CANCEL_INTENT_ID> `
+  --client-order-id <EXACT_CLIENT_ORDER_ID> `
+  --broker-order-id <EXACT_BROKER_ORDER_ID> `
+  --expected-authorization-id <EXACT_AUTHORIZATION_ID> `
+  --expected-paper-account-id <EXACT_EXPECTED_PAPER_ACCOUNT_ID> `
+  --occurred-at <EXACT_ISO_8601_UTC_TIMESTAMP> `
+  --operator-binding-permitted `
+  --network-access-permitted
+```
+
+The authorization JSON must be the exact canonical export of one pre-existing
+`PaperCancellationObservationAuthorization`. Malformed, extra, duplicate,
+forged, expired, noncanonical, or identity-mismatched evidence stops before a
+reader. Paper profile, canonical paper endpoint, both canonical credential
+variables, exact expected account, and the named local journal records must all
+validate. The binding then performs at most one account read and one exact
+order read, consumes the injected observation once, and either atomically
+converges both local records or updates neither. It never retries and has no
+submit, cancel, replace, close, liquidation, target-selection, polling, or live
+capability. Output reports only configured-account and credential-presence
+facts; it does not serialize account or credential values.
+
+Default verification must exercise this command only with missing artifacts or
+deterministic fake clients and a blocked socket. Never load credentials into a
+pytest or offline-verification shell, and never treat the existence of this
+command or an authorization artifact as permission for a broker read.
+
 The paper-autopilot status command can build one local no-submit cancellation
 planning artifact from an existing journal record. The preview is disabled by
 default and requires the exact local client-order ID, broker-order ID, symbol,

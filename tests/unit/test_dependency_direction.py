@@ -1055,6 +1055,159 @@ def test_general_cli_cannot_reach_cancellation_reconciliation_operator() -> None
     )
 
 
+def test_cancellation_authorization_artifact_loader_is_read_only_and_cannot_mint() -> None:
+    path = _module_path(
+        "algotrader.execution.paper_cancellation_authorization_artifact"
+    )
+    rule = DependencyRule(
+        source="exact cancellation authorization artifact loader",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.cli",
+            "algotrader.config",
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.order_journal",
+            "algotrader.execution.paper_cancellation_invocation",
+            "algotrader.execution.paper_cancellation_reconciliation_operator",
+            "algotrader.execution.paper_exact_cancellation",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "os",
+            "requests",
+            "socket",
+            "subprocess",
+            "time",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    calls = {
+        _call_name(node.func).rsplit(".", maxsplit=1)[-1]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+
+    assert _dependency_violations(rule) == []
+    assert "build_paper_cancellation_observation_authorization" not in calls
+    assert calls.isdisjoint(
+        {
+            "cancel_order",
+            "cancel_order_by_id",
+            "close_all_positions",
+            "close_position",
+            "get_account",
+            "get_order_by_id",
+            "get_orders",
+            "replace_order",
+            "request_order_cancellation",
+            "submit_order",
+            "submit_order_request",
+            "unresolved_cancel_intents",
+            "write_bytes",
+            "write_text",
+        }
+    )
+
+
+def test_standalone_cancellation_reconciliation_command_is_one_shot_and_confined() -> None:
+    path = _module_path(
+        "algotrader.execution.paper_cancellation_reconciliation_command"
+    )
+    rule = DependencyRule(
+        source="standalone exact cancellation reconciliation command",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.cli",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.paper_autopilot_control",
+            "algotrader.execution.paper_cancellation_admission",
+            "algotrader.execution.paper_cancellation_invocation",
+            "algotrader.execution.paper_exact_cancellation",
+            "algotrader.execution.paper_mutation_oms",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "os",
+            "requests",
+            "socket",
+            "subprocess",
+            "time",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    runner = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "run_exact_paper_cancellation_reconciliation_command"
+    )
+    leaf_call_names = [
+        _call_name(node.func).rsplit(".", maxsplit=1)[-1]
+        for node in ast.walk(runner)
+        if isinstance(node, ast.Call)
+    ]
+
+    assert _dependency_violations(rule) == []
+    assert leaf_call_names.count(
+        "run_exact_paper_cancellation_reconciliation_operator"
+    ) == 1
+    assert leaf_call_names.count("from_env") == 1
+    assert "build_paper_cancellation_observation_authorization" not in leaf_call_names
+    assert set(leaf_call_names).isdisjoint(
+        {
+            "cancel_order",
+            "cancel_order_by_id",
+            "close_all_positions",
+            "close_position",
+            "get_account",
+            "get_order_by_id",
+            "get_orders",
+            "replace_order",
+            "request_order_cancellation",
+            "submit_order",
+            "submit_order_request",
+            "unresolved_cancel_intents",
+        }
+    )
+    assert not any(
+        isinstance(node, (ast.For, ast.While)) for node in ast.walk(runner)
+    )
+
+
+def test_general_cli_cannot_reach_cancellation_reconciliation_command() -> None:
+    cli_path = _module_path("algotrader.cli")
+    tree = ast.parse(
+        cli_path.read_text(encoding="utf-8"),
+        filename=str(cli_path),
+    )
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    assert (
+        "algotrader.execution.paper_cancellation_reconciliation_command"
+        not in imported_modules
+    )
+    assert (
+        "algotrader.execution.paper_cancellation_authorization_artifact"
+        not in imported_modules
+    )
+
+
 def test_paper_cancellation_invocation_is_the_single_gated_bridge() -> None:
     path = _module_path("algotrader.execution.paper_cancellation_invocation")
     rule = DependencyRule(

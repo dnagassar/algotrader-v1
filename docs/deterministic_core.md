@@ -238,6 +238,26 @@ This flow is a contract boundary, not permission to trade.
   liquidation, target-selection, polling, or live capability. Default tests
   inject fake clients and clocks and block sockets; no real broker read is
   authorized or performed.
+- The standalone exact reconciliation command is the dedicated operator-only
+  entrypoint for that binding and is not registered in the general CLI. Its
+  strict loader accepts only one size-bounded UTF-8 JSON object whose exact
+  key set and canonical values match an existing
+  `PaperCancellationObservationAuthorization.to_dict()` export. It rejects
+  duplicate or extra fields, malformed or noncanonical UTC timestamps,
+  unsupported versions, forged authorization IDs, and any evidence that
+  cannot be reconstructed by the immutable authorization contract. The loader
+  calls no authorization builder and cannot mint, renew, discover, or broaden
+  authority. The command independently requires the exact authorization,
+  cancel-intent, client-order, broker-order, journal, expected-account, and UTC
+  occurrence facts. Operator-binding and network permissions are separate
+  default-false flags checked before artifact or environment access. Only after
+  both flags and a valid artifact may the command load canonical paper config
+  and call the outer binding once. Output hides credential and account values,
+  remains non-retryable, and declares no target selection, unresolved-intent
+  enumeration, polling, runtime-control change, broker mutation, submit,
+  cancel, replace, close, liquidation, or live authority. Default execution
+  and all tests use missing artifacts or deterministic fakes with sockets
+  blocked; verification never loads credentials or contacts a broker.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.

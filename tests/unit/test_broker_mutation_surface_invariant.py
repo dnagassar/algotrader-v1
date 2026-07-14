@@ -410,6 +410,57 @@ def test_paper_cancellation_reconciliation_operator_cannot_mint_or_mutate() -> N
     assert "raw_trading_client" not in source
 
 
+def test_cancellation_reconciliation_loader_command_and_script_are_read_only() -> None:
+    paths = (
+        Path(
+            "src/algotrader/execution/"
+            "paper_cancellation_authorization_artifact.py"
+        ),
+        Path(
+            "src/algotrader/execution/"
+            "paper_cancellation_reconciliation_command.py"
+        ),
+        Path("scripts/run_exact_paper_cancellation_reconciliation.py"),
+    )
+    calls: list[str] = []
+    imported_modules: set[str] = set()
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        calls.extend(
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, (ast.Attribute, ast.Name))
+        )
+        imported_modules.update(
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        )
+
+    assert calls.count(
+        "run_exact_paper_cancellation_reconciliation_operator"
+    ) == 1
+    assert "build_paper_cancellation_observation_authorization" not in calls
+    assert set(calls).isdisjoint(
+        MUTATION_CALL_NAMES
+        | {
+            "get_account",
+            "get_order_by_id",
+            "get_orders",
+            "request_order_cancellation",
+            "unresolved_cancel_intents",
+        }
+    )
+    assert all(
+        not module.startswith(("alpaca", "requests", "httpx", "urllib"))
+        for module in imported_modules
+    )
+
+
 def test_shared_coordinator_owns_atomic_claim_before_submit_callback() -> None:
     path = Path("src/algotrader/execution/durable_submit.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
