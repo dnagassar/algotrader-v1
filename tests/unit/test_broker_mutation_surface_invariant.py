@@ -236,6 +236,35 @@ def test_dynamic_cancel_dispatchers_remain_operator_gated_and_allowlisted() -> N
     assert observed == EXPECTED_DYNAMIC_CANCEL_DISPATCHERS
 
 
+def test_cancellation_reconciliation_exposes_no_broker_action_surface() -> None:
+    path = Path("src/algotrader/execution/cancellation_reconciliation.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    attribute_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+
+    assert all(
+        not module.startswith(("alpaca", "requests", "httpx", "urllib"))
+        for module in imported_modules
+    )
+    assert attribute_calls.isdisjoint(
+        MUTATION_CALL_NAMES
+        | {
+            "get_account",
+            "get_order_by_id",
+            "get_recent_orders",
+            "request_order_cancellation",
+        }
+    )
+
+
 def test_shared_coordinator_owns_atomic_claim_before_submit_callback() -> None:
     path = Path("src/algotrader/execution/durable_submit.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

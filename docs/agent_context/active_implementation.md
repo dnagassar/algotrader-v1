@@ -4,52 +4,44 @@
 
 - Repository: `C:\Users\danie\Desktop\algo_trader`
 - Branch: `codex/crypto-frozen-state-reset-workflow`
-- Verified implementation HEAD: `3e27f72c960f0d8646ef05a15ce4e73d5cc0eb00`
-- Remote: `origin/codex/crypto-frozen-state-reset-workflow` was at exact parity with the verified implementation HEAD before this checkpoint-only commit.
-- Key accepted commits:
-  - `3e27f72` `Add exact paper cancellation binding`
-  - `6da2131` `Add exact paper cancellation seed submit`
-  - `dceb0e7` `Add bounded exact-node pytest runner`
-- Full verification at the implementation HEAD: `.\scripts\verify_offline.ps1 -Full` passed in 882.8 seconds; 80 safety guards passed; canonical collection was 8,782 tests in 437 files; all 8,782 executed exactly once with 8,778 passed, 4 existing skips, 0 failures, and 0 errors.
-- Repository hygiene at the implementation HEAD: `git diff --check` passed; staged files, post-commit `src` diffs, untracked `src`/`tests`, and tracked `runs` artifacts were empty.
+- Reconciliation implementation parent: `fcafd4beb5f66c782b813415c61fbe64bf81aba5`
+- Remote before the reconciliation commit: `origin/codex/crypto-frozen-state-reset-workflow` was at exact parity with that parent.
+- Accepted parent capability: `3e27f72` adds the exact operator-gated paper cancellation binding; `fcafd4b` records its verified checkpoint.
+- Full reconciliation-tree verification: `.\scripts\verify_offline.ps1 -Full` passed in 954.5 seconds. All 82 safety guards passed; canonical collection was 8,793 tests in 438 files; all 8,793 executed exactly once with 8,789 passed, 4 existing skips, 0 failures, and 0 errors.
+- Focused verification: 70 cancellation reconciliation, journal, durable coordinator, invocation, and exact-binding tests passed.
+- Repository hygiene at the verified tree: `git diff --check` passed; the index and tracked `runs/` artifacts were empty before staging.
 
-## Accepted Capabilities
+## Accepted Reconciliation Capability
 
-- The default full-suite runner is repository-owned, offline, credential-free, bounded, sharded, collection-equivalent, and execution-equivalent.
-- Cancellation planning, exact candidate identity, durable handoff, current operator-authorization admission, fixed runtime lease, durable reservation, atomic pre-mutation claim, observation persistence, and non-retryable ambiguity handling are implemented and tested.
-- One fixed SPY paper seed submit was broker-proven under exact authorization with one submit call, zero fill, durable persistence, and no retry.
-- One exact SPY paper cancellation was broker-proven under identity-specific authorization: pre-read identity matched in cancelable state with zero fill; exactly one cancel call occurred; exactly one post-read observed `canceled` with zero fill; order and cancel-intent journals persisted `canceled`; the lease released.
-- The exact cancellation binding has one explicitly classified SDK cancel call and no submit, replace, close, liquidation, target-selection, retry, or live capability.
+- `CancellationReconciliationIdentity` explicitly binds one cancel-intent ID, client-order ID, and broker-order ID. The workflow performs no target selection.
+- `CancellationReconciliationObservation` is one immutable, already-injected broker-order observation with a UTC timestamp, normalized status, and optional fill facts. The workflow has no broker reader, broker callback, polling loop, credential path, or network path.
+- `reconcile_unresolved_cancellation(...)` consumes exactly that explicit identity and one observation. Identity must match across the request, observation, cancel-intent journal record, and order journal record.
+- `SqliteOrderJournal.reconcile_unresolved_cancel_observation(...)` accepts only attempted, unknown, or cancel-accepted durable intents. It rejects reserved-only or terminal cancel intents, stale observations, identity mismatches, missing records, and terminal-order regressions.
+- Order and cancel-intent convergence occurs in one SQLite transaction with paired durable events. Validation failure updates neither journal.
+- Canceled observations converge both journals to `canceled`. Pending-cancel observations converge order state to `open` and cancel-intent state to `cancel_accepted`. Terminal filled observations converge the order to `filled` while preserving the cancel intent as non-retryable `unknown` rather than inventing cancellation confirmation.
+- Result artifacts always report one consumed injected observation, `retry_permitted=false`, `safe_to_recancel=false`, and false broker-read, broker-mutation, network, credential, runtime-control-change, target-selection, submit, cancel, replace, close, liquidation, and live-authority fields.
+- Read-only local convergence may run while runtime trading control is paused, but it does not change that control and cannot invoke any broker action.
 
 ## Protected Dirty Work
 
-- Preserve `docs\project_checkpoint.md` as an unrelated modified historical checkpoint artifact.
-- Preserve `docs\design\v5_20_3_crypto_frozen_state_reset_baseline.md` as an unrelated untracked design/report artifact.
-- Do not reset, clean, stash, restore, rebase, switch branches, stage, or commit either artifact unless the operator explicitly changes their ownership.
+- Preserve `docs\project_checkpoint.md` as an unrelated modified historical checkpoint artifact owned by the operator/user.
+- Preserve `docs\design\v5_20_3_crypto_frozen_state_reset_baseline.md` as an unrelated untracked design/report artifact owned by the operator/user.
+- Do not reset, clean, stash, restore, rebase, switch branches, stage, or commit either protected artifact unless the operator explicitly changes their ownership.
 - `runs\paper_exact_cancellation\latest\cancellation_result.json` and `runs\paper_autopilot\state\order_journal.sqlite3` are ignored local evidence. Do not track them or assume they exist in another checkout.
-
-## Unresolved Risks
-
-- A crash, timeout, or ambiguous cancellation response has no repository-owned read-only recovery worker that converges unresolved cancel-intent and order-journal state from a later exact observation.
-- The exact broker cancellation command is operator-gated and intentionally not autonomous; no standing broker mutation authority exists.
-- Ignored broker evidence is local-only, so another checkout must rely on committed contracts/tests and must not infer current broker state.
+- After the isolated reconciliation commit, no implementation-owned dirty file should remain; `git status --short` should show only the two protected artifacts above.
 
 ## Active Safety Boundaries
 
 - The repository is paper-only and not live-authorized. Live broker access, live trading, and live capital activity are prohibited.
-- Credentials, broker network access, paper mutations, capital allocation, profile changes, and every submit/cancel/replace/close/liquidate operation remain hard operator gates for the exact operation.
-- No further broker read or mutation is authorized by this checkpoint. The completed order must not be reused as a target.
-- Default tests must remain offline, deterministic, credential-free, network-free, and broker-free. Preserve credential, network, broker, dependency-direction, mutation-surface, and trading-safety guards.
+- No broker read or mutation was authorized or performed for this reconciliation slice. Real broker observation remains a separate exact operator, credential, profile, endpoint, account, identity, and network-access gate.
+- No standing paper mutation authority exists. Submit, cancel, replace, close, and liquidation remain exact operator gates.
+- Default execution and tests remain offline, deterministic, credential-free, network-free, and broker-free. Credential, runtime-control, dependency-direction, default-network, mutation-surface, and trading-safety guards remain intact.
 - `ExecutionIntent` is not a broker order; `ExecutionPlan` remains immutable and pre-broker. Agents and LLMs remain outside the trading hot path.
 
 ## Strategic Trajectory
 
-Close non-mutating recovery gaps before expanding supervised orchestration. Then connect proven read-only reconciliation to the paper-autopilot supervisor while keeping all broker mutations behind exact operator authorization. Continue increasing research autonomy through deterministic offline candidate generation, evaluation, and promotion rather than weakening trading gates.
+The local recovery gap for unresolved durable cancellation is closed without adding broker capability. The next safe milestone is a separately scoped, exact operator-gated read-only observation adapter or command that can supply one identity-bound observation to this workflow. It must retain all existing paper profile, credential-presence, endpoint, account, identity, network, and no-mutation gates and must not add polling or cancellation retry.
 
-## Already-Selected Next Action
+## Exact Next Action
 
-Implement a repository-owned, read-only cancellation reconciliation workflow for unresolved durable cancel intents. It must converge exact local journal state from one injected broker observation without retrying or exposing a broker mutation method. Real broker observation remains a separate exact network-access gate.
-
-## Exact Continuation Directive
-
-> Continue in `C:\Users\danie\Desktop\algo_trader` on `codex/crypto-frozen-state-reset-workflow`. Start by inspecting branch, HEAD, status, staged and unstaged diffs, and the protected dirty artifacts; do not reset, clean, stash, restore, rebase, or switch branches. Implement the repository-owned read-only cancellation reconciliation workflow for unresolved durable cancel intents. Require exact client-order, broker-order, and cancel-intent identity matching; consume one injected observation; converge order and cancel-intent journal state deterministically; remain non-retryable; expose no submit, cancel, replace, close, liquidation, target-selection, or live capability; and preserve runtime-control, credential, network, broker, dependency-direction, and mutation-surface guards. Default execution and all tests must remain offline, credential-free, network-free, and broker-free with deterministic fakes. Run focused tests, the safety-guard matrix, `.\scripts\verify_offline.ps1 -Full`, `git diff --check`, and the required source/untracked audits. Commit and push only the isolated reconciliation slice while preserving the protected dirty work. Do not perform real broker access without new exact operator authorization; escalate only a true hard gate.
+Start by verifying the current branch, HEAD, status, staged and unstaged diffs, protected dirty artifacts, and this handoff. Confirm the reconciliation commit is present and the default offline suite remains green. Then design—without performing real broker access—a separate exact read-only observation boundary that produces one `CancellationReconciliationObservation` for a caller-specified cancel-intent/client-order/broker-order identity. Keep journal convergence in the existing repository-owned workflow and keep every broker mutation unavailable.

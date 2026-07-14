@@ -162,6 +162,20 @@ This flow is a contract boundary, not permission to trade.
   claim before callback invocation, ambiguous outcomes remain non-retryable,
   and the bridge releases the lease in `finally`. The bridge imports no broker
   adapter, constructs no broker client, and is not reachable from status or CLI.
+- Read-only durable-cancellation reconciliation accepts one explicit
+  cancel-intent, client-order, and broker-order identity plus one already
+  injected broker-order observation. It performs no target discovery, broker
+  read, credential access, network access, polling, or broker mutation. The
+  local SQLite journal requires exact identity agreement across the request,
+  observation, cancel-intent record, and order record; only an attempted,
+  unknown, or accepted cancel intent is eligible. One transaction validates a
+  non-stale UTC observation and converges the order and cancel-intent records
+  together, or updates neither. Terminal cancel intents, reserved-only intents,
+  stale observations, identity mismatches, and terminal-order regressions fail
+  closed. The workflow remains non-retryable, cannot change runtime control,
+  and exposes no submit, cancel, replace, close, liquidation, target-selection,
+  or live capability. Obtaining any real broker observation remains a separate
+  exact operator and network-access gate outside this workflow.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.

@@ -1633,6 +1633,138 @@ class SqliteOrderJournal:
             },
         )
 
+    def reconcile_unresolved_cancel_observation(
+        self,
+        *,
+        cancel_intent_id: str,
+        client_order_id: str,
+        broker_order_id: str,
+        occurred_at: datetime,
+        broker_status: str,
+        filled_quantity: Decimal | str | None = None,
+        filled_average_price: Decimal | str | None = None,
+    ) -> tuple[OrderJournalRecord, CancelJournalRecord]:
+        """Atomically converge one exact order and unresolved cancel intent."""
+
+        intent_id = _nonempty_text(cancel_intent_id, "cancel_intent_id")
+        client_id = _nonempty_text(client_order_id, "client_order_id")
+        broker_id = _nonempty_text(broker_order_id, "broker_order_id")
+        order_status = _nonempty_text(broker_status, "broker_status").lower()
+        observed_filled = _optional_non_negative_decimal(
+            filled_quantity,
+            "filled_quantity",
+        )
+        observed_average_price = _optional_positive_decimal(
+            filled_average_price,
+            "filled_average_price",
+        )
+        order_target = _state_from_broker_status(order_status, observed_filled)
+        cancel_status = _cancel_status_from_order_observation(order_status)
+        cancel_target = _cancel_state_from_broker_status(cancel_status)
+        timestamp = _utc_datetime(occurred_at)
+
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cancel_record = self._select_cancel(connection, intent_id)
+            if cancel_record is None:
+                connection.rollback()
+                raise ValidationError("cancel_intent_missing")
+            if cancel_record.client_order_id != client_id:
+                connection.rollback()
+                raise ValidationError("cancel_client_order_identity_mismatch")
+            if cancel_record.broker_order_id != broker_id:
+                connection.rollback()
+                raise ValidationError("cancel_broker_order_identity_mismatch")
+            if cancel_record.terminal:
+                connection.rollback()
+                raise ValidationError("cancel_intent_already_terminal")
+            if cancel_record.state not in {
+                CancelJournalState.CANCEL_ATTEMPTED,
+                CancelJournalState.UNKNOWN,
+                CancelJournalState.CANCEL_ACCEPTED,
+            }:
+                connection.rollback()
+                raise ValidationError("cancel_intent_not_reconciliation_ready")
+
+            order_record = self._select(connection, client_id)
+            if order_record is None:
+                connection.rollback()
+                raise ValidationError("order_journal_record_missing")
+            if order_record.broker_order_id != broker_id:
+                connection.rollback()
+                raise ValidationError("order_broker_identity_mismatch")
+            if order_record.terminal and order_record.state != order_target:
+                connection.rollback()
+                raise ValidationError("terminal_order_journal_state_cannot_change")
+            if timestamp < order_record.updated_at or timestamp < cancel_record.updated_at:
+                connection.rollback()
+                raise ValidationError("cancellation_reconciliation_observation_stale")
+
+            order_updates = {
+                "state": order_target.value,
+                "broker_status": order_status,
+                "filled_quantity": _decimal_text(observed_filled),
+                "filled_average_price": _decimal_text(observed_average_price),
+                "ambiguity_reason": "",
+                "updated_at": timestamp.isoformat(),
+            }
+            order_assignments = ", ".join(
+                f"{name} = ?" for name in order_updates
+            )
+            connection.execute(
+                f"UPDATE orders SET {order_assignments} WHERE client_order_id = ?",
+                (*order_updates.values(), client_id),
+            )
+            self._append_event(
+                connection,
+                client_id,
+                "cancel_reconciliation_broker_observed",
+                order_target,
+                timestamp,
+                {
+                    "broker_order_id": broker_id,
+                    "broker_status": order_status,
+                    "filled_quantity": _decimal_text(observed_filled),
+                    "filled_average_price": _decimal_text(observed_average_price),
+                },
+            )
+
+            cancel_updates = {
+                "state": cancel_target.value,
+                "broker_status": cancel_status,
+                "ambiguity_reason": "",
+                "updated_at": timestamp.isoformat(),
+            }
+            cancel_assignments = ", ".join(
+                f"{name} = ?" for name in cancel_updates
+            )
+            connection.execute(
+                f"UPDATE cancel_intents SET {cancel_assignments} "
+                "WHERE cancel_intent_id = ?",
+                (*cancel_updates.values(), intent_id),
+            )
+            self._append_cancel_event(
+                connection,
+                intent_id,
+                "cancel_reconciliation_broker_observed",
+                cancel_target,
+                timestamp,
+                {
+                    "broker_order_id": broker_id,
+                    "client_order_id": client_id,
+                    "broker_order_status": order_status,
+                    "cancel_observation_status": cancel_status,
+                },
+            )
+            connection.commit()
+            updated_order = self._select(connection, client_id)
+            updated_cancel = self._select_cancel(connection, intent_id)
+
+        if updated_order is None or updated_cancel is None:
+            raise ValidationError("cancellation reconciliation was not persisted.")
+        return updated_order, updated_cancel
+
     def get_cancel_intent(
         self,
         cancel_intent_id: str,
@@ -2064,6 +2196,19 @@ def _cancel_state_from_broker_status(broker_status: str) -> CancelJournalState:
         "rejected": CancelJournalState.REJECTED,
         "not_found": CancelJournalState.NOT_FOUND,
     }.get(status, CancelJournalState.UNKNOWN)
+
+
+def _cancel_status_from_order_observation(broker_status: str) -> str:
+    status = _nonempty_text(broker_status, "broker_status").lower()
+    if status in {
+        "canceled",
+        "cancelled",
+        "not_found",
+        "pending_cancel",
+        "rejected",
+    }:
+        return status
+    return "unknown"
 
 
 def _utc_datetime(value: datetime) -> datetime:
