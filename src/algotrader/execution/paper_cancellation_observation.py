@@ -413,14 +413,12 @@ class PaperCancellationObservationResult:
 ExactOrderReader = Callable[[str], PaperCancellationBrokerOrderObservation]
 
 
-def observe_exact_paper_cancellation(
+def paper_cancellation_observation_blocker(
     identity: CancellationReconciliationIdentity,
     authorization: PaperCancellationObservationAuthorization | None,
     request: PaperCancellationObservationRequest,
-    *,
-    read_exact_order: ExactOrderReader,
-) -> PaperCancellationObservationResult:
-    """Invoke one exact read after every operator and paper gate passes."""
+) -> PaperCancellationObservationBlocker | None:
+    """Return the pre-read blocker without invoking an exact-order reader."""
 
     if not isinstance(identity, CancellationReconciliationIdentity):
         raise ValidationError(
@@ -437,10 +435,26 @@ def observe_exact_paper_cancellation(
         raise ValidationError(
             "request must be a PaperCancellationObservationRequest."
         )
+    return _pre_read_blocker(identity, authorization, request)
+
+
+def observe_exact_paper_cancellation(
+    identity: CancellationReconciliationIdentity,
+    authorization: PaperCancellationObservationAuthorization | None,
+    request: PaperCancellationObservationRequest,
+    *,
+    read_exact_order: ExactOrderReader,
+) -> PaperCancellationObservationResult:
+    """Invoke one exact read after every operator and paper gate passes."""
+
     if not callable(read_exact_order):
         raise ValidationError("read_exact_order must be callable.")
 
-    blocker = _pre_read_blocker(identity, authorization, request)
+    blocker = paper_cancellation_observation_blocker(
+        identity,
+        authorization,
+        request,
+    )
     if blocker is not None:
         return _blocked(identity, request, authorization, blocker)
 
@@ -711,4 +725,5 @@ __all__ = [
     "PaperCancellationObservationStatus",
     "build_paper_cancellation_observation_authorization",
     "observe_exact_paper_cancellation",
+    "paper_cancellation_observation_blocker",
 ]

@@ -221,6 +221,23 @@ This flow is a contract boundary, not permission to trade.
   target selection, polling, retry, submit, cancel, replace, close,
   liquidation, or live capability. Offline tests prove the complete chain with
   deterministic fakes; they do not authorize or perform a real broker read.
+- The exact reconciliation operator binding is the default-disabled outer
+  control-plane boundary. Its immutable request requires an explicit journal
+  path, cancel-intent ID, client-order ID, broker-order ID, expected account,
+  pre-existing authorization ID, UTC occurrence time, and separate affirmative
+  operator-binding and network permissions. It derives paper-profile,
+  credential-presence, canonical-endpoint, and live-endpoint facts from an
+  injected `AlpacaPaperConfig`; it does not read environment variables or
+  serialize credential or account values. Before reader construction it
+  evaluates the existing authorization without minting one, requires the exact
+  journal file, and checks only the named order and cancel-intent records for
+  identity and reconciliation readiness. It never enumerates unresolved
+  intents. Only then may it construct one private exact reader and invoke the
+  one-shot workflow once. The general CLI cannot import this binding. Results
+  are sanitized and non-retryable and expose no submit, cancel, replace, close,
+  liquidation, target-selection, polling, or live capability. Default tests
+  inject fake clients and clocks and block sockets; no real broker read is
+  authorized or performed.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.

@@ -368,6 +368,48 @@ def test_paper_cancellation_reconciliation_workflow_has_no_broker_action() -> No
     assert "raw_trading_client" not in source
 
 
+def test_paper_cancellation_reconciliation_operator_cannot_mint_or_mutate() -> None:
+    path = Path(
+        "src/algotrader/execution/"
+        "paper_cancellation_reconciliation_operator.py"
+    )
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    calls = [
+        node.func.attr
+        if isinstance(node.func, ast.Attribute)
+        else node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Attribute, ast.Name))
+    ]
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+
+    assert calls.count("paper_cancellation_observation_blocker") == 1
+    assert calls.count("build_paper_cancellation_sdk_reader") == 1
+    assert calls.count("reconcile_exact_paper_cancellation") == 1
+    assert "build_paper_cancellation_observation_authorization" not in calls
+    assert set(calls).isdisjoint(
+        MUTATION_CALL_NAMES
+        | {
+            "get_account",
+            "get_order_by_id",
+            "get_orders",
+            "request_order_cancellation",
+            "unresolved_cancel_intents",
+        }
+    )
+    assert all(
+        not module.startswith(("alpaca", "requests", "httpx", "urllib"))
+        for module in imported_modules
+    )
+    assert "raw_trading_client" not in source
+
+
 def test_shared_coordinator_owns_atomic_claim_before_submit_callback() -> None:
     path = Path("src/algotrader/execution/durable_submit.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
