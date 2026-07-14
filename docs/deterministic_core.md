@@ -176,6 +176,23 @@ This flow is a contract boundary, not permission to trade.
   and exposes no submit, cancel, replace, close, liquidation, target-selection,
   or live capability. Obtaining any real broker observation remains a separate
   exact operator and network-access gate outside this workflow.
+- The exact paper-cancellation observation boundary supplies that separate
+  gate without granting cancellation authority. One immutable operator
+  authorization is limited to paper mode, the read-only exact-order operation,
+  one cancel-intent/client-order/broker-order identity, and at most 300 seconds.
+  Invocation separately requires default-false observation and network
+  permissions plus affirmative paper-profile, API-key-presence,
+  secret-key-presence, exact-paper-endpoint, no-live-endpoint, and expected
+  account facts. Only after every gate passes may the boundary invoke one
+  injected exact-order reader with the authorized broker-order ID. It validates
+  exact account and three-part order identity plus observation time before
+  producing one `CancellationReconciliationObservation`. Failures are
+  non-retryable and produce no observation. The boundary imports no broker SDK,
+  reads no environment or credential values, constructs no network client,
+  performs no target selection or polling, cannot update the journal or invoke
+  reconciliation, and exposes no submit, cancel, replace, close, liquidation,
+  or live capability. A future real reader binding and any real broker access
+  remain separate exact operator-authorized milestones.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.

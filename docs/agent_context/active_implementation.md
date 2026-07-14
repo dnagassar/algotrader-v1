@@ -4,23 +4,31 @@
 
 - Repository: `C:\Users\danie\Desktop\algo_trader`
 - Branch: `codex/crypto-frozen-state-reset-workflow`
-- Reconciliation implementation parent: `fcafd4beb5f66c782b813415c61fbe64bf81aba5`
-- Remote before the reconciliation commit: `origin/codex/crypto-frozen-state-reset-workflow` was at exact parity with that parent.
-- Accepted parent capability: `3e27f72` adds the exact operator-gated paper cancellation binding; `fcafd4b` records its verified checkpoint.
-- Full reconciliation-tree verification: `.\scripts\verify_offline.ps1 -Full` passed in 954.5 seconds. All 82 safety guards passed; canonical collection was 8,793 tests in 438 files; all 8,793 executed exactly once with 8,789 passed, 4 existing skips, 0 failures, and 0 errors.
-- Focused verification: 70 cancellation reconciliation, journal, durable coordinator, invocation, and exact-binding tests passed.
+- Observation-boundary implementation parent: `0c6f8079a5189a5ce1102bd4ba6fa53d0959b2c0`
+- Remote before the observation-boundary commit: `origin/codex/crypto-frozen-state-reset-workflow` was at exact parity with that parent.
+- Accepted parent capability: repository-owned atomic read-only reconciliation of one unresolved durable cancellation from one injected exact observation.
+- Full observation-boundary verification: `.\scripts\verify_offline.ps1 -Full` passed in 928.5 seconds. All 84 safety guards passed; canonical collection was 8,825 tests in 439 files; all 8,825 executed exactly once with 8,821 passed, 4 existing skips, 0 failures, and 0 errors.
+- Focused verification: 135 observation, reconciliation, journal, durable coordinator, authorization, invocation, and exact-binding tests passed.
 - Repository hygiene at the verified tree: `git diff --check` passed; the index and tracked `runs/` artifacts were empty before staging.
 
-## Accepted Reconciliation Capability
+## Accepted Observation Capability
 
-- `CancellationReconciliationIdentity` explicitly binds one cancel-intent ID, client-order ID, and broker-order ID. The workflow performs no target selection.
-- `CancellationReconciliationObservation` is one immutable, already-injected broker-order observation with a UTC timestamp, normalized status, and optional fill facts. The workflow has no broker reader, broker callback, polling loop, credential path, or network path.
-- `reconcile_unresolved_cancellation(...)` consumes exactly that explicit identity and one observation. Identity must match across the request, observation, cancel-intent journal record, and order journal record.
-- `SqliteOrderJournal.reconcile_unresolved_cancel_observation(...)` accepts only attempted, unknown, or cancel-accepted durable intents. It rejects reserved-only or terminal cancel intents, stale observations, identity mismatches, missing records, and terminal-order regressions.
-- Order and cancel-intent convergence occurs in one SQLite transaction with paired durable events. Validation failure updates neither journal.
-- Canceled observations converge both journals to `canceled`. Pending-cancel observations converge order state to `open` and cancel-intent state to `cancel_accepted`. Terminal filled observations converge the order to `filled` while preserving the cancel intent as non-retryable `unknown` rather than inventing cancellation confirmation.
-- Result artifacts always report one consumed injected observation, `retry_permitted=false`, `safe_to_recancel=false`, and false broker-read, broker-mutation, network, credential, runtime-control-change, target-selection, submit, cancel, replace, close, liquidation, and live-authority fields.
-- Read-only local convergence may run while runtime trading control is paused, but it does not change that control and cannot invoke any broker action.
+- `PaperCancellationObservationAuthorization` is immutable and deterministically binds paper mode, the exact read-only operation, one cancel-intent ID, one client-order ID, one broker-order ID, UTC issuance/expiry, and an affirmative operator decision.
+- Authorization validity is bounded to at most 300 seconds. Missing, denied, wrong-mode, wrong-operation, not-yet-valid, expired, forged, or identity-mismatched authorization fails before the reader can run.
+- `PaperCancellationObservationRequest` separately requires default-false observation and network permissions plus affirmative paper-profile, API-key-presence, secret-key-presence, exact-paper-endpoint, no-live-endpoint, and expected-account facts. The boundary consumes boolean credential-presence evidence only and never accepts credential values.
+- `observe_exact_paper_cancellation(...)` calls one injected exact-order reader exactly once with the authorized broker-order ID. It contains no loop, polling, retry, target discovery, broker SDK, environment access, credential loading, network-client construction, CLI path, journal access, or reconciliation invocation.
+- `PaperCancellationBrokerOrderObservation` must match the expected account plus exact cancel-intent, client-order, and broker-order identities. The capture timestamp must be at or after the request and before authorization expiry.
+- A successful read produces exactly one existing `CancellationReconciliationObservation`. Failure, invalid shape, account mismatch, order-identity mismatch, or time mismatch produces no observation and remains non-retryable.
+- Expected and observed account identifiers are excluded from object representations and serialized results. Exceptions expose type only, not message content.
+- Result artifacts always preserve false target-selection, polling, journal-update, reconciliation-invocation, credential-value-access, network-client-construction, broker-SDK-import, broker-mutation, submit, cancel, replace, close, liquidation, and live-authority fields.
+- Deterministic fake integration proves the produced observation feeds the existing atomic reconciler and converges both journals without giving the observation boundary journal access.
+
+## Classification and Autonomous-Trader Impact
+
+- Task classification: `control_plane_recoverability_hardening`.
+- Evidence classification: `non_evidentiary_operational_safety_capability`.
+- Strategy impact, evidence-threshold impact, operating-authority impact, and broker/trading-authority impact: `none`.
+- Autonomous-trader contribution: the repository now has the exact authorization and validation boundary needed to obtain one later cancellation-recovery observation safely. Active autonomous trading authority remains unchanged because no real reader binding, supervisor wiring, target selection, or mutation capability exists.
 
 ## Protected Dirty Work
 
@@ -28,20 +36,21 @@
 - Preserve `docs\design\v5_20_3_crypto_frozen_state_reset_baseline.md` as an unrelated untracked design/report artifact owned by the operator/user.
 - Do not reset, clean, stash, restore, rebase, switch branches, stage, or commit either protected artifact unless the operator explicitly changes their ownership.
 - `runs\paper_exact_cancellation\latest\cancellation_result.json` and `runs\paper_autopilot\state\order_journal.sqlite3` are ignored local evidence. Do not track them or assume they exist in another checkout.
-- After the isolated reconciliation commit, no implementation-owned dirty file should remain; `git status --short` should show only the two protected artifacts above.
+- After the isolated observation-boundary commit, no implementation-owned dirty file should remain; `git status --short` should show only the two protected artifacts above.
 
 ## Active Safety Boundaries
 
 - The repository is paper-only and not live-authorized. Live broker access, live trading, and live capital activity are prohibited.
-- No broker read or mutation was authorized or performed for this reconciliation slice. Real broker observation remains a separate exact operator, credential, profile, endpoint, account, identity, and network-access gate.
-- No standing paper mutation authority exists. Submit, cancel, replace, close, and liquidation remain exact operator gates.
+- No broker, market-data, credential, or trading-system network access was performed for this slice. No broker client was constructed and no credential value was loaded.
+- No paper or live mutation was authorized or performed. Submit, cancel, replace, close, and liquidation remain exact operator gates.
+- The operator authorization supplied for this completed implementation task is not standing authorization for a future real broker read or a future milestone.
 - Default execution and tests remain offline, deterministic, credential-free, network-free, and broker-free. Credential, runtime-control, dependency-direction, default-network, mutation-surface, and trading-safety guards remain intact.
 - `ExecutionIntent` is not a broker order; `ExecutionPlan` remains immutable and pre-broker. Agents and LLMs remain outside the trading hot path.
 
 ## Strategic Trajectory
 
-The local recovery gap for unresolved durable cancellation is closed without adding broker capability. The next safe milestone is a separately scoped, exact operator-gated read-only observation adapter or command that can supply one identity-bound observation to this workflow. It must retain all existing paper profile, credential-presence, endpoint, account, identity, network, and no-mutation gates and must not add polling or cancellation retry.
+The authorization/validation boundary is complete, but there is still no repository-owned real reader binding. The next safe milestone is a separately scoped narrow paper-SDK adapter or command that implements the injected exact-order reader without exposing mutation methods. It must retain exact operator authorization, one caller-selected broker-order read, paper profile, credential, endpoint, account, identity, no-live, no-polling, and no-retry gates. Default tests must remain fake-only and offline. Any real broker invocation remains a separate exact operation requiring fresh operator authorization.
 
 ## Exact Next Action
 
-Start by verifying the current branch, HEAD, status, staged and unstaged diffs, protected dirty artifacts, and this handoff. Confirm the reconciliation commit is present and the default offline suite remains green. Then design—without performing real broker access—a separate exact read-only observation boundary that produces one `CancellationReconciliationObservation` for a caller-specified cancel-intent/client-order/broker-order identity. Keep journal convergence in the existing repository-owned workflow and keep every broker mutation unavailable.
+Start by verifying branch, HEAD, status, staged and unstaged diffs, protected artifacts, and this handoff. Confirm the observation-boundary commit and full verification. Then design and implement—without performing a real broker call—a narrow read-only paper-SDK binding or command that can satisfy the existing `read_exact_order` callback contract for one explicitly supplied broker-order ID. The public binding must expose no submit, cancel, replace, close, liquidation, target-selection, polling, retry, or live capability. Prove it with deterministic fakes and extend the dependency, credential, network, endpoint, account, and mutation-surface guards before considering any exact operator-authorized paper read.
