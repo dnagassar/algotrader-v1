@@ -284,6 +284,9 @@ class AlpacaClient(Protocol):
     ) -> Sequence[AlpacaOrderResponse]:
         ...
 
+    def get_order_by_id(self, broker_order_id: str) -> AlpacaOrderResponse:
+        ...
+
     def submit_order(
         self, request: AlpacaOrderRequest
     ) -> AlpacaOrderSubmissionResponse:

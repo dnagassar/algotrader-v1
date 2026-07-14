@@ -826,6 +826,72 @@ def test_paper_cancellation_observation_is_one_exact_read_only_boundary() -> Non
     assert not any(isinstance(node, (ast.For, ast.While)) for node in ast.walk(workflow))
 
 
+def test_paper_cancellation_sdk_binding_is_one_shot_and_read_only() -> None:
+    path = _module_path(
+        "algotrader.execution.paper_cancellation_observation_sdk"
+    )
+    rule = DependencyRule(
+        source="exact paper cancellation SDK read binding",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.cli",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.order_journal",
+            "algotrader.execution.paper_autopilot_control",
+            "algotrader.execution.paper_cancellation_invocation",
+            "algotrader.execution.paper_exact_cancellation",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "os",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "time",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    reader = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "__call__"
+    )
+    call_names = [
+        _call_name(node.func)
+        for node in ast.walk(reader)
+        if isinstance(node, ast.Call)
+    ]
+    leaf_call_names = [name.rsplit(".", maxsplit=1)[-1] for name in call_names]
+
+    assert _dependency_violations(rule) == []
+    assert leaf_call_names.count("get_account") == 1
+    assert leaf_call_names.count("get_order_by_id") == 1
+    assert set(leaf_call_names).isdisjoint(
+        {
+            "acquire_runtime_lease",
+            "cancel_order",
+            "cancel_order_by_id",
+            "close_all_positions",
+            "close_position",
+            "get_orders",
+            "get_recent_orders",
+            "reconcile_unresolved_cancellation",
+            "replace_order",
+            "request_order_cancellation",
+            "submit_order",
+            "submit_order_request",
+            "unresolved_cancel_intents",
+        }
+    )
+    assert not any(
+        isinstance(node, (ast.For, ast.While)) for node in ast.walk(reader)
+    )
+
+
 def test_paper_cancellation_invocation_is_the_single_gated_bridge() -> None:
     path = _module_path("algotrader.execution.paper_cancellation_invocation")
     rule = DependencyRule(

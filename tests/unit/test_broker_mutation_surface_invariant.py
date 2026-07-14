@@ -297,6 +297,37 @@ def test_paper_cancellation_observation_exposes_no_broker_mutation_surface() -> 
     )
 
 
+def test_paper_cancellation_sdk_binding_exposes_only_exact_reads() -> None:
+    from algotrader.execution.paper_cancellation_observation_sdk import (
+        PaperCancellationSdkExactOrderReader,
+    )
+
+    path = Path(
+        "src/algotrader/execution/paper_cancellation_observation_sdk.py"
+    )
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    calls = [
+        node.func.attr
+        if isinstance(node.func, ast.Attribute)
+        else node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Attribute, ast.Name))
+    ]
+    public_callable_names = {
+        name
+        for name, value in vars(PaperCancellationSdkExactOrderReader).items()
+        if _is_public(name) and callable(value)
+    }
+
+    assert calls.count("get_account") == 1
+    assert calls.count("get_order_by_id") == 1
+    assert set(calls).isdisjoint(MUTATION_CALL_NAMES | {"get_orders"})
+    assert public_callable_names == set()
+    assert "raw_trading_client" not in source
+
+
 def test_shared_coordinator_owns_atomic_claim_before_submit_callback() -> None:
     path = Path("src/algotrader/execution/durable_submit.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

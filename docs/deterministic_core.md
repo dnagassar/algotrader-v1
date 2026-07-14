@@ -191,8 +191,20 @@ This flow is a contract boundary, not permission to trade.
   reads no environment or credential values, constructs no network client,
   performs no target selection or polling, cannot update the journal or invoke
   reconciliation, and exposes no submit, cancel, replace, close, liquidation,
-  or live capability. A future real reader binding and any real broker access
-  remain separate exact operator-authorized milestones.
+  or live capability.
+- The paper-cancellation SDK reader is the narrow binding for that injected
+  callback. Construction revalidates a complete paper profile and requires the
+  exact canonical Alpaca paper endpoint; its client is private and exposes no
+  raw SDK handle. On one exact broker-order ID it consumes itself before I/O,
+  reads the paper account once, reads that exact order once, translates through
+  the canonical response DTOs, and cannot poll, enumerate targets, retry, or
+  mutate broker state. Wrong target identity is rejected before I/O; account,
+  order, translation, and construction failures expose only a safe stage and
+  exception type. The binding reads no environment variables, owns no runtime
+  control or journal capability, and exposes no submit, cancel, replace, close,
+  liquidation, or live method. Default verification injects deterministic fake
+  clients and clocks. Any actual broker read remains a separate, fresh,
+  exact operator-authorized operation and is not performed by verification.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.
