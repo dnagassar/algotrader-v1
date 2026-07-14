@@ -205,6 +205,22 @@ This flow is a contract boundary, not permission to trade.
   liquidation, or live method. Default verification injects deterministic fake
   clients and clocks. Any actual broker read remains a separate, fresh,
   exact operator-authorized operation and is not performed by verification.
+- The exact paper-cancellation reconciliation workflow is the single
+  repository-owned composition from that reader contract to local convergence.
+  It accepts one explicit three-part cancellation identity, one pre-existing
+  authorization/request, one caller-supplied exact reader, and one local
+  journal. It invokes the observation boundary once and invokes the atomic
+  reconciler once only when account, authorization, time, cancel-intent,
+  client-order, and broker-order validation all succeed. Pre-read rejection
+  performs no read and no journal mutation. Read failure or post-read rejection
+  performs no reconciliation. Local validation or transaction failure updates
+  neither journal record. Success converges both records in the existing single
+  SQLite transaction while leaving runtime control unchanged. The workflow
+  imports no SDK or configuration module, constructs no client, reads no
+  credentials or environment, enumerates no unresolved intents, and exposes no
+  target selection, polling, retry, submit, cancel, replace, close,
+  liquidation, or live capability. Offline tests prove the complete chain with
+  deterministic fakes; they do not authorize or perform a real broker read.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.
