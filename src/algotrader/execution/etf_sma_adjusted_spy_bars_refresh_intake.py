@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -291,29 +292,27 @@ def build_etf_sma_adjusted_spy_bars_refresh_intake(
         )
 
     # 9. Require deterministic ascending date order in the canonical output
-    # Write canonical CSV output
     canonical_path = Path(checked_config.canonical_csv)
-    if canonical_path.parent != Path("."):
-        canonical_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with canonical_path.open("w", encoding="utf-8", newline="") as out_stream:
-        writer = csv.writer(out_stream, lineterminator="\n")
-        writer.writerow(_CANONICAL_COLUMNS)
-        for row in sorted_rows:
-            writer.writerow(
-                (
-                    row.symbol,
-                    row.date.isoformat(),
-                    _decimal_text(row.open),
-                    _decimal_text(row.high),
-                    _decimal_text(row.low),
-                    _decimal_text(row.close),
-                    _decimal_text(row.adjusted_close),
-                    str(row.volume),
-                )
+    out_stream = io.StringIO(newline="")
+    writer = csv.writer(out_stream, lineterminator="\n")
+    writer.writerow(_CANONICAL_COLUMNS)
+    for row in sorted_rows:
+        writer.writerow(
+            (
+                row.symbol,
+                row.date.isoformat(),
+                _decimal_text(row.open),
+                _decimal_text(row.high),
+                _decimal_text(row.low),
+                _decimal_text(row.close),
+                _decimal_text(row.adjusted_close),
+                str(row.volume),
             )
+        )
+    canonical_bytes = out_stream.getvalue().encode("utf-8")
+    _write_bytes_atomic(canonical_path, canonical_bytes)
 
-    refreshed_canonical_sha256 = _sha256_file(canonical_path)
+    refreshed_canonical_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
 
     return _build_manifest(
         checked_config,
@@ -333,13 +332,9 @@ def write_etf_sma_adjusted_spy_bars_refresh_intake_jsonl(
     payload: Mapping[str, object],
     output_path: Path | str,
 ) -> None:
-    """Write exactly one JSONL manifest record to the specified path."""
-    path = Path(output_path)
-    if path.parent != Path("."):
-        path.parent.mkdir(parents=True, exist_ok=True)
+    """Atomically write exactly one JSONL manifest record."""
     line = render_etf_sma_adjusted_spy_bars_refresh_intake_json(payload) + "\n"
-    with path.open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(line)
+    _write_bytes_atomic(output_path, line.encode("utf-8"))
 
 
 def render_etf_sma_adjusted_spy_bars_refresh_intake_json(payload: Mapping[str, object]) -> str:
@@ -498,12 +493,19 @@ def _row_blocker_message(msg: str) -> str:
     return msg
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _write_bytes_atomic(path: Path | str, data: bytes) -> None:
+    output_path = Path(path)
+    if output_path.parent != Path("."):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = output_path.with_name(f"{output_path.name}.tmp")
+    try:
+        temp_path.write_bytes(data)
+        temp_path.replace(output_path)
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _decimal_text(value: Decimal) -> str:

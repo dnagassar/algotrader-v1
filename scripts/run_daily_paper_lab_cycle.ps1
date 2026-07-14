@@ -40,6 +40,8 @@ param(
     [string]$DataRefreshRunLog = "runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl",
     [string]$DataRefreshRawResponsePath = "runs\paper_lab\tiingo_spy_adjusted_raw_latest.json",
     [string]$DataRefreshStartDate = "auto",
+    [ValidateRange(1, 31)]
+    [int]$DataRefreshRevisionLookbackDays = 10,
     [string]$DataRefreshDotenvPath = ".env"
 )
 
@@ -211,6 +213,7 @@ if ($AutoRefreshAdjustedData) {
                         "-RunLog", $DataRefreshRunLog,
                         "-Mode", $DataRefreshMode,
                         "-StartDate", $DataRefreshStartDate,
+                        "-RevisionLookbackDays", $DataRefreshRevisionLookbackDays,
                         "-DotenvPath", $DataRefreshDotenvPath
                     )
                     if (-not [string]::IsNullOrEmpty($RefreshExpectedLatestBarDate)) {

@@ -216,6 +216,92 @@ count mismatch. The summary includes shard wall times and the slowest files by
 aggregate testcase seconds. It does not add skip, deselect, marker, network, or
 credential overrides.
 
+## Authoritative SPY EOD Market-Data Refresh
+
+This one-shot lane refreshes adjusted SPY daily bars from Tiingo without
+constructing a broker client or authorizing any paper/live order operation.
+Tiingo documents most EOD prices near 17:30 ET and corrections through 20:00 ET:
+`https://www.tiingo.com/documentation/end-of-day`.
+
+The scheduled boundary is 20:10 America/New_York. Confirm the Windows host uses
+the Eastern time zone before registration:
+
+```powershell
+Get-TimeZone
+```
+
+Put only the real Tiingo token in the untracked local `.env`:
+
+```text
+TIINGO_API_KEY=<local secret>
+```
+
+The adapter can load only `TIINGO_API_KEY`. `APP_PROFILE=paper` and broker
+variables may coexist, but they are not looked up or serialized. A live profile
+is rejected.
+
+Preview the exact request without loading the token or using the network:
+
+```powershell
+.\scripts\refresh_spy_adjusted_data.ps1 `
+  -Provider tiingo `
+  -OutputCsv .data\operator_inputs\spy_tiingo_adjusted_refresh_latest.csv `
+  -CanonicalCsv runs\operator_input\m446_spy_daily_tiingo_adjusted_canonical.csv `
+  -RunLog runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl `
+  -Mode dry_run `
+  -StartDate auto `
+  -RevisionLookbackDays 10 `
+  -Format json
+```
+
+The actual read-only fetch additionally requires the live market-data mode and
+the explicit authorization switch:
+
+```powershell
+.\scripts\refresh_spy_adjusted_data.ps1 `
+  -Provider tiingo `
+  -OutputCsv .data\operator_inputs\spy_tiingo_adjusted_refresh_latest.csv `
+  -CanonicalCsv runs\operator_input\m446_spy_daily_tiingo_adjusted_canonical.csv `
+  -RunLog runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl `
+  -Mode live_market_data_fetch `
+  -RawResponsePath runs\paper_lab\tiingo_spy_adjusted_raw_latest.json `
+  -StartDate auto `
+  -RevisionLookbackDays 10 `
+  -DotenvPath .env `
+  -LiveMarketDataFetchAuthorized `
+  -Format json
+```
+
+Register the isolated task from the checked-in template only after reviewing
+its absolute repository path:
+
+```powershell
+$TaskXml = Get-Content `
+  .\docs\design\spy_eod_market_data_refresh_scheduled_task.xml -Raw
+Register-ScheduledTask -TaskName "spy-eod-market-data-refresh" -Xml $TaskXml
+```
+
+The task uses `IgnoreNew`, `StartWhenAvailable`, network-required execution, a
+fifteen-minute limit, and three fifteen-minute retries. It is not the
+paper-autopilot supervisor.
+
+Authoritative local artifacts:
+
+- raw provider JSON: `runs/paper_lab/tiingo_spy_adjusted_raw_latest.json`
+- normalized candidate: `.data/operator_inputs/spy_tiingo_adjusted_refresh_latest.csv`
+- canonical adjusted bars:
+  `runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv`
+- one-record refresh manifest:
+  `runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl`
+
+Success is `accepted_adjusted_spy_data_refresh`. Inspect `revision_outcome`,
+`revised_dates`, row counts, `source_sha256`, `current_canonical_sha256`,
+`normalized_output_sha256`, and `canonical_csv_sha256`. HTTP, scope, JSON, date,
+or bar validation failures are blocked and preserve the previous canonical
+file. This lane performs no broker read, broker mutation, paper submit, or live
+operation.
+
+
 ## Read-Only Journal Cancellation-Planning Preview
 
 ### Exact Submit-Only Cancellation Seed

@@ -4,10 +4,11 @@ Plans or runs an explicitly gated adjusted ETF daily-bars refresh.
 
 .DESCRIPTION
 Builds a deterministic Tiingo adjusted ETF refresh plan, optionally normalizes
-an offline fixture, or executes a live market-data fetch only when the live mode
-and explicit authorization switch are both supplied.  The default mode is
-dry_run.  This script does not read broker state, mutate broker state, submit
-paper orders, authorize live trading, or print/write token values.
+an offline fixture, or executes an exact-destination HTTPS GET only when the live
+mode and explicit authorization switch are both supplied.  The default mode is
+dry_run.  Paper profile and broker variables may coexist, but only TIINGO_API_KEY
+can be loaded or sent.  This script does not read broker state, mutate broker
+state, submit paper orders, authorize live trading, or print/write token values.
 #>
 
 [CmdletBinding()]
@@ -28,6 +29,8 @@ param(
     [string]$FixtureInputPath,
     [string]$RawResponsePath,
     [string]$StartDate = "auto",
+    [ValidateRange(1, 31)]
+    [int]$RevisionLookbackDays = 10,
     [string]$DotenvPath = ".env",
     [switch]$LiveMarketDataFetchAuthorized,
     [ValidateSet("text", "json")]
@@ -39,35 +42,9 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 
-$CredentialVariableNames = @(
-    "ALPACA_API_KEY",
-    "ALPACA_API_SECRET_KEY",
-    "ALPACA_SECRET_KEY",
-    "APCA_API_KEY_ID",
-    "APCA_API_SECRET_KEY"
-)
-
-function Test-ProcessEnvironmentVariableLoaded {
-    param([string]$Name)
-    $ProcessEnvironment = [System.Environment]::GetEnvironmentVariables("Process")
-    return $ProcessEnvironment.Contains($Name)
-}
-
-$LoadedCredentialVariables = @()
-foreach ($Name in $CredentialVariableNames) {
-    if (Test-ProcessEnvironmentVariableLoaded -Name $Name) {
-        $LoadedCredentialVariables += $Name
-    }
-}
-
-$AppProfileIsPaper = [System.Environment]::GetEnvironmentVariable("APP_PROFILE", "Process") -eq "paper"
-if ($AppProfileIsPaper) {
-    [Console]::Error.WriteLine("Error: APP_PROFILE is paper. Market-data refresh must run without paper profile.")
-    exit 2
-}
-
-if ($LoadedCredentialVariables.Count -gt 0) {
-    [Console]::Error.WriteLine("Error: broker credential environment variable(s) are loaded: $($LoadedCredentialVariables -join ', '). Market-data refresh must run without broker credentials.")
+$AppProfile = [System.Environment]::GetEnvironmentVariable("APP_PROFILE", "Process")
+if ($AppProfile -eq "live") {
+    [Console]::Error.WriteLine("Error: APP_PROFILE is live. This refresh is paper-lab only.")
     exit 2
 }
 
@@ -80,6 +57,7 @@ $CliArgs = @(
     "--symbol", $Symbol,
     "--mode", $Mode,
     "--start-date", $StartDate,
+    "--revision-lookback-days", $RevisionLookbackDays,
     "--dotenv-path", $DotenvPath,
     "--format", $Format
 )

@@ -69,6 +69,27 @@ class NyseExchangeSessionCalendar:
             return session
         return None
 
+    def latest_completed_session_on_or_before(
+        self,
+        observed_at: datetime,
+        *,
+        max_lookback_days: int = 10,
+    ) -> ExchangeSession | None:
+        """Return the latest completed session across weekends and holidays."""
+        observed_utc = _utc(observed_at, "observed_at")
+        if (
+            isinstance(max_lookback_days, bool)
+            or not isinstance(max_lookback_days, int)
+            or not 1 <= max_lookback_days <= 31
+        ):
+            raise ValidationError("max_lookback_days must be an integer from 1 to 31.")
+        current = observed_utc.astimezone(_NEW_YORK).date()
+        for days_back in range(max_lookback_days + 1):
+            session = self.session_for_date(current - timedelta(days=days_back))
+            if session is not None and session.completed_at(observed_utc):
+                return session
+        return None
+
 
 def _full_day_holidays(year: int) -> frozenset[date]:
     new_years = _observed(date(year, 1, 1))

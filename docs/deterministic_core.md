@@ -492,9 +492,9 @@ The forward-OOS refresh-readiness packet is an offline preflight only. It:
 
 ## Command Surface Distinction
 
-The repository distinguishes offline/reporting commands from broker-facing
-paper commands. Keep that distinction explicit in docs, tests, and future
-milestones.
+The repository distinguishes offline/reporting commands, exact-destination
+read-only market-data commands, and broker-facing paper commands. Keep those
+three capability surfaces explicit in docs, tests, and future milestones.
 
 ### Offline Preview, Backtest, And Brief Commands
 
@@ -537,6 +537,52 @@ local-bars ETF/SMA cycle proof JSONL artifact and writes one operator handoff
 record. A ready 200-bar `buy_preview` proof becomes operator-review-only, while
 insufficient history, non-SPY scope, or any source submit/mutation/network/
 credential/live flag blocks the handoff. It authorizes no broker action.
+
+### Exact-Destination Read-Only Market-Data Commands
+
+The Tiingo adjusted daily-bars refresh is a narrow network capability, not an
+offline command and not a broker-facing command. Its executable surfaces are
+`scripts/refresh_spy_adjusted_data.ps1` and
+`algotrader.execution.etf_sma_adjusted_spy_data_refresh`.
+
+Read-only market-data command contract:
+
+- default mode remains `dry_run` and performs no credential lookup or network
+  access
+- an actual fetch requires both `live_market_data_fetch` mode and the explicit
+  `LiveMarketDataFetchAuthorized` switch
+- only HTTPS `GET` is permitted
+- the authority must equal `api.tiingo.com`, with no port, user info, redirect,
+  alternate host, or suffix match
+- the path must equal `/tiingo/daily/{approved_symbol}/prices`, where the symbol
+  is one of `SPY`, `QQQ`, `IWM`, `TLT`, or `GLD`
+- query keys are limited to `startDate`, `endDate`, and `format=json`
+- `TIINGO_API_KEY` is the only credential variable the adapter can load or send;
+  broker credential variable names are not read by the adapter
+- `APP_PROFILE=paper` and broker variables may coexist with this isolated
+  capability; `APP_PROFILE=live` remains blocked
+- the adapter imports no broker SDK, constructs no broker client, and cannot
+  submit, cancel, replace, close, or liquidate
+- a ten-calendar-day trailing window is fetched by default so same-date vendor
+  corrections can be observed rather than skipped
+- manifests record the provider response hash, prior canonical hash, normalized
+  candidate hash, final canonical hash, changed dates, and new/unchanged/revised
+  row counts
+- raw, candidate, canonical, and manifest artifacts are promoted by same-volume
+  atomic replacement after deterministic validation
+- HTTP failures, invalid JSON, invalid bars, stale provider data, or scope
+  violations preserve the previous canonical file and fail closed
+
+The one-shot Task Scheduler template
+`docs/design/spy_eod_market_data_refresh_scheduled_task.xml` runs at 20:10
+host-local New York time on weekdays, after Tiingo’s stated 20:00 correction
+window. It is deliberately separate from the paper-mutation supervisor, uses
+`IgnoreNew`, requires network availability, retries three times at fifteen-minute
+intervals, and resolves the latest actually completed NYSE session across
+pre-close runs, weekends, holidays, and early closes.
+
+Default pytest remains socket-blocked, credential-free, and network-free. Tests
+exercise this boundary only through injected transports and local fixtures.
 
 ### Broker-Facing Paper Commands
 
