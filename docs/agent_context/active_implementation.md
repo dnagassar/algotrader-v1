@@ -38,7 +38,7 @@
 - Missing/malformed/forged artifacts, non-affirmative or wrong-mode/operation authorization, authorization-ID mismatch, not-yet-valid/expired evidence, all three target-identity mismatches, missing/unavailable journals, missing exact records, terminal cancel intents, and ineligible cancel states fail closed with sanitized blockers.
 - The receipt reads no environment or config, accesses no credentials, imports no SDK/broker/network module, constructs no broker client, invokes no operator binding, performs no broker read, writes no receipt file, updates no journal state, and changes no runtime control.
 - The receipt is available only through its dedicated module and thin standalone script. The general CLI cannot import it. It cannot enumerate unresolved intents, infer or select a target, poll, loop, retry, mint authorization, submit, cancel, replace, close, liquidate, or authorize live behavior.
-- Deterministic tests with sockets blocked prove exact ready and blocked behavior while preserving the order record, cancel-intent record, and paused runtime-control record byte-for-byte.
+- Deterministic tests with sockets blocked prove exact ready and blocked behavior while preserving the order record, cancel-intent record, and paused runtime-control record value-for-value.
 - No real credential loading, external SDK client, broker request, network access, broker mutation, submit, cancel, replace, close, or liquidation was performed or proven.
 
 ## Classification and Autonomous-Trader Impact
