@@ -285,6 +285,41 @@ Do not run this command from a default verification shell, substitute another
 target, or repeat it after an ambiguous result. Reconciliation after an
 ambiguous response is read-only and non-retryable.
 
+### Credential-Free Exact Reconciliation Readiness
+
+Before opening a credentialed shell, validate every locally discoverable input
+with the dedicated readiness command. Run it only from the normal offline,
+credential-free shell and supply the exact values intended for the later
+read-only command:
+
+```powershell
+python .\scripts\build_exact_paper_cancellation_reconciliation_readiness.py `
+  --authorization-artifact <EXACT_EXISTING_AUTHORIZATION_JSON> `
+  --journal-path <EXACT_LOCAL_ORDER_JOURNAL> `
+  --cancel-intent-id <EXACT_CANCEL_INTENT_ID> `
+  --client-order-id <EXACT_CLIENT_ORDER_ID> `
+  --broker-order-id <EXACT_BROKER_ORDER_ID> `
+  --expected-authorization-id <EXACT_AUTHORIZATION_ID> `
+  --expected-paper-account-id <EXACT_EXPECTED_PAPER_ACCOUNT_ID> `
+  --occurred-at <EXACT_ISO_8601_UTC_TIMESTAMP> `
+  --allow-offline-readiness
+```
+
+The permission flag defaults to false and is checked before artifact or journal
+access. Both paths must be local; network filesystem paths are rejected. The
+command validates the canonical existing authorization, authorization ID,
+validity window, all three target identities, expected-account presence, named
+journal records, and reconciliation-ready cancel state. It reads no
+environment configuration or runtime-control value, opens no broker client,
+uses no network, writes no file or journal record, and has no injected callback
+surface. Output is sanitized JSON on stdout.
+
+A `ready` receipt means only that these offline inputs are internally
+consistent for the later command. It does not verify the broker account, load
+credentials, authorize network access, authorize a broker read, invoke the
+operator binding, or authorize cancellation or any other mutation. A blocked
+receipt must be corrected offline; do not bypass it in a credentialed shell.
+
 ### Exact Read-Only Cancellation Reconciliation
 
 The dedicated reconciliation command is for one already-unresolved durable

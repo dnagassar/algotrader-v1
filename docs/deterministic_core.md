@@ -258,6 +258,24 @@ This flow is a contract boundary, not permission to trade.
   cancel, replace, close, liquidation, or live authority. Default execution
   and all tests use missing artifacts or deterministic fakes with sockets
   blocked; verification never loads credentials or contacts a broker.
+- The credential-free exact reconciliation readiness receipt moves every
+  locally discoverable blocker ahead of a credentialed shell. Its immutable
+  request requires the same explicit artifact, authorization ID,
+  cancel-intent/client-order/broker-order identity, expected-account presence,
+  local journal path, bounded UTC occurrence time, and a separate default-false
+  offline-readiness flag. Network filesystem paths are rejected. The receipt
+  uses the strict existing-artifact loader, the observation boundary's shared
+  pure authorization matcher, and the operator binding's shared pure exact
+  local-record check. It reads only the named order and cancel-intent records;
+  it cannot enumerate or select targets. A ready result proves only that the
+  offline inputs are internally consistent and reconciliation-ready. It does
+  not verify the broker account or grant credential loading, paper config,
+  network access, broker reading, operator binding, reconciliation, retry, or
+  mutation authority. The receipt has no injected callback seam, imports no
+  config, SDK, broker, environment, or network module, writes no artifact or
+  journal state, and leaves runtime control unchanged. It is available only
+  through its dedicated module/script and is not registered in the general
+  CLI.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.

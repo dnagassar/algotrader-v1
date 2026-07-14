@@ -420,7 +420,19 @@ def test_cancellation_reconciliation_loader_command_and_script_are_read_only() -
             "src/algotrader/execution/"
             "paper_cancellation_reconciliation_command.py"
         ),
+        Path(
+            "src/algotrader/execution/"
+            "paper_cancellation_reconciliation_local.py"
+        ),
+        Path(
+            "src/algotrader/execution/"
+            "paper_cancellation_reconciliation_readiness.py"
+        ),
         Path("scripts/run_exact_paper_cancellation_reconciliation.py"),
+        Path(
+            "scripts/"
+            "build_exact_paper_cancellation_reconciliation_readiness.py"
+        ),
     )
     calls: list[str] = []
     imported_modules: set[str] = set()

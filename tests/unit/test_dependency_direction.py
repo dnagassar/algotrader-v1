@@ -1008,6 +1008,9 @@ def test_paper_cancellation_reconciliation_operator_is_exact_and_pre_authorized(
     assert leaf_call_names.count("paper_cancellation_observation_blocker") == 1
     assert leaf_call_names.count("build_paper_cancellation_sdk_reader") == 1
     assert leaf_call_names.count("reconcile_exact_paper_cancellation") == 1
+    assert leaf_call_names.count(
+        "paper_cancellation_reconciliation_local_target_blocker"
+    ) == 1
     assert leaf_call_names.count("get") == 1
     assert leaf_call_names.count("get_cancel_intent") == 1
     assert set(leaf_call_names).isdisjoint(
@@ -1181,6 +1184,144 @@ def test_standalone_cancellation_reconciliation_command_is_one_shot_and_confined
     )
 
 
+def test_cancellation_reconciliation_local_check_is_pure_and_shared() -> None:
+    path = _module_path(
+        "algotrader.execution.paper_cancellation_reconciliation_local"
+    )
+    rule = DependencyRule(
+        source="pure exact cancellation local target check",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.cli",
+            "algotrader.config",
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.paper_cancellation_invocation",
+            "algotrader.execution.paper_cancellation_reconciliation_operator",
+            "algotrader.execution.paper_exact_cancellation",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "os",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "time",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    calls = {
+        _call_name(node.func).rsplit(".", maxsplit=1)[-1]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+
+    assert _dependency_violations(rule) == []
+    assert calls.isdisjoint(
+        {
+            "cancel_order",
+            "cancel_order_by_id",
+            "close_all_positions",
+            "close_position",
+            "connect",
+            "get_account",
+            "get_order_by_id",
+            "get_orders",
+            "replace_order",
+            "request_order_cancellation",
+            "submit_order",
+            "submit_order_request",
+            "unresolved_cancel_intents",
+        }
+    )
+
+
+def test_cancellation_reconciliation_readiness_is_offline_exact_and_one_shot() -> None:
+    path = _module_path(
+        "algotrader.execution.paper_cancellation_reconciliation_readiness"
+    )
+    rule = DependencyRule(
+        source="credential-free exact cancellation readiness receipt",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.cli",
+            "algotrader.config",
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.paper_autopilot_control",
+            "algotrader.execution.paper_cancellation_admission",
+            "algotrader.execution.paper_cancellation_invocation",
+            "algotrader.execution.paper_cancellation_observation_sdk",
+            "algotrader.execution.paper_cancellation_reconciliation_command",
+            "algotrader.execution.paper_cancellation_reconciliation_operator",
+            "algotrader.execution.paper_exact_cancellation",
+            "algotrader.execution.paper_mutation_oms",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "os",
+            "requests",
+            "socket",
+            "subprocess",
+            "time",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    runner = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "build_exact_paper_cancellation_reconciliation_readiness"
+    )
+    leaf_call_names = [
+        _call_name(node.func).rsplit(".", maxsplit=1)[-1]
+        for node in ast.walk(runner)
+        if isinstance(node, ast.Call)
+    ]
+
+    assert _dependency_violations(rule) == []
+    assert leaf_call_names.count(
+        "load_paper_cancellation_observation_authorization"
+    ) == 1
+    assert leaf_call_names.count("paper_cancellation_authorization_blocker") == 1
+    assert leaf_call_names.count("SqliteOrderJournal") == 1
+    assert leaf_call_names.count("get") == 1
+    assert leaf_call_names.count("get_cancel_intent") == 1
+    assert leaf_call_names.count(
+        "paper_cancellation_reconciliation_local_target_blocker"
+    ) == 1
+    assert "from_env" not in leaf_call_names
+    assert "build_paper_cancellation_observation_authorization" not in leaf_call_names
+    assert set(leaf_call_names).isdisjoint(
+        {
+            "acquire_runtime_lease",
+            "cancel_order",
+            "cancel_order_by_id",
+            "close_all_positions",
+            "close_position",
+            "get_account",
+            "get_order_by_id",
+            "get_orders",
+            "reconcile_unresolved_cancellation",
+            "replace_order",
+            "request_order_cancellation",
+            "submit_order",
+            "submit_order_request",
+            "unresolved_cancel_intents",
+        }
+    )
+    assert not any(
+        isinstance(node, (ast.For, ast.While)) for node in ast.walk(runner)
+    )
+
+
 def test_general_cli_cannot_reach_cancellation_reconciliation_command() -> None:
     cli_path = _module_path("algotrader.cli")
     tree = ast.parse(
@@ -1204,6 +1345,10 @@ def test_general_cli_cannot_reach_cancellation_reconciliation_command() -> None:
     )
     assert (
         "algotrader.execution.paper_cancellation_authorization_artifact"
+        not in imported_modules
+    )
+    assert (
+        "algotrader.execution.paper_cancellation_reconciliation_readiness"
         not in imported_modules
     )
 

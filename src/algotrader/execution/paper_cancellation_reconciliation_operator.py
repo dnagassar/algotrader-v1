@@ -22,7 +22,6 @@ from algotrader.execution.cancellation_reconciliation import (
     CancellationReconciliationIdentity,
 )
 from algotrader.execution.order_journal import (
-    CancelJournalState,
     SqliteOrderJournal,
 )
 from algotrader.execution.paper_cancellation_observation import (
@@ -40,6 +39,9 @@ from algotrader.execution.paper_cancellation_reconciliation_workflow import (
     PaperCancellationReconciliationWorkflowStatus,
     reconcile_exact_paper_cancellation,
 )
+from algotrader.execution.paper_cancellation_reconciliation_local import (
+    paper_cancellation_reconciliation_local_target_blocker,
+)
 
 
 PAPER_CANCELLATION_RECONCILIATION_OPERATOR_VERSION = (
@@ -52,14 +54,6 @@ _LIVE_ENDPOINTS = frozenset(
         "https://api.alpaca.markets",
     }
 )
-_RECONCILIATION_READY_CANCEL_STATES = frozenset(
-    {
-        CancelJournalState.CANCEL_ATTEMPTED,
-        CancelJournalState.UNKNOWN,
-        CancelJournalState.CANCEL_ACCEPTED,
-    }
-)
-
 JournalFactory = Callable[[Path], SqliteOrderJournal]
 
 
@@ -336,7 +330,7 @@ def run_exact_paper_cancellation_reconciliation_operator(
             error_type=exc.__class__.__name__,
         )
 
-    local_blocker = _local_target_blocker(
+    local_blocker = paper_cancellation_reconciliation_local_target_blocker(
         identity,
         order_record=order_record,
         cancel_record=cancel_record,
@@ -408,29 +402,6 @@ def _observation_request(
         ),
         live_endpoint_detected=endpoint in _LIVE_ENDPOINTS,
     )
-
-
-def _local_target_blocker(
-    identity: CancellationReconciliationIdentity,
-    *,
-    order_record: object,
-    cancel_record: object,
-) -> str:
-    if order_record is None:
-        return "order_journal_record_missing"
-    if cancel_record is None:
-        return "cancel_intent_missing"
-    if getattr(order_record, "broker_order_id", "") != identity.broker_order_id:
-        return "order_broker_identity_mismatch"
-    if getattr(cancel_record, "client_order_id", "") != identity.client_order_id:
-        return "cancel_client_order_identity_mismatch"
-    if getattr(cancel_record, "broker_order_id", "") != identity.broker_order_id:
-        return "cancel_broker_order_identity_mismatch"
-    if bool(getattr(cancel_record, "terminal", False)):
-        return "cancel_intent_already_terminal"
-    if getattr(cancel_record, "state", None) not in _RECONCILIATION_READY_CANCEL_STATES:
-        return "cancel_intent_not_reconciliation_ready"
-    return ""
 
 
 def _blocked(

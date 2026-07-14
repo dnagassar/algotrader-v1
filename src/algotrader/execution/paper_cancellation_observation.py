@@ -438,6 +438,55 @@ def paper_cancellation_observation_blocker(
     return _pre_read_blocker(identity, authorization, request)
 
 
+def paper_cancellation_authorization_blocker(
+    identity: CancellationReconciliationIdentity,
+    authorization: PaperCancellationObservationAuthorization | None,
+    *,
+    expected_authorization_id: str,
+    occurred_at: datetime,
+) -> PaperCancellationObservationBlocker | None:
+    """Validate only exact immutable authorization and target evidence."""
+
+    if not isinstance(identity, CancellationReconciliationIdentity):
+        raise ValidationError(
+            "identity must be a CancellationReconciliationIdentity."
+        )
+    if authorization is not None and not isinstance(
+        authorization,
+        PaperCancellationObservationAuthorization,
+    ):
+        raise ValidationError(
+            "authorization must be a PaperCancellationObservationAuthorization or None."
+        )
+    expected_id = _required(
+        expected_authorization_id,
+        "expected_authorization_id",
+    )
+    evaluation_time = _utc_datetime(occurred_at, "occurred_at")
+
+    if authorization is None:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_MISSING
+    if not authorization.authorized:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_NOT_GRANTED
+    if expected_id != authorization.authorization_id:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_ID_MISMATCH
+    if authorization.mode != PAPER_CANCELLATION_OBSERVATION_MODE:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_MODE_MISMATCH
+    if authorization.operation != PAPER_CANCELLATION_OBSERVATION_OPERATION:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_OPERATION_MISMATCH
+    if evaluation_time < authorization.issued_at:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_NOT_YET_VALID
+    if evaluation_time >= authorization.expires_at:
+        return PaperCancellationObservationBlocker.AUTHORIZATION_EXPIRED
+    if identity.cancel_intent_id != authorization.cancel_intent_id:
+        return PaperCancellationObservationBlocker.CANCEL_INTENT_ID_MISMATCH
+    if identity.client_order_id != authorization.client_order_id:
+        return PaperCancellationObservationBlocker.CLIENT_ORDER_ID_MISMATCH
+    if identity.broker_order_id != authorization.broker_order_id:
+        return PaperCancellationObservationBlocker.BROKER_ORDER_ID_MISMATCH
+    return None
+
+
 def observe_exact_paper_cancellation(
     identity: CancellationReconciliationIdentity,
     authorization: PaperCancellationObservationAuthorization | None,
@@ -533,26 +582,14 @@ def _pre_read_blocker(
     authorization: PaperCancellationObservationAuthorization | None,
     request: PaperCancellationObservationRequest,
 ) -> PaperCancellationObservationBlocker | None:
-    if authorization is None:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_MISSING
-    if not authorization.authorized:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_NOT_GRANTED
-    if request.expected_authorization_id != authorization.authorization_id:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_ID_MISMATCH
-    if authorization.mode != PAPER_CANCELLATION_OBSERVATION_MODE:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_MODE_MISMATCH
-    if authorization.operation != PAPER_CANCELLATION_OBSERVATION_OPERATION:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_OPERATION_MISMATCH
-    if request.occurred_at < authorization.issued_at:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_NOT_YET_VALID
-    if request.occurred_at >= authorization.expires_at:
-        return PaperCancellationObservationBlocker.AUTHORIZATION_EXPIRED
-    if identity.cancel_intent_id != authorization.cancel_intent_id:
-        return PaperCancellationObservationBlocker.CANCEL_INTENT_ID_MISMATCH
-    if identity.client_order_id != authorization.client_order_id:
-        return PaperCancellationObservationBlocker.CLIENT_ORDER_ID_MISMATCH
-    if identity.broker_order_id != authorization.broker_order_id:
-        return PaperCancellationObservationBlocker.BROKER_ORDER_ID_MISMATCH
+    authorization_blocker = paper_cancellation_authorization_blocker(
+        identity,
+        authorization,
+        expected_authorization_id=request.expected_authorization_id,
+        occurred_at=request.occurred_at,
+    )
+    if authorization_blocker is not None:
+        return authorization_blocker
     if not request.observation_permitted:
         return PaperCancellationObservationBlocker.OBSERVATION_NOT_PERMITTED
     if not request.network_access_permitted:
@@ -725,5 +762,6 @@ __all__ = [
     "PaperCancellationObservationStatus",
     "build_paper_cancellation_observation_authorization",
     "observe_exact_paper_cancellation",
+    "paper_cancellation_authorization_blocker",
     "paper_cancellation_observation_blocker",
 ]

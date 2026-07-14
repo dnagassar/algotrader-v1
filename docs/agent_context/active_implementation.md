@@ -4,24 +4,24 @@
 
 - Repository: `C:\Users\danie\Desktop\algo_trader`
 - Branch: `codex/crypto-frozen-state-reset-workflow`.
-- Standalone-command parent: `a7a38eff1de4cac0742f8a82da5fee5daacbbe0b` (`Add exact cancellation reconciliation operator binding`).
-- Accepted parent capability: one default-disabled outer binding from pre-existing exact read authorization and canonical paper config to one private SDK reader and atomic local order/cancel-intent convergence.
-- New command/loader/script focused verification: all 37 tests passed.
-- Full reconciliation-chain focused verification: all 193 tests passed.
-- Final bounded-loader affected verification: all 86 tests passed.
-- Explicit dependency, mutation-surface, import, default-network, broker-safety, paper-integration, runtime-control, and journal matrix: 97 passed with 1 existing paper-integration skip.
-- Final `.\scripts\verify_offline.ps1 -Full` passed in 861.9 seconds. Its targeted safety phase passed all 95 tests. Canonical collection was 8,913 tests in 445 files; all 8,913 executed exactly once with 8,909 passed, 4 existing skips, 0 failures, and 0 errors.
+- Readiness-receipt parent: `c808d0077271b54b55aa8bd7190e16aebfc11a17` (`Add standalone cancellation reconciliation command`).
+- Accepted parent capability: one strict existing-authorization loader and default-disabled standalone command that can call the exact read-only operator binding once after every external gate passes.
+- Readiness receipt and script focused verification: all 21 tests passed.
+- Full cancellation-reconciliation chain and structural guard verification: all 216 tests passed.
+- Explicit dependency, mutation-surface, import, default-network, broker-safety, paper-integration, runtime-control, and journal matrix: 99 passed with 1 existing paper-integration skip.
+- Final `.\scripts\verify_offline.ps1 -Full` passed in 901.7 seconds. Its targeted safety phase passed all 97 tests. Canonical collection was 8,936 tests in 447 files; all 8,936 executed exactly once with 8,932 passed, 4 existing skips, 0 failures, and 0 errors.
 - Full-verifier preflight confirmed non-paper execution, all five broker credential variables absent, both network escape hatches disabled, and paper integration tests disabled.
 - No tracked `runs/` artifacts or staged files existed before isolated staging.
 
 ## Files Owned by This Slice
 
-- `src/algotrader/execution/paper_cancellation_authorization_artifact.py`
-- `src/algotrader/execution/paper_cancellation_reconciliation_command.py`
-- `scripts/run_exact_paper_cancellation_reconciliation.py`
-- `tests/unit/test_paper_cancellation_authorization_artifact.py`
-- `tests/unit/test_paper_cancellation_reconciliation_command.py`
-- `tests/unit/test_run_exact_paper_cancellation_reconciliation_script.py`
+- `src/algotrader/execution/paper_cancellation_observation.py`
+- `src/algotrader/execution/paper_cancellation_reconciliation_local.py`
+- `src/algotrader/execution/paper_cancellation_reconciliation_operator.py`
+- `src/algotrader/execution/paper_cancellation_reconciliation_readiness.py`
+- `scripts/build_exact_paper_cancellation_reconciliation_readiness.py`
+- `tests/unit/test_paper_cancellation_reconciliation_readiness.py`
+- `tests/unit/test_build_exact_paper_cancellation_reconciliation_readiness_script.py`
 - `tests/unit/test_dependency_direction.py`
 - `tests/unit/test_broker_mutation_surface_invariant.py`
 - `docs/deterministic_core.md`
@@ -30,22 +30,23 @@
 
 ## Capability Actually Proven
 
-- `load_paper_cancellation_observation_authorization(...)` reads only one bounded local UTF-8 JSON artifact and requires the exact canonical authorization-export schema. It rejects missing, oversized, malformed, non-object, duplicate-field, extra-field, missing-field, noncanonical-time, unsupported-version, wrong-type, and forged-ID artifacts.
-- The loader directly reconstructs the immutable authorization model, whose existing contract recomputes and verifies the authorization ID. It never calls the authorization builder and cannot mint, renew, select, or broaden authorization.
-- `PaperCancellationReconciliationCommandRequest` independently requires an exact artifact path, journal path, cancel-intent ID, client-order ID, broker-order ID, expected authorization ID, expected paper account, UTC occurrence time, and separate default-false operator-binding and network permissions. Account identity is hidden from representations and output.
-- `run_exact_paper_cancellation_reconciliation_command(...)` checks both permissions before artifact, environment, journal, or client access. After a valid artifact it constructs only canonical `AlpacaPaperConfig` and invokes `run_exact_paper_cancellation_reconciliation_operator(...)` once.
-- The command is available only through its dedicated module and thin standalone script. The general CLI cannot import it. It does not enumerate unresolved intents, infer a target, poll, loop, retry, or import a direct broker/network library.
-- Missing or wrong config, authorization expiry, all three target-identity mismatches, authorization-ID mismatch, missing journal, malformed artifact, reader failure, and invalid command input fail closed with sanitized, non-retryable output.
-- Deterministic fake-SDK integration with sockets blocked proves one client construction, one account read, one exact broker-order read, exact account/authorization/time/identity validation, and atomic convergence of the named order and cancel-intent journal records while preserving paused runtime control.
-- Results expose no credential or account values, authorization minting, target selection, unresolved-intent enumeration, polling, runtime-control change, broker mutation, submit, cancel, replace, close, liquidation, retry, or live authority.
+- `paper_cancellation_authorization_blocker(...)` is now the shared pure matcher for pre-existing authorization ID, affirmative authorization, exact paper/read operation, validity window, and cancel-intent/client-order/broker-order identity. The existing observation boundary reuses it, so the readiness receipt cannot drift from the real pre-read gate.
+- `paper_cancellation_reconciliation_local_target_blocker(...)` is the shared pure matcher for exact order/cancel-intent records, broker identities, terminal state, and reconciliation-ready cancel state. The existing operator binding reuses it, so the readiness receipt cannot drift from the real local-target gate.
+- `PaperCancellationReconciliationReadinessRequest` requires one local existing-authorization artifact, local journal path, exact three-part target identity, expected authorization ID, expected paper account presence, UTC occurrence time, and a separate default-false offline-readiness permission. UNC/network filesystem paths are rejected.
+- `build_exact_paper_cancellation_reconciliation_readiness(...)` has no injected loader, journal factory, reader, or callback seam. It checks the default-off permission before I/O, calls only the repository-owned strict artifact loader, checks shared authorization evidence, opens the named local SQLite journal, performs one exact order lookup and one exact cancel-intent lookup, and applies the shared pure local check.
+- A `ready` result proves only that all locally discoverable inputs are internally consistent and currently reconciliation-ready. It explicitly reports that all exact-read preconditions are not verified, the broker account is not verified, and external operator gates are not satisfied.
+- Missing/malformed/forged artifacts, non-affirmative or wrong-mode/operation authorization, authorization-ID mismatch, not-yet-valid/expired evidence, all three target-identity mismatches, missing/unavailable journals, missing exact records, terminal cancel intents, and ineligible cancel states fail closed with sanitized blockers.
+- The receipt reads no environment or config, accesses no credentials, imports no SDK/broker/network module, constructs no broker client, invokes no operator binding, performs no broker read, writes no receipt file, updates no journal state, and changes no runtime control.
+- The receipt is available only through its dedicated module and thin standalone script. The general CLI cannot import it. It cannot enumerate unresolved intents, infer or select a target, poll, loop, retry, mint authorization, submit, cancel, replace, close, liquidate, or authorize live behavior.
+- Deterministic tests with sockets blocked prove exact ready and blocked behavior while preserving the order record, cancel-intent record, and paused runtime-control record byte-for-byte.
 - No real credential loading, external SDK client, broker request, network access, broker mutation, submit, cancel, replace, close, or liquidation was performed or proven.
 
 ## Classification and Autonomous-Trader Impact
 
-- Task classification: `control_plane_recoverability_operationalization`.
+- Task classification: `control_plane_recovery_readiness_certification`.
 - Evidence classification: `non_evidentiary_offline_operational_safety_capability`.
 - Strategy, alpha evidence, evidence threshold, capital allocation, operating authority, and broker/trading authority impact: `none`.
-- Autonomous-trader contribution: a previously composed recovery boundary is now safely operator-invocable from one strict existing artifact and explicit target. This reduces manual wiring and makes exact frozen-cancel recovery operationally reachable, but the trader still cannot choose a recovery target, mint authority, load credentials, access a broker, retry, or mutate broker state autonomously.
+- Autonomous-trader contribution: the recovery control plane can now identify every locally discoverable blocker before a credentialed shell, using the same authorization and local-target predicates as the real command. This reduces operator-cycle risk and failed external attempts but grants no autonomous target choice, authorization issuance, broker access, retry, or mutation authority.
 
 ## Protected Dirty Work
 
@@ -53,7 +54,7 @@
 - Preserve `docs\design\v5_20_3_crypto_frozen_state_reset_baseline.md` as an unrelated untracked design/report artifact owned by the operator/user.
 - Protected artifact hashes at takeover were respectively `4FB473115578E2F25B353F50C409CD7566932ED5CC609DDDF19F7D6B9C34AF17` and `602304A0D55369573B2AF4147850C7271EE518EB097D4AD86DB05D6FD50B4900`.
 - Do not reset, clean, stash, restore, rebase, switch branches, stage, or commit either protected artifact unless the operator explicitly changes ownership.
-- After the isolated command commit, `git status --short` must show only those two protected artifacts.
+- After the isolated readiness commit, `git status --short` must show only those two protected artifacts.
 
 ## Active Safety Boundaries
 
@@ -65,12 +66,12 @@
 
 ## Intervention Decision and Strategic Trajectory
 
-No operator intervention was required for this completed standalone command; it was fully within delegated non-capital repository authority.
+No operator intervention was required for this completed readiness implementation; it was fully within delegated non-capital repository authority.
 
-An actual paper-broker read is now the true external hard gate. Broad approval is insufficient because the repository requires the exact cancel-intent, client-order, broker-order, account, authorization artifact/ID, journal, and bounded UTC occurrence facts, plus explicit authorization to load credentials and use the network for that single read-only paper operation. Without those exact inputs and fresh authorization, no real read may run.
+The next operational step is now a true exact-input operator gate, not another high-leverage repository coding milestone. The readiness receipt deliberately cannot search generated `runs/`, enumerate unresolved intents, derive identities from an artifact, mint authorization, or choose a target. Broad approval cannot substitute for those exact facts.
 
-The next highest-leverage delegated repository milestone is a credential-free exact-reconciliation readiness receipt. It should consume the same existing artifact and explicit identities, reuse strict authorization and local-journal checks, and emit a sanitized ready/blocked packet for the standalone command without loading config credentials, enabling network, constructing a reader, or mutating the journal. That will move every discoverable failure ahead of the credentialed shell while preserving the exact real-read gate.
+The minimum operator action is to provide the exact local authorization-artifact path, local journal path, cancel-intent ID, client-order ID, broker-order ID, authorization ID, expected paper account ID, and a fresh UTC occurrence time within that authorization window, and authorize use of those supplied values for one offline readiness evaluation. No credentials or network permission are required for that evaluation. If the receipt is ready and a real paper read is then desired, that remains a second exact gate requiring fresh authorization to load credentials and use the network for one read-only paper operation.
 
 ## Exact Next Action
 
-Start by verifying branch, HEAD, status, staged and unstaged diffs, protected artifacts, and this handoff. Confirm the standalone command commit and full verification. Then implement the credential-free exact-reconciliation readiness receipt described above. It must remain a separate offline-only command or artifact builder, require the operator-supplied exact target and existing authorization artifact, never mint authorization or select/enumerate a target, and prove default-off behavior, exact identity/expiry/local-state blockers, sanitized output, runtime-control preservation, and zero credential/network/broker/mutation/general-CLI reachability.
+Start by verifying branch, HEAD, status, staged and unstaged diffs, protected artifacts, and this handoff. Confirm the readiness receipt commit and full verification. Do not infer or enumerate a target. Once the operator supplies the exact values above, run `scripts/build_exact_paper_cancellation_reconciliation_readiness.py` once in a credential-free offline shell and return its sanitized receipt. Stop on any blocker. Do not load credentials or run the real reconciliation command without the separate exact read-only paper authorization.
