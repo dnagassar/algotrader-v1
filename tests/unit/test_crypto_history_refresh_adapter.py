@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
 import urllib.parse
 
+import pytest
+
 from algotrader.execution.crypto_history_refresh_adapter import (
     CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH,
     CryptoHistoryRefreshConfig,
+    CryptoHistoryRefreshError,
     run_crypto_history_refresh,
 )
 from algotrader.research.crypto_strategy_evidence_battery import (
@@ -303,6 +307,93 @@ def test_authorized_market_data_fetch_uses_read_only_urls_and_coverage_gate(
     assert SENSITIVE_KEY not in json.dumps(packet, sort_keys=True)
     assert SENSITIVE_SECRET not in json.dumps(packet, sort_keys=True)
     assert output_path.is_file()
+    assert packet["timeframe"] == "1Hour"
+    assert packet["loc"] == "us"
+    assert packet["output_sha256"] == hashlib.sha256(output_path.read_bytes()).hexdigest()
+    assert packet["raw_response_sha256"] == hashlib.sha256(
+        (tmp_path / "raw.json").read_bytes()
+    ).hexdigest()
+
+
+def test_authorized_market_data_fetch_follows_page_tokens_per_symbol(
+    tmp_path: Path,
+) -> None:
+    requests: list[tuple[str, str]] = []
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        assert timeout == 30
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+        api_symbol = query["symbols"][0]
+        page_token = query.get("page_token", [""])[0]
+        requests.append((api_symbol, page_token))
+        bars = _api_bars(api_symbol)
+        if not page_token:
+            return FakeResponse(
+                {
+                    "bars": {api_symbol: bars[:40]},
+                    "next_page_token": f"next-{api_symbol.replace('/', '-')}",
+                }
+            )
+        return FakeResponse({"bars": {api_symbol: bars[40:]}})
+
+    packet = run_crypto_history_refresh(
+        CryptoHistoryRefreshConfig(
+            mode="market_data_fetch",
+            output_path=tmp_path / "history.csv",
+            raw_response_path=tmp_path / "raw.json",
+            packet_path=None,
+            as_of=AS_OF,
+            allow_network=True,
+            market_data_fetch_authorized=True,
+        ),
+        env=VALID_ENV,
+        opener=opener,
+    )
+
+    assert len(requests) == 8
+    for symbol in ("BTC/USD", "ETH/USD", "SOL/USD", "ADA/USD"):
+        symbol_requests = [token for requested, token in requests if requested == symbol]
+        assert symbol_requests == ["", f"next-{symbol.replace('/', '-')}"]
+    assert packet["rows_per_symbol_after_normalization"] == {
+        symbol: 80 for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
+    }
+
+
+def test_repeated_page_token_fails_before_replacing_existing_outputs(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "history.csv"
+    raw_path = tmp_path / "raw.json"
+    output_path.write_text("protected-history\n", encoding="utf-8")
+    raw_path.write_text("protected-raw\n", encoding="utf-8")
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+        api_symbol = query["symbols"][0]
+        return FakeResponse(
+            {
+                "bars": {api_symbol: _api_bars(api_symbol)[:1]},
+                "next_page_token": "repeated-token",
+            }
+        )
+
+    with pytest.raises(CryptoHistoryRefreshError, match="repeated a token"):
+        run_crypto_history_refresh(
+            CryptoHistoryRefreshConfig(
+                mode="market_data_fetch",
+                output_path=output_path,
+                raw_response_path=raw_path,
+                packet_path=None,
+                as_of=AS_OF,
+                allow_network=True,
+                market_data_fetch_authorized=True,
+            ),
+            env=VALID_ENV,
+            opener=opener,
+        )
+
+    assert output_path.read_text(encoding="utf-8") == "protected-history\n"
+    assert raw_path.read_text(encoding="utf-8") == "protected-raw\n"
 
 
 def test_default_output_path_remains_coverage_gate_compatible() -> None:

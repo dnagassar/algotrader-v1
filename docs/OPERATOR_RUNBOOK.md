@@ -586,6 +586,47 @@ Do not load paper credentials or attempt cancellation without operator
 authorization for the exact target order and mutation scope. A status admission
 preview remains non-executable even when the internal bridge exists.
 
+## Preregistered Crypto Tournament Procedure
+
+The tournament runner is offline and accepts only a local canonical hourly CSV.
+It has no network, credential, broker, submit, cancel, replace, close,
+liquidation, paper-mode, or live-mode switch.
+
+1. Verify the checked-in preregistration fingerprint is
+   `1475d35634750a7f00832f0a540fbaac3e28e7ed82ac7dbd8ef2d60e08f09097`.
+2. For an exactly authorized read-only refresh, load paper market-data settings
+   only into the isolated refresh process. Never print or paste credential
+   values.
+3. Fetch the fixed `2025-07-15T00:00:00Z` through
+   `2026-07-15T00:00:00Z` one-hour window into
+   `runs\crypto_strategy_tournament\v1\input\crypto_1h_1y.csv` using
+   `scripts\refresh_multi_symbol_crypto_history.ps1`. Do not use the default
+   operator-input path.
+4. Inspect the refresh packet and require a real-history classification, all
+   four symbols, `1Hour`, the exact fixed window, an output SHA-256 matching the
+   CSV, no live endpoint, no broker mutation, and no credential exposure.
+5. Clear paper profile and credentials from the process before any test or
+   local research command.
+6. Run:
+
+```powershell
+.\scripts\run_crypto_preregistered_tournament.ps1 `
+  -InputPath "runs\crypto_strategy_tournament\v1\input\crypto_1h_1y.csv" `
+  -RefreshPacketPath "runs\crypto_strategy_tournament\v1\refresh\refresh_packet.json" `
+  -OutputRoot "runs\crypto_strategy_tournament\v1\latest" `
+  -AsOfTimestamp "2026-07-15T00:00:00Z" `
+  -Format text
+```
+
+7. Treat `no_candidate_qualified` as a terminal rejection for every candidate
+   in this tournament version. Do not rescue-tune.
+8. Treat `eligible_for_no_submit_shadow_evaluation` only as permission to open
+   a separate shadow-evidence milestone. It is not paper mutation or capital
+   authorization.
+
+The detailed immutable contract is in
+`docs/design/v5_22_crypto_preregistered_tournament.md`.
+
 ## Safety Declarations
 
 > [!WARNING]

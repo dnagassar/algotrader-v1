@@ -782,6 +782,39 @@ strategy path.
 
 The current SPY ETF/SMA path is long-only.
 
+## Preregistered Crypto Tournament
+
+The V5.22 crypto tournament is a separate research-only schema over the public
+crypto CSV loader. It does not alter the legacy V5.19/V5.21 battery or the
+closed ADA repair candidate.
+
+- exactly 12 code-frozen candidates cover BTCUSD, ETHUSD, SOLUSD, and ADAUSD
+  across 72-hour trend, 168-hour breakout, and 24/168-hour moving-average
+  regime rules
+- a shared consecutive one-hour UTC grid requires at least 4,320 bars per
+  symbol; the final 1,728 hours form four untouched OOS folds
+- the input path and SHA-256, exact refresh window, source, symbols, timeframe,
+  row coverage, and no-mutation flags must match a passing guarded refresh
+  packet; unbound input is never evidence-eligible
+- at least 95% of hourly rows per symbol must carry positive reported volume
+- four-hour robustness is aggregated locally from complete UTC buckets of the
+  same source data
+- one-bar causal execution, post-return-notional transition charging, 40 bps
+  base transition cost, and 80 bps stress cost are fixed before evaluation
+- cash, symbol buy-and-hold, and drifted equal-weight buy-and-hold are mandatory
+  benchmarks
+- multi-fold stability, profit concentration, drawdown, transition, completed
+  round-trip, stress-cost, and four-hour robustness gates must all pass
+- the maximum outcome is `eligible_for_no_submit_shadow_evaluation`; paper
+  planning, broker execution, capital allocation, and live trading remain
+  ineligible
+
+The canonical contract and fingerprint are recorded in
+`docs/design/v5_22_crypto_preregistered_tournament.md`. Default tests and the
+tournament runner remain local, deterministic, credential-free, network-free,
+broker-free, and no-submit. A separately authorized history refresh may produce
+the input CSV through the existing fixed-host market-data adapter only.
+
 ## Historical Context
 
 The prior `docs/deterministic_core.md` acted as both current contract and

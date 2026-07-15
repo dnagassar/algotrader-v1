@@ -13,6 +13,7 @@ import csv
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import hashlib
 import http.client
 import json
 import os
@@ -26,7 +27,7 @@ from algotrader.research.crypto_strategy_evidence_battery import (
 )
 
 CRYPTO_HISTORY_REFRESH_ADAPTER_SCHEMA_VERSION = (
-    "v5_19_4_crypto_history_refresh_adapter_v1"
+    "v5_22_crypto_history_refresh_adapter_receipt_v2"
 )
 CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH = Path(
     "runs/operator_input/crypto_paper_bars.csv"
@@ -698,6 +699,7 @@ def _run_market_data_fetch_mode(
     )
     if config.raw_response_path is not None:
         _write_json(config.raw_response_path, raw_payload)
+        packet["raw_response_sha256"] = _file_sha256(config.raw_response_path)
 
     rows = _history_rows_from_raw_payload(raw_payload)
     _write_history_csv(
@@ -713,6 +715,7 @@ def _run_market_data_fetch_mode(
         normalized_output_path=config.output_path,
     )
     packet = _overlay_coverage(packet, coverage)
+    packet["output_sha256"] = _file_sha256(config.output_path)
     packet["market_data_fetch_occurred"] = True
     packet["network_access_attempted"] = True
     coverage_classification = str(
@@ -749,6 +752,10 @@ def _base_packet(
         else str(config.raw_response_path),
         "write_packet": config.write_packet,
         "data_source": "none",
+        "timeframe": config.timeframe,
+        "loc": config.loc,
+        "output_sha256": "",
+        "raw_response_sha256": "",
         "as_of": as_of.isoformat(),
         "requested_start": (
             "" if config.start is None else _datetime_arg(config.start)
@@ -958,24 +965,32 @@ def _write_history_csv(
 ) -> None:
     if output_path.parent != Path("."):
         output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=_CSV_COLUMNS, lineterminator="\n")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(
-                {
-                    "timestamp": row["timestamp"],
-                    "symbol": _symbol(row["symbol"]),
-                    "asset_class": "crypto",
-                    "open": _decimal_text(_decimal(row["open"], "open")),
-                    "high": _decimal_text(_decimal(row["high"], "high")),
-                    "low": _decimal_text(_decimal(row["low"], "low")),
-                    "close": _decimal_text(_decimal(row["close"], "close")),
-                    "volume": _decimal_text(_decimal(row.get("volume", "0"), "volume")),
-                    "basis": "alpaca_crypto_bars_v1beta3_ohlcv",
-                    "source": source,
-                }
-            )
+    temporary = output_path.with_name(f".{output_path.name}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=_CSV_COLUMNS, lineterminator="\n")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(
+                    {
+                        "timestamp": row["timestamp"],
+                        "symbol": _symbol(row["symbol"]),
+                        "asset_class": "crypto",
+                        "open": _decimal_text(_decimal(row["open"], "open")),
+                        "high": _decimal_text(_decimal(row["high"], "high")),
+                        "low": _decimal_text(_decimal(row["low"], "low")),
+                        "close": _decimal_text(_decimal(row["close"], "close")),
+                        "volume": _decimal_text(
+                            _decimal(row.get("volume", "0"), "volume")
+                        ),
+                        "basis": "alpaca_crypto_bars_v1beta3_ohlcv",
+                        "source": source,
+                    }
+                )
+        temporary.replace(output_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def _generated_market_data_command(config: CryptoHistoryRefreshConfig) -> str:
@@ -1048,6 +1063,14 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _copy_file(source: Path, destination: Path) -> None:
