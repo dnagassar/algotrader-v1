@@ -20,7 +20,7 @@ CRYPTO_TOURNAMENT_V2_GAP_POLICY_VERSION = (
     "v5_23_crypto_tournament_v2_isolated_gap_policy_v1"
 )
 CRYPTO_TOURNAMENT_V2_PREREGISTRATION_FINGERPRINT = (
-    "afccc81d6592c5e56cf4ef968b3b778d1d6675b95551ddd98b355b75f4d19a36"
+    "2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b"
 )
 
 TOURNAMENT_V2_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD")
@@ -148,6 +148,8 @@ def build_crypto_tournament_v2_preregistration() -> dict[str, object]:
         "predecessor_tournament": {
             "version": "v1",
             "status": "closed_terminal_input_quality_gate",
+            "preregistration_fingerprint":
+                "1475d35634750a7f00832f0a540fbaac3e28e7ed82ac7dbd8ef2d60e08f09097",
             "candidate_reuse_allowed": False,
             "oos_reuse_allowed": False,
         },
@@ -165,6 +167,12 @@ def build_crypto_tournament_v2_preregistration() -> dict[str, object]:
             ),
             "embargo_start": EMBARGO_START,
             "embargo_end_exclusive": EMBARGO_END_EXCLUSIVE,
+            "embargo_role": "causal_signal_warmup_only",
+            "embargo_data_must_be_receipt_bound": True,
+            "embargo_candidate_metrics_allowed": False,
+            "embargo_return_scoring_allowed": False,
+            "embargo_completed_round_trip_gate_included": False,
+            "embargo_expected_hourly_bars_per_symbol": 24,
             "oos_start": OOS_START,
             "oos_end_inclusive": OOS_END_INCLUSIVE,
             "oos_end_exclusive": OOS_END_EXCLUSIVE,
@@ -181,6 +189,10 @@ def build_crypto_tournament_v2_preregistration() -> dict[str, object]:
         "data_quality_policy": {
             "guarded_refresh_receipt_and_output_sha256_required": True,
             "expected_source": "alpaca_market_data_crypto_bars_v1beta3",
+            "embargo_raw_common_grid_required": True,
+            "embargo_imputation_allowed": False,
+            "embargo_minimum_positive_raw_volume_fraction_per_symbol":
+                MINIMUM_POSITIVE_RAW_VOLUME_FRACTION,
             "minimum_raw_hourly_coverage_per_symbol": (
                 MINIMUM_RAW_HOURLY_COVERAGE
             ),

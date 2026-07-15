@@ -29,7 +29,7 @@ def test_v2_preregistration_is_pinned_before_future_oos() -> None:
         CRYPTO_TOURNAMENT_V2_PREREGISTRATION_FINGERPRINT
     )
     assert first["preregistration_fingerprint"] == (
-        "afccc81d6592c5e56cf4ef968b3b778d1d6675b95551ddd98b355b75f4d19a36"
+        "2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b"
     )
     assert datetime.fromisoformat(
         temporal["preregistration_must_be_committed_before"]
@@ -70,6 +70,8 @@ def test_v1_stays_closed_and_fingerprint_distinct() -> None:
     assert v2["predecessor_tournament"] == {
         "version": "v1",
         "status": "closed_terminal_input_quality_gate",
+        "preregistration_fingerprint":
+            "1475d35634750a7f00832f0a540fbaac3e28e7ed82ac7dbd8ef2d60e08f09097",
         "candidate_reuse_allowed": False,
         "oos_reuse_allowed": False,
     }
@@ -91,6 +93,12 @@ def test_v2_window_and_interim_disclosure_policy_are_exact() -> None:
         "2026-07-30T00:00:00+00:00",
         "2026-08-06T00:00:00+00:00",
     ]
+    assert temporal["embargo_role"] == "causal_signal_warmup_only"
+    assert temporal["embargo_data_must_be_receipt_bound"] is True
+    assert temporal["embargo_candidate_metrics_allowed"] is False
+    assert temporal["embargo_return_scoring_allowed"] is False
+    assert temporal["embargo_completed_round_trip_gate_included"] is False
+    assert temporal["embargo_expected_hourly_bars_per_symbol"] == 24
     assert temporal["interim_candidate_metrics_allowed"] is False
     assert temporal["optional_stopping_allowed"] is False
     assert temporal["window_extension_allowed"] is False

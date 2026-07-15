@@ -11,7 +11,7 @@ V2 does not reuse v1 candidate identities, OOS bytes, or promotion authority.
 - Policy: `v5_23_crypto_tournament_v2_policy_v1`
 - Gap policy: `v5_23_crypto_tournament_v2_isolated_gap_policy_v1`
 - Preregistration fingerprint:
-  `afccc81d6592c5e56cf4ef968b3b778d1d6675b95551ddd98b355b75f4d19a36`
+  `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`
 - Required freeze deadline: before `2026-07-16T00:00:00Z`
 - Dynamic optimization, post-hoc retuning, candidate mutation, early promotion:
   disabled
@@ -33,8 +33,11 @@ forbidden; v2 is a separately authorized hypothesis family.
 
 - Discovery source window: `2026-01-16T00:00:00Z` inclusive through
   `2026-07-15T00:00:00Z` exclusive, 4,320 expected hourly slots per symbol.
-- Embargo: all 24 hours of `2026-07-15` UTC. Embargo bytes cannot enter
-  discovery or OOS scoring.
+- Embargo: all 24 hours of `2026-07-15` UTC. Receipt-bound embargo bytes may
+  enter causal signal warmup only. They cannot enter discovery diagnostics,
+  candidate metrics, return scoring, or the completed-round-trip gate. The
+  bridge must contain all 24 common hourly bars with no imputation and at least
+  95% positive raw-volume coverage per symbol.
 - Untouched OOS: `2026-07-16T00:00:00Z` through
   `2026-08-12T23:00:00Z`, exactly 672 hourly slots per symbol.
 - Terminal scoring release: no earlier than `2026-08-13T00:00:00Z`.
