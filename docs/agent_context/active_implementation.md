@@ -38,22 +38,28 @@
 - Raw provider bytes, normalized candidate CSV, canonical CSV, and one-record manifests use same-volume atomic replacement with cleanup. Validation and replace failures preserve the previous canonical bytes.
 - Default expected-date resolution now uses the latest actually completed NYSE session, including pre-close fallback and weekend/holiday catch-up.
 - The new one-shot Task Scheduler template runs at 20:10 host-local America/New_York time on weekdays, requires network availability, ignores overlapping instances, retries three times at fifteen-minute intervals, and calls only the Tiingo refresh. It is deliberately separate from the paper-mutation supervisor.
-- The schedule template was not registered and no real token was loaded. Activation remains an external operator/credential gate.
+- The local `TIINGO_API_KEY` was found in the untracked `.env`, loaded only inside the scoped adapter, and was never printed or written to an artifact.
+- The Windows user-level task `spy-eod-market-data-refresh` is registered, `Ready`, and scheduled for 20:10 host-local Eastern time on weekdays. Its first on-demand run completed with Task Scheduler result `0`.
+- PowerShell string registration required removing the XML byte-encoding declaration; a regression test now pins that Windows compatibility contract.
 
 ## Verification Receipt
 
-- Focused refresh/schedule/intake/calendar/script/import/network/dependency matrix: 116 passed in 81.29 seconds.
-- Repository targeted offline verifier: 97 passed in 108.18 seconds; final result `PASS`.
-- Full sharded default suite collected and executed 8,951 tests across four exact shards:
-  - shard 1: 2,238 tests, 1 skip, 0 failures, 0 errors
-  - shard 2: 2,238 tests, 1 skip, 0 failures, 0 errors
-  - shard 3: 2,238 tests, 2 skips, 0 failures, 0 errors
-  - shard 4: 2,237 tests, 0 skips, 0 failures, 0 errors
-  - aggregate: 8,947 passed, 4 skipped, 0 failures, 0 errors
-- The outer `verify_offline.ps1 -Full` command runner reached its 1,204-second capture timeout while the repository-owned shard parent and children remained active. All four JUnit reports subsequently completed, their assigned counts summed exactly to 8,951, the aggregate above was read before normal parent cleanup, and the parent removed its temporary directory. This is a tool-capture timeout, not a test timeout or failure.
+- Focused refresh/schedule/intake/calendar/script/import/network/dependency matrix from the feature slice: 116 passed in 81.29 seconds.
+- Scheduler compatibility regression file after the activation fix: 3 passed in 0.51 seconds.
+- Required dependency-direction recheck: 33 passed in 9.76 seconds.
+- Repository targeted offline verifier: 97 passed in 111.72 seconds; final result `PASS`.
+- Full sharded default suite collected and executed 8,952 tests across four exact shards with collection and execution equivalence:
+  - shard 1: 2,238 tests, exit `0`, no timeout
+  - shard 2: 2,238 tests, exit `0`, no timeout
+  - shard 3: 2,238 tests, exit `0`, no timeout
+  - shard 4: 2,238 tests, exit `0`, no timeout
+  - aggregate: 8,948 passed, 4 skipped, 0 failures, 0 errors; bounded full suite `PASS`
 - `git diff --check`: passed.
 - No tracked `runs/` artifacts were created.
-- No real network, broker SDK, broker read, broker mutation, submit, cancel, replace, close, liquidation, or live-capital action occurred.
+- Two authorized exact-destination Tiingo HTTPS `GET` refreshes occurred: one direct activation fetch and one end-to-end Task Scheduler verification fetch.
+- The activation fetch accepted 8,420 canonical rows through `2026-07-14`, appended one new row, found six unchanged overlap rows, and produced canonical SHA-256 `46B540097449EA9FA8A7018A8E547DC62ADABD2E713C0477DA8D4F18B764F9E2`.
+- The scheduled verification fetch returned `accepted_adjusted_spy_data_refresh`, left the canonical unchanged, and advanced the manifest successfully.
+- No broker SDK, broker credential lookup, broker read, broker mutation, submit, cancel, replace, close, liquidation, or live-capital action occurred.
 
 ## Classification and Trajectory Impact
 
@@ -81,6 +87,6 @@
 
 ## Exact Next Action
 
-The repository implementation is complete. The next external activation step is a true operator/credential gate: place a real `TIINGO_API_KEY` only in the untracked local `.env`, confirm the Windows host time zone is America/New_York, review the absolute paths in `docs/design/spy_eod_market_data_refresh_scheduled_task.xml`, and register that one task. After activation, collect a bounded paper-data soak and review the manifest revision outcomes and hashes before coupling any downstream paper decision cycle to it.
+Activation is complete. Collect a bounded five-expected-session data soak from the registered task and review Task Scheduler results, manifest refresh states, revision outcomes, latest-session dates, and canonical hashes. Escalate only a missing or invalid Tiingo credential, repeated provider failure, or an OS scheduler failure that cannot be repaired within the user-level task scope.
 
 The next repository milestone should consume that reliable data to produce decision-quality evidence: a predeclared walk-forward/OOS comparison of SPY SMA 50/200 against cash and simple challengers with costs, regime slices, stability metrics, and rejection thresholds. Do not add another model API, retrieval source, or execution framework until that evidence lane identifies a concrete information bottleneck.

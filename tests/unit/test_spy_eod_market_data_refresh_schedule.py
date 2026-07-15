@@ -14,6 +14,12 @@ SCHEDULE = (
 NAMESPACE = {"task": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
+def test_spy_eod_refresh_schedule_supports_powershell_string_registration() -> None:
+    declaration = SCHEDULE.read_text(encoding="utf-8").splitlines()[0]
+
+    assert declaration == '<?xml version="1.0"?>'
+
+
 def test_spy_eod_refresh_schedule_runs_after_tiingo_correction_window() -> None:
     root = ET.parse(SCHEDULE).getroot()
 
