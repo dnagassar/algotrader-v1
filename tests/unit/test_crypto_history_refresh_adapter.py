@@ -191,6 +191,7 @@ def test_market_data_fetch_rejects_live_endpoint_before_opener(
     assert packet["endpoint_safety_status"] == "rejected_live_endpoint_risk"
     assert packet["market_data_fetch_occurred"] is False
     assert packet["network_access_attempted"] is False
+    assert packet["live_endpoint_indicator"] is True
     assert packet["live_endpoint_touched"] is False
     assert called is False
 
@@ -317,6 +318,84 @@ def test_authorized_market_data_fetch_uses_read_only_urls_and_coverage_gate(
     assert packet["raw_response_sha256"] == hashlib.sha256(
         (tmp_path / "raw.json").read_bytes()
     ).hexdigest()
+
+
+def test_data_intake_only_accepts_one_hour_and_skips_strategy_battery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_start = AS_OF - timedelta(hours=1)
+    requests: list[object] = []
+
+    def fail_if_evaluated(*args: object, **kwargs: object) -> object:
+        raise AssertionError("strategy battery must not run during intake")
+
+    monkeypatch.setattr(
+        "algotrader.execution.crypto_history_refresh_adapter."
+        "build_crypto_strategy_real_data_evidence_packet",
+        fail_if_evaluated,
+    )
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        requests.append(request)
+        assert timeout == 30
+        query = urllib.parse.parse_qs(
+            urllib.parse.urlparse(request.full_url).query
+        )
+        api_symbol = query["symbols"][0]
+        return FakeResponse(
+            {
+                "bars": {
+                    api_symbol: [
+                        {
+                            "t": requested_start.isoformat().replace(
+                                "+00:00", "Z"
+                            ),
+                            "o": "100",
+                            "h": "101",
+                            "l": "99",
+                            "c": "100",
+                            "v": "1",
+                        }
+                    ]
+                }
+            }
+        )
+
+    symbols = ("BTCUSD", "ETHUSD", "SOLUSD")
+    packet = run_crypto_history_refresh(
+        CryptoHistoryRefreshConfig(
+            mode="market_data_fetch",
+            symbols=symbols,
+            output_path=tmp_path / "delta.csv",
+            raw_response_path=tmp_path / "raw.json",
+            packet_path=None,
+            as_of=AS_OF,
+            start=requested_start,
+            end=requested_start,
+            allow_network=True,
+            market_data_fetch_authorized=True,
+            data_intake_only=True,
+        ),
+        env=VALID_ENV,
+        opener=opener,
+    )
+
+    assert len(requests) == 3
+    assert packet["classification"] == "market_data_refresh_ready"
+    assert packet["data_intake_only"] is True
+    assert packet["strategy_evidence_evaluation_performed"] is False
+    assert packet["coverage_gate_classification"] == (
+        "not_evaluated_data_intake_only"
+    )
+    assert packet["rows_per_symbol"] == {symbol: 1 for symbol in symbols}
+    assert packet["fetched_symbols"] == list(symbols)
+    assert packet["paper_planning_promotion_allowed"] is False
+    assert "-DataIntakeOnly" in packet["generated_command_text"]
+    assert packet["paper_cancel_occurred"] is False
+    assert packet["paper_replace_occurred"] is False
+    assert packet["paper_close_occurred"] is False
+    assert packet["paper_liquidate_occurred"] is False
 
 
 def test_authorized_market_data_fetch_follows_page_tokens_per_symbol(

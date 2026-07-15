@@ -98,5 +98,44 @@ complete a separately fingerprinted, single-winner untouched forward-shadow
 contract before any paper consideration. Reusing the selection window for that
 decision is prohibited.
 
+## Implemented Forward-OOS State Machine
+
+The preregistration is now enforced by a separate research state machine and a
+thin guarded operating wrapper.
+
+- The research module freezes a normalized discovery snapshot, the exact
+  preregistration manifest, receipt ledger, and state fingerprint before it can
+  accept any embargo or OOS delta.
+- The existing four-symbol v1 source receipt may initialize discovery because
+  it is a real guarded market-data superset. Only BTCUSD, ETHUSD, and SOLUSD
+  enter v2 state; v1 identity, verdict, and OOS data remain closed.
+- Short three-symbol refresh receipts are validated directly for path, output
+  SHA-256, schema, source, timeframe, location, exact symbols, fetch proof, and
+  explicit false broker/mutation/live flags. They must also prove the guarded
+  adapter ran in data-intake-only mode and performed no strategy evaluation.
+- Data-only refreshes validate OHLCV but do not invoke the legacy strategy
+  evidence battery or emit promotion/candidate metrics.
+- Exact duplicate retries are idempotent. A different OHLCV value for an
+  already accrued symbol/timestamp fails before state replacement.
+- Interim packets contain only immutable identities, receipt counts, raw row
+  counts, common frontiers, next-window coordinates, and safety flags.
+- At the terminal timestamp, the embargo must be a complete raw 24-hour common
+  grid. The fixed OOS quality policy then runs once; a failure closes the
+  window without candidate metrics.
+- Passing input quality evaluates all nine candidates with discovery and
+  embargo available for causal signal warmup. OOS scoring includes the
+  embargo-close to first-OOS-close return under the final embargo signal,
+  charges the OOS boundary entry, and excludes embargo round trips.
+- Both successful scoring and terminal input-quality failure create one
+  hash-bound terminal packet. Later status checks replay that outcome; later
+  deltas and rescoring are rejected.
+- The operating wrapper can call only the existing guarded crypto-bars adapter
+  in explicit market_data_fetch mode. Initialization, status, readiness, and
+  all default tests are network-free.
+
+The primary entrypoint is
+scripts/run_crypto_tournament_v2_forward_oos.ps1. Generated state remains under
+runs/crypto_strategy_tournament/v2/latest and stays ignored.
+
 Generated discovery, accrual, receipt, and evidence state belongs under
 `runs/crypto_strategy_tournament/v2/` and is never authority or tracked source.

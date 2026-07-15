@@ -844,3 +844,39 @@ Preferred next work remains offline unless explicitly scoped otherwise:
 - keep SPY submit blocked until M376 is terminal by read-only reconciliation
 
 Do not promote any paper/live mutation from this document alone.
+
+## Crypto Tournament V2 Forward-OOS Contract
+
+Tournament v1 remains closed at its terminal four-symbol input-quality gate.
+Tournament v2 is the separately fingerprinted BTCUSD, ETHUSD, and SOLUSD
+research lane defined by fingerprint
+2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b.
+
+The research state machine imports only research types and deterministic return
+math. It validates local receipt-bound files, freezes discovery, accrues raw
+embargo/OOS bars, applies the preregistered isolated-gap policy, and releases
+candidate metrics only at 2026-08-13T00:00:00Z or later. It has no network,
+credential, broker, account, order, paper-mode, or live-mode path.
+
+The orchestration wrapper is the sole v2 bridge to the existing guarded crypto
+history adapter. Its network mode is narrowed to exactly the next missing
+completed UTC hour range, exactly BTCUSD/ETHUSD/SOLUSD, timeframe 1Hour, and
+location us. It requires the adapter's explicit allow-network and
+market-data-fetch authorization flags. The adapter must run in
+data-intake-only mode: it validates and binds OHLCV without invoking the legacy
+strategy evidence battery. V2 validates the receipt and its own frozen
+per-symbol quality policy directly.
+
+State files use atomic replacement and bind the manifest, discovery snapshot,
+raw embargo/OOS histories, and receipt ledger by SHA-256 plus a state
+fingerprint. Exact retries deduplicate. Conflicting rewrites fail closed.
+Interim artifacts contain no targets, trades, returns, drawdowns, rankings, or
+selection. Terminal scoring includes the embargo-close to first-OOS-close
+return under the final embargo signal, charges its OOS boundary entry, and
+excludes embargo round trips. A terminal success or input-quality failure
+creates one hash-bound terminal packet; later checks replay it and reject new
+deltas or rescoring. Terminal input failure does not extend the endpoint.
+
+Even a terminal winner is eligible only for a new no-submit single-winner
+forward-shadow contract. Paper planning, paper mutation, broker execution,
+capital allocation, live trading, and profit claims remain unauthorized.

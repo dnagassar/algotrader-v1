@@ -642,3 +642,56 @@ The detailed immutable contract is in
 ## Note on Legacy Commands
 
 Legacy daily commands (e.g., `daily-operating-brief` or `paper-lab-daily-preview`) exist in the CLI but are **not** the canonical path for V3 operator runs. Do not delete them as they are preserved for historical regression testing, but use `etf-sma-daily-offline-check` for all current operational checks.
+
+## Crypto Tournament V2 Forward-OOS Procedure
+
+Tournament v1 is closed. Do not remove ADA from v1, retry its terminal gate, or
+reuse its OOS result. V2 uses only BTCUSD, ETHUSD, and SOLUSD with fingerprint
+2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b.
+
+Initialize once from the existing guarded local history while the normal
+process is credential-free:
+
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode initialize -AsOf 2026-07-15T20:00:00Z
+
+Initialization is offline. It freezes 2026-01-16T00:00:00Z through
+2026-07-14T23:00:00Z, applies only the preregistered isolated prior-close gap
+fill, and emits no candidate metrics.
+
+Status and readiness are also offline:
+
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode status -AsOf <CURRENT_UTC_TIMESTAMP>
+
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode readiness -AsOf <CURRENT_UTC_TIMESTAMP>
+
+Readiness reports the earliest missing hour and the latest completed hour. It
+reads only boolean preflight state and never prints credential values.
+
+When the operator has explicitly authorized one read-only market-data
+operation, load paper market-data credentials and the explicit paper base URL
+only into that isolated process. Then run:
+
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode market_data_fetch -AsOf <CURRENT_COMPLETED_UTC_HOUR> -MarketDataFetchAuthorized -AllowNetwork
+
+The wrapper calculates the exact inclusive start/end window. Do not hand-edit
+it, extend the endpoint, add symbols, or reuse a receipt from another output.
+The call is HTTPS GET market data only. It does not read an account and cannot
+submit, cancel, replace, close, liquidate, or mutate broker state.
+The adapter must report data_intake_only=true and
+strategy_evidence_evaluation_performed=false. It validates OHLCV and provenance
+only; it must not run a strategy battery or emit interim candidate metrics.
+
+
+After the isolated fetch, clear APP_PROFILE and all Alpaca credential variables
+before running tests or other local commands. Repeated identical receipts are
+safe and idempotent. Any conflicting historical rewrite is a hard integrity
+failure and must not be forced.
+
+Before 2026-08-13T00:00:00Z, accept only completeness and provenance packets;
+candidate metrics must remain empty. At or after the terminal timestamp, a
+complete admitted window evaluates all nine frozen candidates once. A
+terminal input-quality failure or no_candidate_qualified result closes v2
+without retuning or extending the window. The terminal packet is hash-bound;
+later status checks replay it and reject new deltas or rescoring. A selected
+result authorizes only a separately preregistered no-submit single-winner
+forward-shadow milestone.

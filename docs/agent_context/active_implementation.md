@@ -1,6 +1,83 @@
 # Active Implementation Checkpoint
 
-## Current Slice — V5.22 Crypto Tournament Intake Verdict
+## Current Slice — V5.23 Preregistered Crypto Tournament V2
+
+- Execution date: `2026-07-15`.
+- Branch: `codex/crypto-frozen-state-reset-workflow`.
+- Parent HEAD: `08fd6073b5bdd04c180baa54acd35c3f53342b83` (`Freeze v2 embargo warmup semantics`).
+- Frozen preregistration commits: `298a2c8` and `08fd607`.
+- Tournament v2 fingerprint: `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
+- Tournament v1 remains closed under fingerprint `1475d35634750a7f00832f0a540fbaac3e28e7ed82ac7dbd8ef2d60e08f09097`.
+- Exactly one implementation writer owned the checkout. Delegated reviews were read-only.
+
+## Current Implementation Result
+
+- Added a receipt-bound forward-OOS state machine limited to BTCUSD, ETHUSD, and SOLUSD.
+- Discovery is fixed at `2026-01-16T00:00:00Z` through `2026-07-15T00:00:00Z` exclusive.
+- The embargo is fixed at 24 hours for signal warmup only. The untouched OOS window is fixed at `2026-07-16T00:00:00Z` through `2026-08-13T00:00:00Z` exclusive in four 168-hour folds.
+- Interim accrual emits no targets, returns, drawdowns, rankings, selections, or promotion evidence.
+- Added a guarded `data_intake_only` refresh mode. It validates OHLCV and provenance but cannot invoke the legacy strategy evidence battery.
+- New delta receipts must prove exact symbols/window/as-of/output paths, explicit data-only status, no strategy evaluation, a market-data fetch, and every no-mutation/live safety field as false.
+- Inclusive one-hour refresh windows are supported.
+- OOS return accounting uses the final embargo signal for the embargo-close to first-OOS-close return, charges the OOS boundary entry, holds the prior target on imputed bars in both 1h and 4h views, and excludes embargo round trips.
+- Terminal success and terminal input-quality failure both seal one immutable SHA-bound terminal packet. Canonical terminal bytes contain a non-circular closure summary, replay without mutation, reject later deltas/rescoring, and fail on tampering.
+- If multiple candidates qualify, the deterministic ranking selects exactly one no-submit shadow candidate. No result is paper- or broker-eligible.
+
+## Current Local State
+
+- Ignored state exists under `runs/crypto_strategy_tournament/v2/latest`.
+- Discovery contains 12,960 normalized rows, 4,320 per symbol, with three explicit isolated-gap imputations.
+- At status as-of `2026-07-15T21:00:00Z`, embargo and OOS raw rows remain zero and candidate evidence remains empty.
+- The exact bounded next read-only window was `2026-07-15T00:00:00Z` through `2026-07-15T20:00:00Z` for BTCUSD/ETHUSD/SOLUSD.
+- Readiness correctly classified `blocked_market_data_credentials_or_profile` because the normal process has no paper profile, paper market-data credentials, or explicit paper base URL.
+
+## Current Safety Receipt
+
+- `APP_PROFILE=paper` and all five Alpaca credential variables were absent before implementation and verification; no values were printed.
+- This slice performed no network request, broker/account read, broker mutation, submit, cancel, replace, close, liquidation, paper mutation, or live-endpoint access.
+- The refresh bridge remains fixed-host HTTPS GET market data only and requires both explicit network and market-data-fetch authorization.
+- Paper planning, paper mutation, live trading, capital allocation, and profit claims remain unauthorized.
+- Generated state remains ignored under `runs/`; no generated artifact is tracked or staged.
+
+## Current Verification Receipt
+
+- Expanded tournament-v2, adapter, and PowerShell wrapper matrix: 36 passed in 48.79 seconds.
+- Final terminal-integrity matrix after the serialization fix: 21 passed in 64.21 seconds.
+- Dependency-direction gate: 33 passed in 9.29 seconds.
+- Final repository offline verifier: 97 passed in 136.62 seconds; result `PASS`.
+- Canonical collection: 9,007 tests in 14.43 seconds.
+- A single-process full default run reached its 1,204-second bound without producing a result; this was a timeout, not a failing test node. The required safety verifier and all modified-node tests passed.
+- Independent final reviews found no remaining material defect in the research state machine, terminal sealing, data-only adapter, or orchestration boundary.
+- `git diff --check`: passed.
+- Protected user work remains byte-for-byte unchanged at SHA-256 `4FB473115578E2F25B353F50C409CD7566932ED5CC609DDDF19F7D6B9C34AF17` and `602304A0D55369573B2AF4147850C7271EE518EB097D4AD86DB05D6FD50B4900`.
+
+## Files Owned by This Slice
+
+- `src/algotrader/research/crypto_tournament_v2_forward_oos.py`
+- `src/algotrader/orchestration/crypto_tournament_v2_forward_oos.py`
+- `src/algotrader/execution/crypto_history_refresh_adapter.py`
+- `scripts/run_crypto_tournament_v2_forward_oos.ps1`
+- `scripts/refresh_multi_symbol_crypto_history.ps1`
+- `tests/unit/test_crypto_tournament_v2_forward_oos.py`
+- `tests/unit/test_run_crypto_tournament_v2_forward_oos_script.py`
+- `tests/unit/test_crypto_history_refresh_adapter.py`
+- `tests/unit/test_refresh_multi_symbol_crypto_history_script.py`
+- `docs/design/v5_23_crypto_preregistered_tournament_v2.md`
+- `docs/deterministic_core.md`
+- `docs/OPERATOR_RUNBOOK.md`
+- `docs/agent_context/active_implementation.md`
+
+## Exact Next Action / True Gate
+
+The implementation is complete and the frozen state is running. The remaining action is an exact read-only market-data fetch, which is a true operator credential gate under `AGENTS.md`.
+
+In one isolated process, load `APP_PROFILE=paper`, paper Alpaca market-data credentials, and `APCA_API_BASE_URL=https://paper-api.alpaca.markets` without printing values. Then run:
+
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode market_data_fetch -AsOf <CURRENT_UTC_TIMESTAMP> -MarketDataFetchAuthorized -AllowNetwork
+
+The wrapper computes the earliest missing through latest completed inclusive hour and restricts the call to BTCUSD/ETHUSD/SOLUSD. After it exits, clear the paper profile and credential variables before any test or ordinary local command. Do not manually edit the window, receipt, output, symbols, or generated state.
+
+## Prior Slice — V5.22 Crypto Tournament Intake Verdict
 
 - Execution date: `2026-07-15`.
 - Branch: `codex/crypto-frozen-state-reset-workflow`.
