@@ -457,6 +457,35 @@ def test_duplicate_symbol_timestamp_rows_normalize_deterministically(
     assert first_btc.close == Decimal("101")
 
 
+def test_normalized_output_preserves_existing_file_when_replace_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_path = tmp_path / "history.csv"
+    normalized_path = tmp_path / "normalized.csv"
+    temporary_path = tmp_path / ".normalized.csv.tmp"
+    _write_crypto_csv(csv_path, _multi_symbol_bars(row_count=80))
+    normalized_path.write_text("protected-history\n", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_target_replace(self: Path, target: Path) -> Path:
+        if self == temporary_path:
+            raise OSError("simulated atomic replace failure")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_target_replace)
+
+    with pytest.raises(OSError, match="simulated atomic replace failure"):
+        build_crypto_strategy_real_data_evidence_packet(
+            csv_path,
+            as_of=AS_OF,
+            normalized_output_path=normalized_path,
+        )
+
+    assert normalized_path.read_text(encoding="utf-8") == "protected-history\n"
+    assert not temporary_path.exists()
+
+
 def test_insufficient_ada_rows_and_span_block_sufficiency(tmp_path: Path) -> None:
     csv_path = tmp_path / "ada_short_history.csv"
     bars = (

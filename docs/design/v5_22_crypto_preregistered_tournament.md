@@ -33,7 +33,10 @@ factory version.
 
 ## Data And Temporal Contract
 
-- One canonical, non-fixture `1Hour` CSV supplies all four symbols.
+- One canonical, non-fixture `1Hour` CSV supplies all four symbols. The guarded
+  adapter's normalized schema is `timestamp,symbol,open,high,low,close,volume`;
+  optional provenance columns are validated when present, while authoritative
+  source identity is bound by the refresh receipt and output SHA-256.
 - The CSV must be cryptographically bound to the guarded refresh packet: its
   resolved output path and SHA-256, source, symbols, timeframe, fixed window,
   row counts, and no-mutation safety fields must match.
@@ -96,7 +99,7 @@ operator-input history is not overwritten:
   -Mode market_data_fetch `
   -Symbols "BTCUSD,ETHUSD,SOLUSD,ADAUSD" `
   -Start "2025-07-15T00:00:00Z" `
-  -End "2026-07-15T00:00:00Z" `
+  -End "2026-07-14T23:00:00Z" `
   -AsOfTimestamp "2026-07-15T00:00:00Z" `
   -Timeframe "1Hour" `
   -Loc "us" `
@@ -107,6 +110,8 @@ operator-input history is not overwritten:
   -Format json
 ```
 
+The market-data endpoint treats `End` as inclusive, so `23:00:00Z` identifies
+the final completed hourly bar before the `00:00:00Z` as-of time.
 The fetch is an exact-destination, read-only market-data operation and still
 requires the paper-profile credential and endpoint preflight plus exact
 operator authorization. It exposes no trading mutation.

@@ -68,17 +68,17 @@ _FIXTURE_SOURCE_MARKERS = ("fixture", "synthetic", "generated_demo", "sample_dat
 _CANONICAL_REFRESH_COLUMNS = {
     "timestamp",
     "symbol",
-    "asset_class",
     "open",
     "high",
     "low",
     "close",
     "volume",
-    "basis",
-    "source",
 }
 _EXPECTED_REFRESH_SOURCE = "alpaca_market_data_crypto_bars_v1beta3"
 _EXPECTED_REFRESH_BASIS = "alpaca_crypto_bars_v1beta3_ohlcv"
+_EXPECTED_REFRESH_RECEIPT_SCHEMA_VERSION = (
+    "v5_22_crypto_history_refresh_adapter_receipt_v2"
+)
 _FALSE_SAFETY_FIELDS = (
     "network_access_attempted",
     "market_data_fetch_occurred",
@@ -535,10 +535,16 @@ def _inspect_canonical_csv(path: Path) -> dict[str, object]:
                 raise ValidationError(
                     "crypto tournament CSV does not match the canonical guarded refresh schema."
                 )
+            has_asset_class = "asset_class" in fieldnames
+            has_source = "source" in fieldnames
+            has_basis = "basis" in fieldnames
             for row in reader:
                 row_count += 1
                 symbol = _canonical_symbol(row.get("symbol", ""))
-                if str(row.get("asset_class", "")).strip().lower() != "crypto":
+                if (
+                    has_asset_class
+                    and str(row.get("asset_class", "")).strip().lower() != "crypto"
+                ):
                     raise ValidationError("tournament CSV asset_class must be crypto.")
                 timestamp = _utc_datetime(row.get("timestamp", ""), "timestamp")
                 key = (symbol, timestamp)
@@ -549,14 +555,20 @@ def _inspect_canonical_csv(path: Path) -> dict[str, object]:
                     raise ValidationError("tournament rows must be strictly chronological per symbol.")
                 seen.add(key)
                 previous_by_symbol[symbol] = timestamp
-                source = str(row.get("source", "")).strip()
-                basis = str(row.get("basis", "")).strip()
-                source_values.add(source)
-                basis_values.add(basis)
-                if source != _EXPECTED_REFRESH_SOURCE:
-                    raise ValidationError("tournament CSV source is not the guarded Alpaca refresh source.")
-                if basis != _EXPECTED_REFRESH_BASIS:
-                    raise ValidationError("tournament CSV basis is not the guarded OHLCV basis.")
+                if has_source:
+                    source = str(row.get("source", "")).strip()
+                    source_values.add(source)
+                    if source != _EXPECTED_REFRESH_SOURCE:
+                        raise ValidationError(
+                            "tournament CSV source is not the guarded Alpaca refresh source."
+                        )
+                if has_basis:
+                    basis = str(row.get("basis", "")).strip()
+                    basis_values.add(basis)
+                    if basis != _EXPECTED_REFRESH_BASIS:
+                        raise ValidationError(
+                            "tournament CSV basis is not the guarded OHLCV basis."
+                        )
                 volume = _decimal(row.get("volume", ""))
                 if volume < _ZERO:
                     raise ValidationError("tournament CSV volume cannot be negative.")
@@ -587,6 +599,16 @@ def _inspect_canonical_csv(path: Path) -> dict[str, object]:
         "row_count": row_count,
         "source_values": sorted(source_values),
         "basis_values": sorted(basis_values),
+        "source_binding": "guarded_refresh_receipt",
+        "optional_provenance_columns_present": sorted(
+            field
+            for field, present in (
+                ("asset_class", has_asset_class),
+                ("basis", has_basis),
+                ("source", has_source),
+            )
+            if present
+        ),
         "positive_volume_rows_by_symbol": positive_volume_rows_by_symbol,
         "positive_volume_fraction_by_symbol": positive_volume_fraction_by_symbol,
         "minimum_positive_volume_fraction": _decimal_text(
@@ -594,7 +616,9 @@ def _inspect_canonical_csv(path: Path) -> dict[str, object]:
         ),
         "duplicate_timestamp_status": "passed",
         "chronology_status": "passed",
-        "fixture_source_status": "passed",
+        "fixture_source_status": (
+            "passed" if has_source else "receipt_bound_not_present_in_normalized_csv"
+        ),
     }
 
 
@@ -616,6 +640,7 @@ def _validate_refresh_provenance(
         raise ValidationError("guarded refresh packet must be a JSON object.")
 
     required_pairs = {
+        "schema_version": _EXPECTED_REFRESH_RECEIPT_SCHEMA_VERSION,
         "record_type": "crypto_history_refresh_adapter_packet",
         "mode": "market_data_fetch",
         "classification": "sufficient_real_crypto_history",
@@ -662,9 +687,22 @@ def _validate_refresh_provenance(
     requested_start = _utc_datetime(packet.get("requested_start", ""), "requested_start")
     requested_end = _utc_datetime(packet.get("requested_end", ""), "requested_end")
     packet_as_of = _utc_datetime(packet.get("as_of", ""), "refresh_as_of")
-    if requested_end != as_of or packet_as_of != as_of:
-        raise ValidationError("tournament as_of must equal the guarded refresh end/as_of.")
-    if requested_end - requested_start < timedelta(hours=MINIMUM_COMMON_HOURLY_BARS):
+    one_hour = timedelta(hours=1)
+    if packet_as_of != as_of:
+        raise ValidationError("tournament as_of must equal the guarded refresh as_of.")
+    if requested_end + one_hour != as_of:
+        raise ValidationError(
+            "guarded refresh end must be the last completed hourly bar before as_of."
+        )
+    if any(
+        value.minute or value.second or value.microsecond
+        for value in (requested_start, requested_end, as_of)
+    ):
+        raise ValidationError("guarded refresh window must align to UTC hours.")
+    if requested_end < requested_start or (requested_end - requested_start) % one_hour:
+        raise ValidationError("guarded refresh window must be a positive hourly grid.")
+    inclusive_window = requested_end - requested_start + one_hour
+    if inclusive_window < timedelta(hours=MINIMUM_COMMON_HOURLY_BARS):
         raise ValidationError("guarded refresh window is shorter than 4,320 hours.")
 
     rows_per_symbol = _mapping(packet.get("rows_per_symbol_after_normalization"))
@@ -721,7 +759,7 @@ def _coverage_errors(
         if expected_end not in (None, "")
         else None
     )
-    if bound_end is not None and bound_end != as_of:
+    if bound_end is not None and bound_end + timedelta(hours=1) != as_of:
         errors.append("refresh_end_as_of_mismatch")
     for symbol in TOURNAMENT_SYMBOLS:
         symbol_bars = tuple(grouped[symbol])
@@ -743,7 +781,7 @@ def _coverage_errors(
             errors.append(f"partial_or_future_bar:{symbol}")
         if bound_start is not None and timestamps[0] != bound_start:
             errors.append(f"refresh_start_history_mismatch:{symbol}")
-        if bound_end is not None and timestamps[-1] + timedelta(hours=1) != bound_end:
+        if bound_end is not None and timestamps[-1] != bound_end:
             errors.append(f"stale_or_incomplete_refresh_end:{symbol}")
         if reference_timestamps is None:
             reference_timestamps = timestamps

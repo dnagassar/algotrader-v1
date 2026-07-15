@@ -307,6 +307,10 @@ def test_authorized_market_data_fetch_uses_read_only_urls_and_coverage_gate(
     assert SENSITIVE_KEY not in json.dumps(packet, sort_keys=True)
     assert SENSITIVE_SECRET not in json.dumps(packet, sort_keys=True)
     assert output_path.is_file()
+    assert output_path.read_text(encoding="utf-8").splitlines()[0] == (
+        "timestamp,symbol,open,high,low,close,volume"
+    )
+    assert not output_path.with_name(f".{output_path.name}.tmp").exists()
     assert packet["timeframe"] == "1Hour"
     assert packet["loc"] == "us"
     assert packet["output_sha256"] == hashlib.sha256(output_path.read_bytes()).hexdigest()

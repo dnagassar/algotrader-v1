@@ -597,8 +597,8 @@ liquidation, paper-mode, or live-mode switch.
 2. For an exactly authorized read-only refresh, load paper market-data settings
    only into the isolated refresh process. Never print or paste credential
    values.
-3. Fetch the fixed `2025-07-15T00:00:00Z` through
-   `2026-07-15T00:00:00Z` one-hour window into
+3. Fetch the fixed `2025-07-15T00:00:00Z` through the inclusive final completed
+   bar at `2026-07-14T23:00:00Z` (as-of `2026-07-15T00:00:00Z`) into
    `runs\crypto_strategy_tournament\v1\input\crypto_1h_1y.csv` using
    `scripts\refresh_multi_symbol_crypto_history.ps1`. Do not use the default
    operator-input path.

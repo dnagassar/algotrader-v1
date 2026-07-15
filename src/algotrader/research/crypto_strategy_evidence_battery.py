@@ -1329,7 +1329,13 @@ def _write_normalized_crypto_history_csv(
                 "volume": row.volume,
             }
         )
-    output_path.write_text(buffer.getvalue(), encoding="utf-8")
+    temporary = output_path.with_name(f".{output_path.name}.tmp")
+    try:
+        temporary.write_text(buffer.getvalue(), encoding="utf-8")
+        temporary.replace(output_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     return output_path
 
 

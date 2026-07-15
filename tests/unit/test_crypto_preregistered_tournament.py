@@ -323,6 +323,78 @@ def test_bound_refresh_receipt_can_produce_authoritative_classification(
     }
     assert packet["input_intake"]["minimum_positive_volume_fraction"] == "0.95"
     assert set(packet["input_intake"]["positive_volume_fraction_by_symbol"].values()) == {"1"}
+    assert packet["input_intake"]["source_binding"] == "guarded_refresh_receipt"
+    assert packet["input_intake"]["optional_provenance_columns_present"] == []
+    assert packet["input_intake"]["fixture_source_status"] == (
+        "receipt_bound_not_present_in_normalized_csv"
+    )
+
+
+def test_refresh_receipt_end_is_inclusive_and_must_precede_as_of(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "history.csv"
+    _write_canonical_csv(input_path, count=1)
+    input_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    packet_path = tmp_path / "refresh.json"
+    refresh = _refresh_packet(input_path, output_sha256=input_hash, rows=4320)
+    refresh["requested_end"] = AS_OF.isoformat()
+    packet_path.write_text(json.dumps(refresh), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="last completed hourly bar"):
+        run_crypto_preregistered_tournament_from_csv(
+            input_path,
+            refresh_packet_path=packet_path,
+            as_of=AS_OF,
+        )
+
+
+def test_refresh_receipt_requires_exact_schema_version(tmp_path: Path) -> None:
+    input_path = tmp_path / "history.csv"
+    _write_canonical_csv(input_path, count=1)
+    input_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    packet_path = tmp_path / "refresh.json"
+    refresh = _refresh_packet(input_path, output_sha256=input_hash, rows=4320)
+    refresh["schema_version"] = "obsolete_receipt"
+    packet_path.write_text(json.dumps(refresh), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="schema_version"):
+        run_crypto_preregistered_tournament_from_csv(
+            input_path,
+            refresh_packet_path=packet_path,
+            as_of=AS_OF,
+        )
+
+
+def test_normalized_adapter_csv_rejects_low_positive_volume_coverage(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "low-volume.csv"
+    rows = ["timestamp,symbol,open,high,low,close,volume"]
+    for bar in _history_bars(20):
+        close = str(bar.close)
+        volume = "0" if bar.symbol == "ADAUSD" else "1"
+        rows.append(
+            ",".join(
+                (
+                    bar.timestamp.isoformat(),
+                    bar.symbol,
+                    close,
+                    close,
+                    close,
+                    close,
+                    volume,
+                )
+            )
+        )
+    input_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="positive-volume coverage.*ADAUSD"):
+        run_crypto_preregistered_tournament_from_csv(
+            input_path,
+            refresh_packet_path=tmp_path / "missing.json",
+            as_of=AS_OF,
+        )
 
 
 def test_runner_is_offline_local_csv_only() -> None:
@@ -382,9 +454,7 @@ def _history_bars(count: int) -> tuple[CryptoEvidenceBar, ...]:
 
 
 def _write_canonical_csv(path: Path, *, count: int) -> None:
-    rows = [
-        "timestamp,symbol,asset_class,open,high,low,close,volume,basis,source"
-    ]
+    rows = ["timestamp,symbol,open,high,low,close,volume"]
     for bar in _history_bars(count):
         close = str(bar.close)
         rows.append(
@@ -392,14 +462,11 @@ def _write_canonical_csv(path: Path, *, count: int) -> None:
                 (
                     bar.timestamp.isoformat(),
                     bar.symbol,
-                    "crypto",
                     close,
                     close,
                     close,
                     close,
                     "1",
-                    "alpaca_crypto_bars_v1beta3_ohlcv",
-                    "alpaca_market_data_crypto_bars_v1beta3",
                 )
             )
         )
@@ -413,6 +480,7 @@ def _refresh_packet(
     rows: int,
 ) -> dict[str, object]:
     start = AS_OF - timedelta(hours=rows)
+    end = AS_OF - timedelta(hours=1)
     return {
         "schema_version": "v5_22_crypto_history_refresh_adapter_receipt_v2",
         "record_type": "crypto_history_refresh_adapter_packet",
@@ -434,7 +502,7 @@ def _refresh_packet(
         "output_path": str(input_path),
         "output_sha256": output_sha256,
         "requested_start": start.isoformat(),
-        "requested_end": AS_OF.isoformat(),
+        "requested_end": end.isoformat(),
         "as_of": AS_OF.isoformat(),
         "market_data_fetch_occurred": True,
         "network_access_attempted": True,

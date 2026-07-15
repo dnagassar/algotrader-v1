@@ -1,6 +1,84 @@
 # Active Implementation Checkpoint
 
-## Current Slice — Frozen ADA Forward-OOS Verdict
+## Current Slice — V5.22 Crypto Tournament Intake Verdict
+
+- Execution date: `2026-07-15`.
+- Branch: `codex/crypto-frozen-state-reset-workflow`.
+- Preregistration commit frozen before the long-history fetch: `1def8ebe55baefffe99e95e7d98d9b216c17a3ee` (`Preregister crypto strategy tournament`).
+- Preregistration fingerprint remains `1475d35634750a7f00832f0a540fbaac3e28e7ed82ac7dbd8ef2d60e08f09097`.
+- Scope: execute the accepted one-year, one-hour, read-only Alpaca backfill for the fixed BTC/ETH/SOL/ADA tournament, run the unchanged intake gate, and stop only on decision-changing evidence or a true gate.
+- Exactly one implementation writer owned the checkout. Delegated reviews were read-only.
+
+## Current Implementation Result
+
+- Corrected the tournament reader to accept the guarded adapter's actual normalized seven-column CSV while retaining authoritative receipt/path/SHA/source/schema/safety binding.
+- Corrected the provider's inclusive end-time contract: request end `2026-07-14T23:00:00Z`, as-of `2026-07-15T00:00:00Z`, and require the final timestamp to equal the inclusive request end.
+- Required exact refresh receipt schema `v5_22_crypto_history_refresh_adapter_receipt_v2`.
+- Preserved validation of optional `asset_class`, `basis`, and `source` columns when they exist; normalized files report that source identity is receipt-bound rather than CSV-attested.
+- Made the final normalized-history replacement atomic and added failure-preservation coverage.
+- Candidate identities, parameters, costs, benchmarks, OOS windows, promotion thresholds, minimum rows, minimum positive-volume fraction, no-submit scope, and preregistration fingerprint did not change after data inspection.
+
+## Current Authoritative Data Verdict
+
+- Fixed read-only request completed for `2025-07-15T00:00:00Z` through inclusive `2026-07-14T23:00:00Z`.
+- Bound normalized output SHA-256: `65db4f1aa09b8c45a8d8fcaf9f4e2b965a7d5814c859fa3125416d7497908137`.
+- Bound raw-response SHA-256: `c8c21dba961a8312bec7b31808e4ce0ea2e01494a6a258a3ae686aef6f9a7054`.
+- Receipt hashes match the generated files.
+- BTCUSD: 8,759 rows, 8,729 positive-volume rows, positive-volume fraction `0.996575`, one non-hourly discontinuity.
+- ETHUSD: 8,758 rows, 8,641 positive-volume rows, positive-volume fraction `0.986641`, two non-hourly discontinuities.
+- SOLUSD: 8,753 rows, 8,490 positive-volume rows, positive-volume fraction `0.969953`, five non-hourly discontinuities.
+- ADAUSD: 3,635 rows, 2,299 positive-volume rows, positive-volume fraction `0.632462`, starts `2026-02-13T12:00:00Z`, and has one non-hourly discontinuity.
+- ADAUSD is 685 rows below the immutable 4,320-hour minimum and 31.754 percentage points below the immutable 95% positive-volume floor.
+- Offline tournament intake terminated with `positive-volume coverage below tournament threshold for ADAUSD`.
+- The row deficit and unequal/gapped common grid independently prevent the fixed four-symbol tournament from reaching strategy scoring.
+- Terminal classification: `blocked_by_authoritative_input_history_quality`.
+- No candidate was evaluated, ranked, selected, promoted, shadow-enabled, paper-planned, or made broker-eligible. No profit claim exists.
+
+## Current Safety Receipt
+
+- Paper market-data credentials were loaded only in the isolated authorized refresh process; values were never printed.
+- Network access was limited to four sequential HTTPS `GET` requests on the fixed Alpaca crypto-bars market-data host/path.
+- Market-data fetch occurred. Broker/account read, broker mutation, submit, cancel, replace, close, liquidation, live authorization, and live-endpoint access did not occur.
+- Exact-value scan of the normalized CSV, refresh receipt, and raw response found no credential value.
+- The normal implementation and test environment is credential-free.
+- Generated evidence remains under ignored `runs/`; no generated artifact is tracked or staged.
+
+## Current Verification Receipt
+
+- Focused tournament, refresh-adapter, and evidence-battery matrix: 48 passed in 15.54 seconds.
+- Dependency-direction gate: 33 passed in 6.63 seconds.
+- Repository offline verifier: 97 passed in 85.68 seconds; result `PASS`.
+- The full verifier safety prelude repeated 97 passes in 83.01 seconds.
+- Canonical full collection: 8,978 exact nodes across 450 files.
+- The first four-shard collection attempt hit the default 300-second Windows collection timeout; this was an infrastructure timeout, not a failed test.
+- The exact suite was rerun with the same four shards and a 600-second collection allowance. Execution began only after canonical/shard collection equivalence passed.
+- Completed JUnit receipts: 8,974 passed, 4 skipped, 0 failures, 0 errors across all 8,978 nodes.
+- `git diff --check`: passed.
+- Protected user work remained byte-for-byte unchanged at SHA-256 `4FB473115578E2F25B353F50C409CD7566932ED5CC609DDDF19F7D6B9C34AF17` and `602304A0D55369573B2AF4147850C7271EE518EB097D4AD86DB05D6FD50B4900`.
+
+## Files Owned by This Slice
+
+- `src/algotrader/research/crypto_preregistered_tournament.py`
+- `src/algotrader/research/crypto_strategy_evidence_battery.py`
+- `tests/unit/test_crypto_preregistered_tournament.py`
+- `tests/unit/test_crypto_history_refresh_adapter.py`
+- `tests/unit/test_crypto_strategy_evidence_battery.py`
+- `docs/design/v5_22_crypto_preregistered_tournament.md`
+- `docs/OPERATOR_RUNBOOK.md`
+- `docs/agent_context/active_implementation.md`
+
+## Exact Next Action / True Gate
+
+Do not weaken, retune, or remove ADA from tournament v1 after seeing this data. The v1 intake verdict is terminal.
+
+Continuing immediately requires a new scope decision because either path changes the frozen evidence contract:
+
+1. Preferred fast path: explicitly authorize a new preregistered `tournament_v2` liquid universe containing BTCUSD, ETHUSD, and SOLUSD only, keep v1 closed, assign a new fingerprint, and reserve a new untouched OOS window; or
+2. Supply or authorize an independent authoritative ADA hourly-history source that can prove at least 4,320 consecutive common hours and at least 95% positive-volume coverage under a new receipt-bound intake contract.
+
+This is a true evidence/scope gate, not routine workflow management. No additional Alpaca retry, model API, paper-account mutation, or live-capital action can repair the frozen v1 evidence.
+
+## Prior Slice — Frozen ADA Forward-OOS Verdict
 
 - Execution date: `2026-07-15`.
 - Branch at takeover: `codex/crypto-frozen-state-reset-workflow`.
