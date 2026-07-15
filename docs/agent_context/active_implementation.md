@@ -1,5 +1,52 @@
 # Active Implementation Checkpoint
 
+## Current Slice — Frozen ADA Forward-OOS Verdict
+
+- Execution date: `2026-07-15`.
+- Branch at takeover: `codex/crypto-frozen-state-reset-workflow`.
+- Parent HEAD at takeover: `c06b416dc45535aa7616659b104a8f082874ea0c` (`Automate market data evidence soak`).
+- Scope: execute the already-selected, exact-window, read-only Alpaca crypto-bars refresh for the immutable candidate `crypto:ADAUSD:trend_momentum_24h_repair`, then classify its untouched forward-OOS evidence without retuning or authorizing paper mutation.
+- The inherited SPY market-data soak remains active and unchanged; crypto is the accelerated research lane, not an automatically promoted paper-capital lane.
+- Exactly one implementation writer owned this checkout. Delegated repository audits were read-only.
+
+## Current Evidence Verdict
+
+- Readiness classification before fetch: `ready_for_explicit_read_only_market_data_fetch` with no blockers.
+- Authorized window: `2026-07-10T01:00:00Z` through `2026-07-15T14:23:14Z`, strictly after the frozen discovery cutoff `2026-07-09T16:00:00Z`.
+- Provider observations accrued: 142 hourly rows per symbol for `BTCUSD`, `ETHUSD`, `SOLUSD`, and `ADAUSD`; 568 normalized rows total.
+- Final classification: `fresh_oos_rejected`.
+- Frozen ADA candidate: `-0.03577738` total return, `0.05794141` maximum drawdown, 13 trades/turnover transitions.
+- Required benchmarks: cash `0`, ADA buy-and-hold `-0.00657559`, equal-weight BTC/ETH/SOL/ADA basket `0.02961488`.
+- Rejection reasons: `cash_underperformance`, `buy_and_hold_underperformance`, and `basket_underperformance`.
+- Rows still required by the legacy 26-row gate: `0`.
+- Paper-planning and repair eligibility: `not_eligible`.
+- This is a decision-quality strategy rejection. Discovery snapshot, frozen-candidate identity, chronology, duplicate, fixture, leakage, and accrued-state integrity checks all passed.
+- Do not rescue-tune, rename, or paper-probe this frozen candidate. Any future configuration is a new preregistered candidate with a new identity and untouched evaluation windows.
+
+## Current Safety Receipt
+
+- Broker credentials and `APP_PROFILE=paper` were absent from the normal implementation/test environment.
+- Existing locally stored paper market-data settings were loaded only into isolated readiness/fetch processes after exact operator authorization; no values were printed or written to artifacts.
+- Network access was limited to the adapter's fixed-host Alpaca crypto-bars HTTPS `GET` path. Market-data fetch occurred; broker read, broker mutation, submit, cancel, replace, close, liquidation, and live-endpoint access did not occur.
+- Artifact scan confirmed no locally stored credential value appears in the readiness, refresh, raw-response, normalized-bar, accrued-OOS, or operating-packet artifacts.
+- Generated state remains under ignored `runs/`; no generated run artifact is tracked.
+
+## Current Verification Receipt
+
+- Focused adapter, frozen-OOS, and dependency-direction matrix: 77 passed in 14.78 seconds before the network call.
+- Independent delegated focused matrix: 85 passed in 17.60 seconds.
+- Repository offline verifier: 97 passed in 94.72 seconds; final result `PASS`.
+- `git diff --check`: passed.
+- No changed or untracked files under `src/` or `tests/`.
+- Protected user work remained byte-for-byte unchanged.
+
+## Current Files Owned by This Slice
+
+- `docs/agent_context/active_implementation.md`
+- Ignored/generated evidence under `runs/crypto_repair_forward_oos_accrual/latest/` (never authority and never staged).
+
+## Inherited Baseline Context
+
 ## Verified Repository Baseline
 
 - Repository: `C:\Users\danie\Desktop\algo_trader`.
@@ -91,6 +138,16 @@
 
 ## Exact Next Action
 
-No routine operator action remains. The registered task and evaluator will collect expected sessions `2026-07-15`, `2026-07-16`, `2026-07-17`, and `2026-07-20`; after the July 20 20:10 Eastern run, the report will promote classification automatically if all four qualify. Future market-session availability is the current hard external-time gate. Escalate only a missing/invalid Tiingo credential, a latest-session failure that exhausts the configured retries, or an OS scheduler failure that cannot be repaired within the user-level task scope.
+Treat `crypto:ADAUSD:trend_momentum_24h_repair` as closed and rejected. Do not retune it or authorize a paper probe.
 
-The next repository milestone should consume that reliable data to produce decision-quality evidence: a predeclared walk-forward/OOS comparison of SPY SMA 50/200 against cash and simple challengers with costs, regime slices, stability metrics, and rejection thresholds. Do not add another model API, retrieval source, or execution framework until that evidence lane identifies a concrete information bottleneck.
+The next implementation milestone is a new, preregistered crypto evidence tournament while the SPY operational soak continues independently:
+
+- backfill at least 180 days (`4,320` hourly bars per symbol) for `BTCUSD`, `ETHUSD`, `SOLUSD`, and `ADAUSD`, with one year preferred
+- use 1-hour bars as the primary research timeframe and 4-hour aggregation only as a robustness check; do not add sub-hour strategies
+- freeze candidate identities and parameters before OOS evaluation
+- compare every candidate with cash, symbol buy-and-hold, and the equal-weight basket
+- add realistic taker-fee/slippage base and doubled-cost stress cases
+- require multi-window untouched OOS stability, drawdown and profit-concentration gates, and minimum trade/sample thresholds before no-submit shadow eligibility
+- preserve the existing no-submit, paper-mutation, broker, credential, network-default, and live-capital boundaries
+
+No new model API, retrieval source, execution framework, or paper-account mutation is justified by this verdict. The next writer should implement the tournament/backfill slice on the current branch after repeating the credential-free preflight and preserving the two protected user-owned artifacts below.
