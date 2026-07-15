@@ -218,7 +218,7 @@ credential overrides.
 
 ## Authoritative SPY EOD Market-Data Refresh
 
-This one-shot lane refreshes adjusted SPY daily bars from Tiingo without
+This isolated lane refreshes adjusted SPY daily bars from Tiingo without
 constructing a broker client or authorizing any paper/live order operation.
 Tiingo documents most EOD prices near 17:30 ET and corrections through 20:00 ET:
 `https://www.tiingo.com/documentation/end-of-day`.
@@ -263,6 +263,9 @@ the explicit authorization switch:
   -OutputCsv .data\operator_inputs\spy_tiingo_adjusted_refresh_latest.csv `
   -CanonicalCsv runs\operator_input\m446_spy_daily_tiingo_adjusted_canonical.csv `
   -RunLog runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl `
+  -SoakLedger runs\paper_lab\spy_adjusted_market_data_soak_ledger.jsonl `
+  -SoakReport runs\paper_lab\spy_adjusted_market_data_soak_report.json `
+  -SoakRequiredSessions 5 `
   -Mode live_market_data_fetch `
   -RawResponsePath runs\paper_lab\tiingo_spy_adjusted_raw_latest.json `
   -StartDate auto `
@@ -293,6 +296,10 @@ Authoritative local artifacts:
   `runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv`
 - one-record refresh manifest:
   `runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl`
+- append-only secret-free refresh-attempt ledger:
+  `runs/paper_lab/spy_adjusted_market_data_soak_ledger.jsonl`
+- automatically regenerated readiness report:
+  `runs/paper_lab/spy_adjusted_market_data_soak_report.json`
 
 Success is `accepted_adjusted_spy_data_refresh`. Inspect `revision_outcome`,
 `revised_dates`, row counts, `source_sha256`, `current_canonical_sha256`,
@@ -301,6 +308,14 @@ or bar validation failures are blocked and preserve the previous canonical
 file. This lane performs no broker read, broker mutation, paper submit, or live
 operation.
 
+
+The soak report counts distinct expected NYSE sessions, so same-session retries
+cannot inflate readiness. A failed latest session resets the current streak
+until a same-session retry succeeds. The state remains
+`collecting_unattended_market_data_soak` and the evidence classification remains
+`operational_data_provenance_capability` until five consecutive sessions qualify.
+Only then does the report emit `accepted_unattended_market_data_soak` and
+`unattended_authoritative_market_data_proven`. This is not strategy evidence.
 
 ## Read-Only Journal Cancellation-Planning Preview
 

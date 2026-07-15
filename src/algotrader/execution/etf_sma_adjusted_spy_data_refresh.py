@@ -26,6 +26,10 @@ import sys
 from typing import Any
 
 from algotrader.errors import ValidationError
+from algotrader.execution.etf_sma_market_data_soak import (
+    record_adjusted_market_data_soak,
+)
+
 
 __all__ = [
     "APPROVED_ADJUSTED_ETF_SYMBOLS",
@@ -157,6 +161,9 @@ class ETFAdjustedDataRefreshConfig:
     revision_lookback_days: int = _DEFAULT_REVISION_LOOKBACK_DAYS
     token_env_var: str = _TOKEN_ENV_VAR
     run_id: str = "v178_automatic_adjusted_spy_data_refresh"
+    soak_ledger: Path | str | None = None
+    soak_report: Path | str | None = None
+    soak_required_sessions: int = 5
 
     def __post_init__(self) -> None:
         provider = _required_string(self.provider, "provider").lower()
@@ -223,6 +230,36 @@ class ETFAdjustedDataRefreshConfig:
         object.__setattr__(self, "revision_lookback_days", revision_lookback_days)
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
 
+        soak_ledger = self.soak_ledger
+        soak_report = self.soak_report
+        if (soak_ledger is None) != (soak_report is None):
+            raise ValidationError(
+                "soak_ledger and soak_report must be supplied together."
+            )
+        required_sessions = self.soak_required_sessions
+        if (
+            isinstance(required_sessions, bool)
+            or not isinstance(required_sessions, int)
+            or not 1 <= required_sessions <= 20
+        ):
+            raise ValidationError(
+                "soak_required_sessions must be an integer from 1 to 20."
+            )
+        object.__setattr__(self, "soak_required_sessions", required_sessions)
+        if soak_ledger is not None and soak_report is not None:
+            if self.mode != _LIVE_MARKET_DATA_FETCH or not self.live_fetch_authorized:
+                raise ValidationError(
+                    "soak outputs require an authorized live market-data fetch."
+                )
+            ledger_path = _required_path(soak_ledger, "soak_ledger")
+            report_path = _required_path(soak_report, "soak_report")
+            if not _runtime_output_path(ledger_path):
+                raise ValidationError("soak_ledger must be a runtime output path.")
+            if not _runtime_output_path(report_path):
+                raise ValidationError("soak_report must be a runtime output path.")
+            object.__setattr__(self, "soak_ledger", ledger_path)
+            object.__setattr__(self, "soak_report", report_path)
+
 
 SPYAdjustedDataRefreshConfig = ETFAdjustedDataRefreshConfig
 
@@ -260,6 +297,18 @@ def run_spy_adjusted_data_refresh(
         http_get=http_get,
     )
     write_spy_adjusted_data_refresh_jsonl(payload, config.run_log)
+    if config.soak_ledger is not None and config.soak_report is not None:
+        soak_report = record_adjusted_market_data_soak(
+            payload,
+            ledger_path=config.soak_ledger,
+            report_path=config.soak_report,
+            required_sessions=config.soak_required_sessions,
+        )
+        payload = dict(payload)
+        payload["soak_evidence"] = soak_report
+        payload["soak_ledger_path"] = str(config.soak_ledger)
+        payload["soak_report_path"] = str(config.soak_report)
+        write_spy_adjusted_data_refresh_jsonl(payload, config.run_log)
     return payload
 
 
@@ -1585,6 +1634,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--canonical-csv", required=True)
     parser.add_argument("--run-log", required=True)
     parser.add_argument("--symbol", choices=APPROVED_ADJUSTED_ETF_SYMBOLS, default=_SYMBOL)
+    parser.add_argument("--soak-ledger", default=None)
+    parser.add_argument("--soak-report", default=None)
+    parser.add_argument(
+        "--soak-required-sessions",
+        type=int,
+        default=5,
+    )
     parser.add_argument("--mode", choices=_MODES, default=_DRY_RUN)
     parser.add_argument("--fixture-input-path", default=None)
     parser.add_argument("--raw-response-path", default=None)
@@ -1645,6 +1701,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raw_response_path=args.raw_response_path,
                 start_date=args.start_date,
                 revision_lookback_days=args.revision_lookback_days,
+                soak_ledger=args.soak_ledger,
+                soak_report=args.soak_report,
+                soak_required_sessions=args.soak_required_sessions,
             ),
             token_lookup=token_lookup,
             http_get=http_get,

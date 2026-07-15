@@ -22,6 +22,8 @@
 - `docs/OPERATOR_RUNBOOK.md`
 - `tests/unit/test_spy_adjusted_data_refresh.py`
 - `tests/unit/test_spy_eod_market_data_refresh_schedule.py`
+- `src/algotrader/execution/etf_sma_market_data_soak.py`
+- `tests/unit/test_spy_market_data_soak.py`
 - `tests/unit/test_run_daily_paper_lab_cycle_script.py`
 - `docs/agent_context/active_implementation.md`
 
@@ -37,34 +39,36 @@
 - Existing rows inside the fetched interval are authoritatively replaced while rows outside the interval are preserved.
 - Raw provider bytes, normalized candidate CSV, canonical CSV, and one-record manifests use same-volume atomic replacement with cleanup. Validation and replace failures preserve the previous canonical bytes.
 - Default expected-date resolution now uses the latest actually completed NYSE session, including pre-close fallback and weekend/holiday catch-up.
-- The new one-shot Task Scheduler template runs at 20:10 host-local America/New_York time on weekdays, requires network availability, ignores overlapping instances, retries three times at fifteen-minute intervals, and calls only the Tiingo refresh. It is deliberately separate from the paper-mutation supervisor.
+- The isolated Task Scheduler template runs at 20:10 host-local America/New_York time on weekdays, requires network availability, ignores overlapping instances, retries three times at fifteen-minute intervals, and calls only the Tiingo refresh. It is deliberately separate from the paper-mutation supervisor.
 - The local `TIINGO_API_KEY` was found in the untracked `.env`, loaded only inside the scoped adapter, and was never printed or written to an artifact.
 - The Windows user-level task `spy-eod-market-data-refresh` is registered, `Ready`, and scheduled for 20:10 host-local Eastern time on weekdays. Its first on-demand run completed with Task Scheduler result `0`.
 - PowerShell string registration required removing the XML byte-encoding declaration; a regression test now pins that Windows compatibility contract.
+- Each configured live attempt now appends a compact secret-free receipt and atomically regenerates a readiness report; same-session retries cannot inflate the distinct-session streak.
+- A failed latest expected session resets the current streak until that session succeeds, so retries improve recovery without manufacturing evidence.
+- The registered task is soak-enabled and its on-demand seed completed with result `0`: one qualifying session, four remaining, next expected session `2026-07-15`.
 
 ## Verification Receipt
 
-- Focused refresh/schedule/intake/calendar/script/import/network/dependency matrix from the feature slice: 116 passed in 81.29 seconds.
-- Scheduler compatibility regression file after the activation fix: 3 passed in 0.51 seconds.
-- Required dependency-direction recheck: 33 passed in 9.76 seconds.
-- Repository targeted offline verifier: 97 passed in 111.72 seconds; final result `PASS`.
-- Full sharded default suite collected and executed 8,952 tests across four exact shards with collection and execution equivalence:
-  - shard 1: 2,238 tests, exit `0`, no timeout
-  - shard 2: 2,238 tests, exit `0`, no timeout
-  - shard 3: 2,238 tests, exit `0`, no timeout
-  - shard 4: 2,238 tests, exit `0`, no timeout
-  - aggregate: 8,948 passed, 4 skipped, 0 failures, 0 errors; bounded full suite `PASS`
+- Focused soak/refresh/scheduler matrix: 49 passed in 2.83 seconds.
+- Focused soak/refresh/scheduler/dependency/import matrix: 86 passed in 24.66 seconds.
+- Repository targeted offline verifier: 97 passed in 79.15 seconds; final result `PASS`.
+- Full verifier repeated the 97 safety tests in 77.43 seconds and then collected and executed 8,960 tests across four exact shards with collection and execution equivalence:
+  - shard 1: 2,240 tests, exit `0`, no timeout
+  - shard 2: 2,240 tests, exit `0`, no timeout
+  - shard 3: 2,240 tests, exit `0`, no timeout
+  - shard 4: 2,240 tests, exit `0`, no timeout
+  - aggregate: 8,956 passed, 4 skipped, 0 failures, 0 errors; bounded full suite `PASS`
 - `git diff --check`: passed.
 - No tracked `runs/` artifacts were created.
-- Two authorized exact-destination Tiingo HTTPS `GET` refreshes occurred: one direct activation fetch and one end-to-end Task Scheduler verification fetch.
-- The activation fetch accepted 8,420 canonical rows through `2026-07-14`, appended one new row, found six unchanged overlap rows, and produced canonical SHA-256 `46B540097449EA9FA8A7018A8E547DC62ADABD2E713C0477DA8D4F18B764F9E2`.
-- The scheduled verification fetch returned `accepted_adjusted_spy_data_refresh`, left the canonical unchanged, and advanced the manifest successfully.
+- Three authorized exact-destination Tiingo HTTPS `GET` refreshes have occurred across activation and verification; the latest was the soak-enabled Task Scheduler seed.
+- The seed receipt qualified expected session `2026-07-14`, left canonical SHA-256 `46B540097449EA9FA8A7018A8E547DC62ADABD2E713C0477DA8D4F18B764F9E2` unchanged, and produced `collecting_unattended_market_data_soak` at 1/5 with next expected session `2026-07-15`.
+- Task Scheduler returned `0`; the receipt recorded token printed/written false and broker access/mutation false.
 - No broker SDK, broker credential lookup, broker read, broker mutation, submit, cancel, replace, close, liquidation, or live-capital action occurred.
 
 ## Classification and Trajectory Impact
 
 - Task classification: `authoritative_read_only_market_data_vertical_slice`.
-- Evidence classification: `operational_data_provenance_capability`; it improves data freshness, correction visibility, and end-to-end unattended input preparation, but it is not strategy evidence or an alpha result.
+- Evidence classification remains `operational_data_provenance_capability` at 1/5. The deterministic report alone promotes it to `unattended_authoritative_market_data_proven` after five consecutive qualifying expected sessions; neither state is strategy evidence or an alpha result.
 - Autonomy impact: positive but bounded. The system can prepare and audit authoritative adjusted bars on a schedule without an operator hand-editing CSVs. It still cannot establish that SPY SMA 50/200 or any challenger has deployable edge.
 - Safety/orchestration impact: narrower and materially useful rather than another general framework. Destination, method, credential, artifact, and schedule scope are explicit and tested.
 - Live-capital impact: none. The repository remains paper-only and not live-authorized.
@@ -87,6 +91,6 @@
 
 ## Exact Next Action
 
-Activation is complete. Collect a bounded five-expected-session data soak from the registered task and review Task Scheduler results, manifest refresh states, revision outcomes, latest-session dates, and canonical hashes. Escalate only a missing or invalid Tiingo credential, repeated provider failure, or an OS scheduler failure that cannot be repaired within the user-level task scope.
+No routine operator action remains. The registered task and evaluator will collect expected sessions `2026-07-15`, `2026-07-16`, `2026-07-17`, and `2026-07-20`; after the July 20 20:10 Eastern run, the report will promote classification automatically if all four qualify. Future market-session availability is the current hard external-time gate. Escalate only a missing/invalid Tiingo credential, a latest-session failure that exhausts the configured retries, or an OS scheduler failure that cannot be repaired within the user-level task scope.
 
 The next repository milestone should consume that reliable data to produce decision-quality evidence: a predeclared walk-forward/OOS comparison of SPY SMA 50/200 against cash and simple challengers with costs, regime slices, stability metrics, and rejection thresholds. Do not add another model API, retrieval source, or execution framework until that evidence lane identifies a concrete information bottleneck.

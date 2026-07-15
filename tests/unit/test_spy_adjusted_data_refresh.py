@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 from datetime import UTC, datetime
 import json
 import os
@@ -38,6 +39,11 @@ def test_refresh_script_contract_defaults_to_dry_run_and_requires_live_flag() ->
     assert "--revision-lookback-days" in script
     assert "--symbol" in script
     assert "--dotenv-path" in script
+    assert "[string]$SoakLedger" in script
+    assert "[string]$SoakReport" in script
+    assert "[int]$SoakRequiredSessions = 5" in script
+    assert "--soak-ledger" in script
+    assert "--soak-report" in script
     assert "if ($LiveMarketDataFetchAuthorized)" in script
     assert "$AppProfile -eq \"live\"" in script
     assert "TIINGO_API_KEY" in script
@@ -490,6 +496,95 @@ def test_current_canonical_runs_bounded_revision_check_and_is_idempotent(
     assert payload["network_access_attempted"] is True
     assert payload["market_data_token_access_attempted"] is True
     assert canonical_csv.read_bytes() == before
+
+
+
+
+def test_authorized_live_refresh_records_soak_receipt_and_summary(
+    tmp_path: Path,
+) -> None:
+    canonical_csv = tmp_path / "canonical.csv"
+    _write_canonical(canonical_csv, latest_date=EXPECTED_DATE)
+    ledger = tmp_path / "soak.jsonl"
+    report_path = tmp_path / "soak-report.json"
+    config = replace(
+        _live_config(tmp_path, canonical_csv),
+        soak_ledger=ledger,
+        soak_report=report_path,
+        soak_required_sessions=5,
+    )
+
+    payload = run_spy_adjusted_data_refresh(
+        config,
+        token_lookup=lambda name: "tiingo-token",
+        http_get=_valid_same_day_http_get,
+    )
+
+    report = payload["soak_evidence"]
+    assert report["evidence_state"] == "collecting_unattended_market_data_soak"
+    assert report["current_consecutive_qualifying_sessions"] == 1
+    assert report["remaining_consecutive_sessions"] == 4
+    assert report["next_expected_session_date"] == "2026-06-23"
+    assert payload["soak_ledger_path"] == str(ledger)
+    assert payload["soak_report_path"] == str(report_path)
+    receipt = json.loads(ledger.read_text(encoding="utf-8"))
+    assert receipt["qualifying"] is True
+    assert receipt["broker_access_attempted"] is False
+    assert json.loads(report_path.read_text(encoding="utf-8")) == report
+    persisted = json.loads(config.run_log.read_text(encoding="utf-8"))
+    assert persisted["soak_evidence"]["attempt_count"] == 1
+
+
+
+
+def test_failed_authorized_fetch_records_blocked_soak_receipt(
+    tmp_path: Path,
+) -> None:
+    canonical_csv = tmp_path / "canonical.csv"
+    _write_canonical(canonical_csv, latest_date="2026-06-18")
+    ledger = tmp_path / "soak.jsonl"
+    report_path = tmp_path / "soak-report.json"
+    config = replace(
+        _live_config(tmp_path, canonical_csv),
+        soak_ledger=ledger,
+        soak_report=report_path,
+    )
+
+    def failed_get(url: str, headers: Mapping[str, str]) -> bytes:
+        raise refresh.MarketDataFetchError("provider_http_status_failure")
+
+    payload = run_spy_adjusted_data_refresh(
+        config,
+        token_lookup=lambda name: "tiingo-token",
+        http_get=failed_get,
+    )
+
+    assert payload["refresh_state"] == "blocked_live_market_data_fetch_http_failed"
+    report = payload["soak_evidence"]
+    assert report["evidence_state"] == "blocked_latest_expected_session_not_accepted"
+    assert report["current_consecutive_qualifying_sessions"] == 0
+    assert report["remaining_consecutive_sessions"] == 5
+    assert report["next_expected_session_date"] == EXPECTED_DATE
+    receipt = json.loads(ledger.read_text(encoding="utf-8"))
+    assert receipt["qualifying"] is False
+    assert "refresh_state_not_accepted" in receipt["qualification_blockers"]
+    assert receipt["broker_access_attempted"] is False
+
+def test_soak_outputs_require_authorized_live_market_data_mode(tmp_path: Path) -> None:
+    with pytest.raises(
+        ValidationError,
+        match="soak outputs require an authorized live market-data fetch",
+    ):
+        SPYAdjustedDataRefreshConfig(
+            provider="tiingo",
+            expected_latest_bar_date=EXPECTED_DATE,
+            output_csv=tmp_path / "operator.csv",
+            canonical_csv=tmp_path / "canonical.csv",
+            run_log=tmp_path / "manifest.jsonl",
+            mode="dry_run",
+            soak_ledger=tmp_path / "soak.jsonl",
+            soak_report=tmp_path / "report.json",
+        )
 
 
 def test_http_failure_preserves_existing_canonical(tmp_path: Path) -> None:

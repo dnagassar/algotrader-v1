@@ -568,18 +568,30 @@ Read-only market-data command contract:
 - manifests record the provider response hash, prior canonical hash, normalized
   candidate hash, final canonical hash, changed dates, and new/unchanged/revised
   row counts
+- when the explicit soak outputs are configured, each authorized live attempt
+  adds a compact secret-free receipt to an atomically replaced JSONL ledger
+- the readiness report deduplicates by expected NYSE session and measures the
+  current consecutive qualifying-session streak across weekends and holidays
+- retries do not inflate the streak; a failed latest session blocks readiness
+  until that same session succeeds
+- five consecutive sessions prove unattended data operation, not strategy edge
 - raw, candidate, canonical, and manifest artifacts are promoted by same-volume
   atomic replacement after deterministic validation
 - HTTP failures, invalid JSON, invalid bars, stale provider data, or scope
   violations preserve the previous canonical file and fail closed
 
-The one-shot Task Scheduler template
+The isolated Task Scheduler template
 `docs/design/spy_eod_market_data_refresh_scheduled_task.xml` runs at 20:10
 host-local New York time on weekdays, after Tiingo’s stated 20:00 correction
 window. It is deliberately separate from the paper-mutation supervisor, uses
 `IgnoreNew`, requires network availability, retries three times at fifteen-minute
 intervals, and resolves the latest actually completed NYSE session across
 pre-close runs, weekends, holidays, and early closes.
+The task writes the soak ledger and report in the same invocation as the data
+refresh. Neither artifact loads credentials, opens a network connection, calls
+a broker, or authorizes an order. The readiness classification changes only
+from accumulated refresh receipts; no LLM or agent judgment is in the decision
+path.
 
 Default pytest remains socket-blocked, credential-free, and network-free. Tests
 exercise this boundary only through injected transports and local fixtures.

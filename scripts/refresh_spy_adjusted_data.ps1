@@ -22,6 +22,10 @@ param(
     [string]$CanonicalCsv,
     [Parameter(Mandatory = $true)]
     [string]$RunLog,
+    [string]$SoakLedger,
+    [string]$SoakReport,
+    [ValidateRange(1, 20)]
+    [int]$SoakRequiredSessions = 5,
     [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD")]
     [string]$Symbol = "SPY",
     [ValidateSet("offline_fixture", "dry_run", "live_market_data_fetch")]
@@ -54,6 +58,7 @@ $CliArgs = @(
     "--output-csv", $OutputCsv,
     "--canonical-csv", $CanonicalCsv,
     "--run-log", $RunLog,
+    "--soak-required-sessions", $SoakRequiredSessions,
     "--symbol", $Symbol,
     "--mode", $Mode,
     "--start-date", $StartDate,
@@ -72,6 +77,14 @@ if (-not [string]::IsNullOrEmpty($FixtureInputPath)) {
 
 if (-not [string]::IsNullOrEmpty($RawResponsePath)) {
     $CliArgs += @("--raw-response-path", $RawResponsePath)
+}
+
+if (-not [string]::IsNullOrEmpty($SoakLedger)) {
+    $CliArgs += @("--soak-ledger", $SoakLedger)
+}
+
+if (-not [string]::IsNullOrEmpty($SoakReport)) {
+    $CliArgs += @("--soak-report", $SoakReport)
 }
 
 if ($LiveMarketDataFetchAuthorized) {

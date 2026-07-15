@@ -38,7 +38,7 @@ def test_spy_eod_refresh_schedule_runs_after_tiingo_correction_window() -> None:
     assert _text(root, ".//task:ExecutionTimeLimit") == "PT15M"
 
 
-def test_spy_eod_refresh_schedule_is_one_shot_tiingo_only() -> None:
+def test_spy_eod_refresh_schedule_is_isolated_tiingo_only() -> None:
     root = ET.parse(SCHEDULE).getroot()
     arguments = _text(root, ".//task:Arguments")
 
@@ -50,6 +50,9 @@ def test_spy_eod_refresh_schedule_is_one_shot_tiingo_only() -> None:
     assert "-StartDate auto" in arguments
     assert "m446_spy_daily_tiingo_adjusted_canonical.csv" in arguments
     assert "tiingo_spy_adjusted_raw_latest.json" in arguments
+    assert "spy_adjusted_market_data_soak_ledger.jsonl" in arguments
+    assert "spy_adjusted_market_data_soak_report.json" in arguments
+    assert "-SoakRequiredSessions 5" in arguments
     assert "run_spy_paper_mutation_supervisor.ps1" not in arguments
     assert "paper-autopilot-supervisor" not in arguments
 
