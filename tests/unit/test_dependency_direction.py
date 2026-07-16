@@ -202,6 +202,10 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.etf_sma_preview_jsonl_artifact",
     "algotrader.orchestration.etf_sma_paper_broker_preview",
     "algotrader.orchestration.etf_sma_paper_probe_operator_review",
+    (
+        "algotrader.orchestration."
+        "crypto_tournament_v2_bounded_paper_probe_review"
+    ),
 )
 
 ORCHESTRATION_BOUNDARY_RULES = tuple(

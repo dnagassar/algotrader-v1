@@ -951,3 +951,60 @@ The detailed contract is recorded in
 end-to-end research autonomy and removes post-selection workflow delay. It does
 not itself add strategy performance evidence before the future calendar window,
 and it grants no broker, paper-mutation, capital, or live authority.
+
+## Tournament V2 Bounded Paper-Probe Review Contract
+
+V5.26 preregisters the decision boundary after one sealed V5.25 forward-shadow
+outcome. Its fingerprint is
+`3b82ebcaf3c80b9c1fbda5797623b2e616dfef0a3ed38d2cc52c0b1d3151efb5`.
+The state exporter recovers and locks V5.25 state, validates every persisted
+identity, independently regenerates normalization, decisions, metrics, and the
+terminal evidence fingerprint, and returns a path-free export without creating
+new evidence state. It may first complete an already-journaled interrupted V5.25
+transaction under the state lock. V5.26 then requires the exact frozen v2 candidate, exact 168-hour window,
+canonical checkpoint state, terminal scoring flag, closure ordering, metric
+algebra, and false-authority contract.
+
+The eight frozen gates require positive base and stress returns, positive base
+and stress excess returns versus same-symbol buy-and-hold, base and stress
+drawdown no greater than 20 percent, and each drawdown no worse than the
+corresponding buy-and-hold drawdown. Evaluation is driven directly by the
+fingerprinted manifest. No result-dependent transition minimum, retuning,
+candidate substitution, ranking, rescue path, or window extension is allowed.
+
+The prospective probe envelope is exact-selected-symbol, long/cash, USD 10
+maximum notional/principal, USD 2 durable loss halt, one position/open
+order/entry/exit, one cancel attempt per order, zero replacements, and 168
+hours, with no leverage, margin, shorting, pyramiding, or cross-symbol exposure.
+Venue, policy, lifecycle plus independent flat reconciliation, and durable
+kill/loss capabilities are all required. Capability files must bind canonical
+bytes to separate producer-source files, exact upstream source contracts, one
+policy fingerprint, and one coherent bundle fingerprint; assertions alone are
+invalid. Every cited upstream artifact is resolved from a fixed local path,
+bound by canonical bytes, and semantically validated; claims and observation
+time are derived from those bytes.
+
+For a multi-source capability, the earliest upstream observation controls the
+kind expiry; a fresh reconciliation cannot refresh stale mechanics evidence.
+The normalized policy, lifecycle, and kill upstream schemas still require real
+canonical producers and resolved subordinate code/test receipts before they can
+constitute operational evidence; coherent unit fixtures are contract tests only.
+
+The deterministic outcomes are waiting, terminal input-quality closure,
+economic rejection, operational-evidence block, or
+`eligible_for_operator_review_only`. Eligible review packets expire at the
+earliest effective capability expiry. Their full safety-critical identity is
+fingerprinted. The persisted validator is structural only: a future
+authorization consumer must replay the snapshotted terminal, capability,
+producer, and upstream sources with trusted current UTC and match the exact
+fingerprint. Publication uses a local process lock, immutable
+fingerprint-addressed generations containing the terminal source and only
+capability sources actually evaluated after strategy acceptance, and an atomic
+latest manifest written last. No authorization-grade generation replay consumer
+exists yet; persisted validation remains non-authorizing.
+
+This module imports no execution adapter and has no network, credential,
+account, broker, order, paper-mutation, capital, or live path. Its strongest
+outcome still has every authority field false and requires a separate exact
+operator authorization. The full contract is in
+`docs/design/v5_26_crypto_tournament_v2_bounded_paper_probe_review.md`.

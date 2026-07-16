@@ -67,6 +67,9 @@ CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_STATE_SCHEMA_VERSION = (
 CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_PACKET_SCHEMA_VERSION = (
     "v5_25_crypto_tournament_v2_forward_shadow_packet_v1"
 )
+CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_TERMINAL_EVIDENCE_SCHEMA_VERSION = (
+    "v5_26_crypto_tournament_v2_forward_shadow_terminal_evidence_v1"
+)
 CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_CONTEXT_ROWS = 169
 
 _EXPECTED_RECEIPT_SCHEMA = "v5_22_crypto_history_refresh_adapter_receipt_v2"
@@ -116,6 +119,8 @@ __all__ = [
     "CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_CONTEXT_ROWS",
     "CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_PACKET_SCHEMA_VERSION",
     "CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_STATE_SCHEMA_VERSION",
+    "CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_TERMINAL_EVIDENCE_SCHEMA_VERSION",
+    "export_crypto_tournament_v2_forward_shadow_terminal_evidence",
     "initialize_crypto_tournament_v2_forward_shadow_state",
     "render_crypto_tournament_v2_forward_shadow_state_markdown",
     "run_crypto_tournament_v2_forward_shadow_state",
@@ -762,20 +767,22 @@ def _run_crypto_tournament_v2_forward_shadow_state_locked(
                     },
                 }
             )
-        packet["terminal_evidence_fingerprint"] = _stable_hash(
-            {
-                "preregistration_fingerprint": state[
-                    "preregistration_fingerprint"
-                ],
-                "activation_fingerprint": state["activation_fingerprint"],
-                "context_sha256": state["context_sha256"],
-                "activation_warmup_hash": _rows_hash(warmup_normalized),
-                "shadow_hash": _rows_hash(next_shadow_normalized),
-                "decision_log": list(next_decision_log),
-                "classification": packet["classification"],
-                "terminal_input_quality": packet["terminal_input_quality"],
-                "terminal_metrics": packet["terminal_metrics"],
-            }
+        packet["terminal_evidence_fingerprint"] = (
+            _compute_terminal_evidence_fingerprint(
+                state=state,
+                activation_warmup=warmup_normalized,
+                shadow_normalized=next_shadow_normalized,
+                decision_log=next_decision_log,
+                classification=str(packet["classification"]),
+                terminal_input_quality=_mapping(
+                    packet["terminal_input_quality"],
+                    "terminal_input_quality",
+                ),
+                terminal_metrics=_mapping(
+                    packet["terminal_metrics"],
+                    "terminal_metrics",
+                ),
+            )
         )
         packet["next_refresh"] = {
             "classification": "terminal_window_closed",
@@ -849,6 +856,53 @@ def _run_crypto_tournament_v2_forward_shadow_state_locked(
     if write_artifacts:
         _write_operating_packet(paths, packet)
     return packet
+
+
+def export_crypto_tournament_v2_forward_shadow_terminal_evidence(
+    *,
+    output_root: Path | str = (
+        CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_DEFAULT_OUTPUT_ROOT
+    ),
+    as_of: datetime | str,
+) -> dict[str, object]:
+    """Export one independently validated, path-free terminal evidence packet."""
+
+    root = _local_path(output_root, "output_root")
+    evaluated_at = _utc_datetime(as_of, "as_of")
+    with _exclusive_state_lock(root):
+        paths = _state_paths(root)
+        _recover_pending_transaction(paths)
+        if not paths["state"].is_file():
+            raise ValidationError("forward-shadow state is not initialized.")
+        (
+            state,
+            context,
+            activation_warmup,
+            shadow_raw,
+            shadow_normalized,
+            _ledger,
+            decision_log,
+            checkpoint_ledger,
+        ) = _load_and_validate_state(paths)
+        updated_at = _utc_datetime(state.get("updated_at"), "state.updated_at")
+        if evaluated_at < updated_at:
+            raise ValidationError(
+                "forward-shadow terminal export as_of cannot regress state time."
+            )
+        if state.get("terminal_outcome_closed") is not True:
+            raise ValidationError("forward-shadow terminal evidence is not sealed.")
+        terminal_packet = _load_terminal_packet(paths, state)
+        return _build_terminal_evidence_export(
+            state=state,
+            context=context,
+            activation_warmup=activation_warmup,
+            shadow_raw=shadow_raw,
+            shadow_normalized=shadow_normalized,
+            decision_log=decision_log,
+            checkpoint_ledger=checkpoint_ledger,
+            terminal_packet=terminal_packet,
+            as_of=evaluated_at,
+        )
 
 
 def render_crypto_tournament_v2_forward_shadow_state_markdown(
@@ -2053,6 +2107,346 @@ def _checkpoint_ledger(
             }
             for hour in FORWARD_SHADOW_CHECKPOINT_HOURS
         ],
+    }
+
+
+def _compute_terminal_evidence_fingerprint(
+    *,
+    state: Mapping[str, object],
+    activation_warmup: Sequence[_Bar],
+    shadow_normalized: Sequence[_Bar],
+    decision_log: Sequence[Mapping[str, object]],
+    classification: str,
+    terminal_input_quality: Mapping[str, object],
+    terminal_metrics: Mapping[str, object],
+) -> str:
+    return _stable_hash(
+        {
+            "preregistration_fingerprint": state[
+                "preregistration_fingerprint"
+            ],
+            "activation_fingerprint": state["activation_fingerprint"],
+            "context_sha256": state["context_sha256"],
+            "activation_warmup_hash": _rows_hash(activation_warmup),
+            "shadow_hash": _rows_hash(shadow_normalized),
+            "decision_log": list(decision_log),
+            "classification": classification,
+            "terminal_input_quality": dict(terminal_input_quality),
+            "terminal_metrics": dict(terminal_metrics),
+        }
+    )
+
+
+def _build_terminal_evidence_export(
+    *,
+    state: Mapping[str, object],
+    context: Sequence[_Bar],
+    activation_warmup: Sequence[_Bar],
+    shadow_raw: Sequence[_Bar],
+    shadow_normalized: Sequence[_Bar],
+    decision_log: Sequence[Mapping[str, object]],
+    checkpoint_ledger: Mapping[str, object],
+    terminal_packet: Mapping[str, object],
+    as_of: datetime,
+) -> dict[str, object]:
+    eligible_classification = (
+        "evidence_complete_for_bounded_paper_probe_review"
+    )
+    quality_classification = "terminal_shadow_input_quality_gate"
+    classification = _required_text(
+        state.get("terminal_classification"),
+        "terminal_classification",
+    )
+    if classification not in {
+        eligible_classification,
+        quality_classification,
+    }:
+        raise ValidationError(
+            "forward-shadow terminal classification is not exportable."
+        )
+    scoring_performed = _required_bool(
+        state.get("terminal_scoring_performed"),
+        "terminal_scoring_performed",
+    )
+    if scoring_performed is not (classification == eligible_classification):
+        raise ValidationError(
+            "forward-shadow terminal classification/scoring mismatch."
+        )
+    if (
+        terminal_packet.get("schema_version")
+        != CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_PACKET_SCHEMA_VERSION
+        or terminal_packet.get("record_type")
+        != "crypto_tournament_v2_forward_shadow_packet"
+        or terminal_packet.get("classification") != classification
+        or terminal_packet.get("terminal_scoring_performed")
+        is not scoring_performed
+        or terminal_packet.get("terminal_evidence_fingerprint")
+        != state.get("terminal_evidence_fingerprint")
+        or terminal_packet.get("preregistration_fingerprint")
+        != state.get("preregistration_fingerprint")
+        or terminal_packet.get("activation_fingerprint")
+        != state.get("activation_fingerprint")
+    ):
+        raise ValidationError(
+            "forward-shadow terminal packet identity mismatch."
+        )
+
+    candidate = dict(_mapping(state.get("candidate"), "state.candidate"))
+    symbol = _required_text(state.get("selected_symbol"), "selected_symbol")
+    if (
+        terminal_packet.get("selected_candidate") != candidate
+        or candidate.get("symbol") != symbol
+    ):
+        raise ValidationError(
+            "forward-shadow terminal candidate binding mismatch."
+        )
+    warmup_start = _utc_datetime(
+        state.get("activation_warmup_start"),
+        "activation_warmup_start",
+    )
+    shadow_start = _utc_datetime(state.get("shadow_start"), "shadow_start")
+    shadow_end = _utc_datetime(
+        state.get("shadow_end_exclusive"),
+        "shadow_end_exclusive",
+    )
+    expected_window = {
+        "start": shadow_start.isoformat(),
+        "end_exclusive": shadow_end.isoformat(),
+        "hourly_bars": FORWARD_SHADOW_HOURLY_BARS,
+        "checkpoint_hours": list(FORWARD_SHADOW_CHECKPOINT_HOURS),
+    }
+    if terminal_packet.get("shadow_window") != expected_window:
+        raise ValidationError(
+            "forward-shadow terminal window binding mismatch."
+        )
+
+    progress = _mapping(terminal_packet.get("progress"), "progress")
+    completed_checkpoints = list(
+        checkpoint_ledger.get("completed_checkpoint_hours", [])
+    )
+    expected_progress = {
+        "activation_warmup_expected_rows": _hour_count(
+            warmup_start,
+            shadow_start,
+        ),
+        "activation_warmup_raw_rows": len(activation_warmup),
+        "shadow_expected_rows": FORWARD_SHADOW_HOURLY_BARS,
+        "shadow_raw_rows": len(shadow_raw),
+        "shadow_normalized_rows": len(shadow_normalized),
+        "decision_log_rows": len(decision_log),
+        "completed_checkpoint_hours": completed_checkpoints,
+    }
+    if dict(progress) != expected_progress:
+        raise ValidationError(
+            "forward-shadow terminal progress binding mismatch."
+        )
+    if completed_checkpoints != list(
+        state.get("completed_checkpoint_hours", [])
+    ):
+        raise ValidationError(
+            "forward-shadow terminal checkpoint binding mismatch."
+        )
+    if (
+        classification == eligible_classification
+        and completed_checkpoints != list(FORWARD_SHADOW_CHECKPOINT_HOURS)
+    ):
+        raise ValidationError(
+            "forward-shadow terminal checkpoints are incomplete."
+        )
+
+    warmup_normalized, warmup_quality, warmup_errors = (
+        _normalize_selected_window(
+            activation_warmup,
+            symbol=symbol,
+            start=warmup_start,
+            end_exclusive=shadow_start,
+            phase="activation_warmup",
+            strict_complete=True,
+        )
+    )
+    recomputed_shadow, shadow_quality, shadow_errors = (
+        _normalize_selected_window(
+            shadow_raw,
+            symbol=symbol,
+            start=shadow_start,
+            end_exclusive=shadow_end,
+            phase="shadow",
+            strict_complete=False,
+        )
+    )
+    terminal_errors = list(warmup_errors + shadow_errors)
+    if len(shadow_normalized) != FORWARD_SHADOW_HOURLY_BARS:
+        terminal_errors.append("shadow_normalized_grid_incomplete")
+    if len(decision_log) != FORWARD_SHADOW_HOURLY_BARS:
+        terminal_errors.append("shadow_decision_log_incomplete")
+    expected_input_quality = {
+        "activation_warmup": warmup_quality,
+        "shadow": shadow_quality,
+        "errors": list(dict.fromkeys(terminal_errors)),
+    }
+    terminal_input_quality = dict(
+        _mapping(
+            terminal_packet.get("terminal_input_quality"),
+            "terminal_input_quality",
+        )
+    )
+    if (
+        terminal_input_quality != expected_input_quality
+        or terminal_packet.get("activation_warmup_quality") != warmup_quality
+        or terminal_packet.get("shadow_quality") != shadow_quality
+    ):
+        raise ValidationError(
+            "forward-shadow terminal input-quality evidence drifted."
+        )
+    terminal_metrics = dict(
+        _mapping(terminal_packet.get("terminal_metrics"), "terminal_metrics")
+    )
+
+    if classification == eligible_classification:
+        if terminal_errors:
+            raise ValidationError(
+                "eligible forward-shadow terminal evidence has quality errors."
+            )
+        if (
+            len(shadow_raw) != FORWARD_SHADOW_HOURLY_BARS
+            or len(shadow_normalized) != FORWARD_SHADOW_HOURLY_BARS
+            or len(decision_log) != FORWARD_SHADOW_HOURLY_BARS
+            or [row.canonical() for row in recomputed_shadow]
+            != [row.canonical() for row in shadow_normalized]
+        ):
+            raise ValidationError(
+                "eligible forward-shadow terminal grid is incomplete."
+            )
+        regenerated_decisions, regenerated_metrics = _build_decision_evidence(
+            context=context,
+            activation_warmup=warmup_normalized,
+            shadow_rows=shadow_normalized,
+            candidate=candidate,
+        )
+        if tuple(decision_log) != regenerated_decisions:
+            raise ValidationError(
+                "forward-shadow terminal decisions failed regeneration."
+            )
+        if terminal_metrics != regenerated_metrics:
+            raise ValidationError(
+                "forward-shadow terminal metrics failed regeneration."
+            )
+    elif terminal_metrics:
+        raise ValidationError(
+            "input-quality terminal evidence cannot publish strategy metrics."
+        )
+
+    evidence_fingerprint = _compute_terminal_evidence_fingerprint(
+        state=state,
+        activation_warmup=warmup_normalized,
+        shadow_normalized=shadow_normalized,
+        decision_log=decision_log,
+        classification=classification,
+        terminal_input_quality=terminal_input_quality,
+        terminal_metrics=terminal_metrics,
+    )
+    if evidence_fingerprint != state.get("terminal_evidence_fingerprint"):
+        raise ValidationError(
+            "forward-shadow terminal evidence fingerprint failed regeneration."
+        )
+
+    false_fields = (
+        "broker_read_occurred",
+        "broker_mutation_authorized",
+        "broker_mutation_occurred",
+        "paper_submit_authorized",
+        "paper_submit_occurred",
+        "paper_cancel_occurred",
+        "paper_replace_occurred",
+        "paper_close_occurred",
+        "paper_liquidate_occurred",
+        "paper_or_broker_eligible",
+        "bounded_paper_probe_review_permitted",
+        "paper_or_live_execution_authorized",
+        "capital_allocation_authorized",
+        "live_authorized",
+        "live_endpoint_touched",
+        "credential_values_exposed",
+    )
+    for field_name in false_fields:
+        if terminal_packet.get(field_name) is not False:
+            raise ValidationError(
+                f"forward-shadow terminal safety field must be false: {field_name}."
+            )
+    if (
+        terminal_packet.get("paper_planning_eligibility") != "not_eligible"
+        or terminal_packet.get("profit_claim") != "none"
+    ):
+        raise ValidationError(
+            "forward-shadow terminal authority boundary drifted."
+        )
+    source_network = _required_bool(
+        terminal_packet.get("network_access_attempted"),
+        "network_access_attempted",
+    )
+    source_market_data = _required_bool(
+        terminal_packet.get("market_data_fetch_occurred"),
+        "market_data_fetch_occurred",
+    )
+
+    artifact_sha256 = dict(
+        _mapping(state.get("artifact_sha256"), "artifact_sha256")
+    )
+    source_binding = {
+        "preregistration_fingerprint": state["preregistration_fingerprint"],
+        "state_schema_version": state["schema_version"],
+        "packet_schema_version": terminal_packet["schema_version"],
+        "activation_fingerprint": state["activation_fingerprint"],
+        "activation_source_state_fingerprint": state[
+            "source_state_fingerprint"
+        ],
+        "state_fingerprint": state["state_fingerprint"],
+        "context_sha256": state["context_sha256"],
+        "terminal_packet_sha256": state["terminal_packet_sha256"],
+        "terminal_evidence_fingerprint": evidence_fingerprint,
+        "terminal_closed_at": state["terminal_closed_at"],
+        "artifact_sha256": artifact_sha256,
+    }
+    safety = {
+        "source_network_access_attempted": source_network,
+        "source_market_data_fetch_occurred": source_market_data,
+        "broker_read_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "paper_probe_authorized": False,
+        "paper_mutation_authorized": False,
+        "capital_allocation_authorized": False,
+        "live_authorized": False,
+        "live_endpoint_touched": False,
+        "credential_values_exposed": False,
+        "profit_claim": "none",
+    }
+    basis: dict[str, object] = {
+        "classification": classification,
+        "review_eligible_source": classification == eligible_classification,
+        "terminal_scoring_performed": scoring_performed,
+        "selected_candidate": candidate,
+        "selected_symbol": symbol,
+        "shadow_window": expected_window,
+        "progress": expected_progress,
+        "terminal_input_quality": terminal_input_quality,
+        "terminal_metrics": terminal_metrics,
+        "source_binding": source_binding,
+        "safety": safety,
+    }
+    identity_basis = {
+        "schema_version": (
+            CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_TERMINAL_EVIDENCE_SCHEMA_VERSION
+        ),
+        "record_type": (
+            "crypto_tournament_v2_forward_shadow_terminal_evidence"
+        ),
+        **basis,
+    }
+    return {
+        **identity_basis,
+        "as_of": as_of.isoformat(),
+        "evidence_export_fingerprint": _stable_hash(identity_basis),
     }
 
 

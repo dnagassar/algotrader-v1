@@ -15,6 +15,7 @@ from algotrader.execution.crypto_history_refresh_adapter import (
     CryptoHistoryRefreshConfig,
 )
 from algotrader.orchestration import (
+    crypto_tournament_v2_bounded_paper_probe_review as probe_review,
     crypto_tournament_v2_forward_shadow as shadow_operating,
 )
 from algotrader.research.crypto_preregistered_tournament_v2 import (
@@ -186,7 +187,10 @@ def _write_history(
     hours: int,
     missing_indexes: set[int] | None = None,
     price: Decimal = Decimal("100"),
+    prices: tuple[Decimal, ...] | None = None,
 ) -> None:
+    if prices is not None and len(prices) != hours:
+        raise AssertionError("prices must contain exactly one value per hour")
     missing = missing_indexes or set()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as stream:
@@ -207,7 +211,10 @@ def _write_history(
         for index in range(hours):
             if index in missing:
                 continue
-            value = format(price, "f")
+            value = format(
+                price if prices is None else prices[index],
+                "f",
+            )
             writer.writerow(
                 {
                     "timestamp": (start + (index * ONE_HOUR)).isoformat(),
@@ -286,6 +293,7 @@ def _delta(
     name: str,
     missing_indexes: set[int] | None = None,
     price: Decimal = Decimal("100"),
+    prices: tuple[Decimal, ...] | None = None,
 ) -> tuple[Path, Path]:
     state = json.loads((root / "frozen_state.json").read_text(encoding="utf-8"))
     symbol = state["selected_symbol"]
@@ -298,6 +306,7 @@ def _delta(
         hours=hours,
         missing_indexes=missing_indexes,
         price=price,
+        prices=prices,
     )
     _write_receipt(
         receipt,
@@ -665,18 +674,50 @@ def test_complete_168_hour_shadow_seals_terminal_evidence_and_replays(
     root, packet = _initialize(tmp_path, monkeypatch)
     start = _utc(packet["shadow_window"]["start"])
     end = _utc(packet["shadow_window"]["end_exclusive"])
+    prices = tuple(
+        [Decimal("100") + (Decimal(index + 1) / Decimal("2")) for index in range(40)]
+        + [
+            Decimal("120")
+            - (Decimal(index + 1) * Decimal("20") / Decimal("70"))
+            for index in range(70)
+        ]
+        + [Decimal("90") for _ in range(58)]
+    )
     delta = _delta(
         tmp_path,
         root=root,
         start=start,
         hours=168,
         name="complete",
+        prices=prices,
     )
 
     terminal = _run_delta(root=root, as_of=end, delta=delta)
+    operating_before_export = (root / "operating_packet.json").read_bytes()
+    exported = (
+        shadow_state.export_crypto_tournament_v2_forward_shadow_terminal_evidence(
+            output_root=root,
+            as_of=end,
+        )
+    )
+    assert (root / "operating_packet.json").read_bytes() == (
+        operating_before_export
+    )
+    exported_later = (
+        shadow_state.export_crypto_tournament_v2_forward_shadow_terminal_evidence(
+            output_root=root,
+            as_of=end + ONE_HOUR,
+        )
+    )
     replay = shadow_state.run_crypto_tournament_v2_forward_shadow_state(
         output_root=root,
         as_of=end + ONE_HOUR,
+    )
+    downstream_review = (
+        probe_review.build_crypto_tournament_v2_bounded_paper_probe_review(
+            exported,
+            as_of=end,
+        )
     )
 
     assert terminal["classification"] == (
@@ -688,6 +729,29 @@ def test_complete_168_hour_shadow_seals_terminal_evidence_and_replays(
     assert terminal["progress"]["completed_checkpoint_hours"] == [24, 72, 168]
     assert terminal["bounded_paper_probe_review_permitted"] is False
     assert terminal["capital_allocation_authorized"] is False
+    assert exported["classification"] == terminal["classification"]
+    assert exported["review_eligible_source"] is True
+    assert exported["terminal_scoring_performed"] is True
+    assert exported["terminal_metrics"] == terminal["terminal_metrics"]
+    assert exported["source_binding"]["terminal_evidence_fingerprint"] == (
+        terminal["terminal_evidence_fingerprint"]
+    )
+    assert exported_later["evidence_export_fingerprint"] == (
+        exported["evidence_export_fingerprint"]
+    )
+    assert exported_later["as_of"] != exported["as_of"]
+    assert downstream_review["classification"] == (
+        "blocked_by_operational_evidence"
+    )
+    assert all(
+        item["passed"] for item in downstream_review["strategy_gate_results"]
+    )
+    assert (root / "operating_packet.json").read_bytes() != b""
+    assert operating_before_export == json.dumps(
+        terminal,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8") + b"\n"
     assert replay["terminal_evidence_fingerprint"] == (
         terminal["terminal_evidence_fingerprint"]
     )
@@ -721,6 +785,58 @@ def test_one_missing_hour_fails_locked_point_995_terminal_coverage(
         terminal["terminal_input_quality"]["errors"]
     )
     assert terminal["capital_allocation_authorized"] is False
+    exported = (
+        shadow_state.export_crypto_tournament_v2_forward_shadow_terminal_evidence(
+            output_root=root,
+            as_of=end,
+        )
+    )
+    assert exported["classification"] == "terminal_shadow_input_quality_gate"
+    assert exported["review_eligible_source"] is False
+    assert exported["terminal_metrics"] == {}
+
+
+def test_terminal_quality_export_accepts_incomplete_checkpoint_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, packet = _initialize(tmp_path, monkeypatch)
+    start = _utc(packet["shadow_window"]["start"])
+    end = _utc(packet["shadow_window"]["end_exclusive"])
+    delta = _delta(
+        tmp_path,
+        root=root,
+        start=start,
+        hours=168,
+        name="double_gap",
+        missing_indexes={25, 26},
+    )
+
+    terminal = _run_delta(root=root, as_of=end, delta=delta)
+    exported = (
+        shadow_state.export_crypto_tournament_v2_forward_shadow_terminal_evidence(
+            output_root=root,
+            as_of=end,
+        )
+    )
+
+    assert terminal["classification"] == "terminal_shadow_input_quality_gate"
+    assert terminal["progress"]["completed_checkpoint_hours"] == [24]
+    assert exported["progress"]["completed_checkpoint_hours"] == [24]
+    assert exported["terminal_scoring_performed"] is False
+
+
+def test_terminal_export_rejects_unsealed_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, packet = _initialize(tmp_path, monkeypatch)
+
+    with pytest.raises(ValidationError, match="terminal evidence is not sealed"):
+        shadow_state.export_crypto_tournament_v2_forward_shadow_terminal_evidence(
+            output_root=root,
+            as_of=packet["as_of"],
+        )
 
 
 def test_tampered_frozen_context_is_rejected(

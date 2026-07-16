@@ -787,3 +787,47 @@ credential-free shell before development or tests. Checkpoints at hours 24 and
 72 are completeness receipts only. At hour 168, accept either sealed shadow
 evidence for a bounded-paper-probe review or the terminal input-quality gate;
 neither is paper mutation, capital allocation, or live authorization.
+
+## Tournament V2 Bounded Paper-Probe Review
+
+Run the V5.26 review only from a normal credential-free development shell:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_bounded_paper_probe_review.ps1
+```
+
+The default uses the current UTC clock. For a deterministic historical replay,
+pass an explicit ISO-8601 `-AsOf` value; never use a placeholder literally.
+
+Do not load the paper shell for this command. It rejects `APP_PROFILE=paper` or
+`live`, all Alpaca credential aliases, network-test flags, and live endpoint
+indicators before Python starts. It has no network, broker-read, symbol, submit,
+cancel, replace, close, liquidate, paper-mutation, or live option.
+
+Before V5.25 seals a terminal outcome, the expected result is
+`waiting_for_v5_25_terminal_evidence`. After valid strategy evidence, missing
+or stale venue, bounded-policy, lifecycle/independent-flat, or durable-kill
+evidence produces `blocked_by_operational_evidence`. Do not hand-create or edit
+capability JSON. Each capability must come from its canonical producer, resolve
+every preregistered upstream source by bytes, match the exact selected symbol,
+and share one coherent bundle fingerprint.
+
+The default output root is
+`runs\crypto_strategy_tournament\v2\bounded_paper_probe_review\latest`.
+Follow `latest_manifest.json` to its immutable generation. That generation
+contains the preregistration, JSON and Markdown review, generation manifest,
+and snapshots of terminal evidence plus only capability, producer, and upstream
+inputs actually evaluated after the strategy gates pass. File existence alone
+does not establish readiness. The persisted packet validator is structural
+only. Rerun this wrapper with its default current UTC clock to replay the local
+sources. A future authorization consumer must additionally validate the pointer,
+manifest, hashes, and exact replayed fingerprint before any mutation review can
+rely on a generation; that consumer does not yet exist.
+
+The strongest possible result is `eligible_for_operator_review_only`. It still
+has approval state `not_authorized`, expires at the earliest capability expiry,
+and carries no paper or live authority. A future bounded paper mutation would
+require a separate exact operator authorization. A later live test additionally
+requires completed paper evidence, a separate live-readiness review, explicit
+capital allocation, live credential/endpoint controls, and exact operator
+authorization.
