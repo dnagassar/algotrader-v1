@@ -718,3 +718,72 @@ end, fingerprint, or contract. A terminal input-quality failure or
 This readiness command performs no network or market-data fetch and must not
 be run in the credential-loaded refresh shell. A ready activation is still
 no-submit and grants no paper, broker, capital, or live authority.
+
+## Tournament V2 Forward-Shadow Operating Cycle
+
+The V5.24 command above remains the offline activation check. The shortest
+normal operating command for the implemented V5.25 state is:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_forward_shadow_cycle.ps1 `
+  -Mode status `
+  -AsOf <CURRENT_UTC_TIMESTAMP>
+```
+
+Run `status` from a normal credential-free development shell. Before a winner,
+it reports a dormant classification and creates no state. Once tournament v2
+seals one eligible winner, initialize explicitly with:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_forward_shadow_cycle.ps1 `
+  -Mode initialize `
+  -AsOf <CURRENT_UTC_TIMESTAMP>
+```
+
+Initialization freezes the selected candidate, activation, source terminal
+identity, 169 causal context bars, and the exact 168-hour future window. It uses
+no network. The guarded fetch mode also performs this initialization
+idempotently when needed, so an extra initialize command is not required for
+the fast path.
+
+To see whether a fetch is actionable without attempting one:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_forward_shadow_cycle.ps1 `
+  -Mode readiness `
+  -AsOf <CURRENT_UTC_TIMESTAMP>
+```
+
+Waiting, dormant, complete, and terminal classifications do not require loaded
+credentials and never invoke the adapter. Only
+`ready_for_explicit_read_only_market_data_fetch` is actionable. At that point,
+use the isolated paper market-data shell with `APP_PROFILE=paper`, paper
+market-data credentials, and the explicit paper base URL already loaded, then
+run exactly:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_forward_shadow_cycle.ps1 `
+  -Mode market_data_fetch `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -MarketDataFetchAuthorized `
+  -AllowNetwork
+```
+
+Do not supply a symbol or time range. The command derives exactly one selected
+symbol and the inclusive completed-hour range from frozen state. It uses the
+existing Alpaca crypto-bars market-data GET adapter only. It cannot read an
+account or submit, cancel, replace, close, liquidate, or mutate paper/live
+state. Receipt mismatch, adapter failure, or state-validation failure closes
+the operation without accruing state.
+
+Only one `market_data_fetch` cycle may run for this shadow root at a time. The
+command holds one local operating lock from status through receipt validation
+and state accrual; an overlapping invocation fails closed before a second
+adapter call. Let the already-running command finish, then rerun status. Do not
+delete either lock file or hand-edit the recovery journal.
+
+Close the isolated credential-loaded shell after the refresh. Return to a new
+credential-free shell before development or tests. Checkpoints at hours 24 and
+72 are completeness receipts only. At hour 168, accept either sealed shadow
+evidence for a bounded-paper-probe review or the terminal input-quality gate;
+neither is paper mutation, capital allocation, or live authorization.

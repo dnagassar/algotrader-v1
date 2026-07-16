@@ -900,3 +900,54 @@ Early stopping, extension, parameter changes, post-selection gate changes,
 paper planning, broker access, paper mutation, capital allocation, and live
 trading remain disabled. Even complete shadow evidence permits only a later
 bounded-paper-probe review, not a paper probe or live-capital action.
+
+## Tournament V2 Forward-Shadow State Contract
+
+V5.25 implements the V5.24 activation without changing its fingerprint or
+thresholds. It remains dormant before one sealed eligible tournament-v2 winner,
+then freezes the activation, the byte-bound terminal source, the exact selected
+candidate, and 169 selected-symbol causal context bars. A delayed activation
+interval is accrued as unscored signal warmup; the scored future window remains
+exactly 168 one-hour bars with completeness-only checkpoints at 24, 72, and 168.
+
+Raw history, normalized history, and hourly causal decisions are monotonic.
+Committed evidence must end on a raw boundary bar. One proven isolated interior
+gap uses prior-close OHLC, zero volume, and prior-target hold; a missing trailing
+bar is not prematurely committed, an excessive gap stops the committed prefix,
+and no later raw row may replace a committed imputation. Replays must reproduce
+the prior normalized and decision prefixes exactly. Exact duplicate receipts
+deduplicate and conflicting rewrites fail closed.
+
+Mutable generations use a fingerprinted recovery journal under an exclusive
+state lock. Canonical evidence files are replaced only after their staged
+SHA-256 identities and prior state fingerprint are validated, and the frozen
+state is published last. A later invocation finishes an interrupted generation
+before loading it. Status cannot synthesize a new state identity, and
+initialization cannot return a frozen identity without persisting it.
+
+The locked 0.995 raw-coverage threshold means one missing terminal hour is
+already disqualifying over 168 hours. Terminal evaluation still records the
+predeclared imputation behavior but seals the input-quality outcome. A complete
+window uses the existing one-bar-lag return engine, 40/80 bps transition costs,
+cash and same-symbol buy-and-hold benchmarks, and no forced terminal
+liquidation. It seals either decision evidence for a bounded-paper-probe review
+or a terminal shadow input-quality gate, then rejects later deltas and rescoring.
+
+The research state module contains no network or execution dependency. Its
+separate operating bridge derives exactly one symbol and one inclusive completed
+hour range from frozen state and delegates only to the existing guarded crypto
+market-data adapter. Both explicit network switches remain required. Fetch
+preparation is non-mutating; a returned receipt must match its on-disk JSON and
+output SHA-256 before state accrual. Dormant, waiting, and terminal states never
+invoke the adapter.
+
+The complete network-capable operating cycle is also serialized by a distinct
+process lock spanning frozen-state status, adapter invocation, receipt
+validation, and accrual. A competing cycle fails before any second adapter
+call; the state-generation lock continues to protect local publication.
+
+The detailed contract is recorded in
+`docs/design/v5_25_crypto_tournament_v2_forward_shadow_state.md`. V5.25 improves
+end-to-end research autonomy and removes post-selection workflow delay. It does
+not itself add strategy performance evidence before the future calendar window,
+and it grants no broker, paper-mutation, capital, or live authority.

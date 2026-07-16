@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from algotrader.research.crypto_tournament_v2_forward_shadow import (
     build_crypto_tournament_v2_forward_shadow_preregistration,
     render_crypto_tournament_v2_forward_shadow_markdown,
     run_crypto_tournament_v2_forward_shadow_readiness,
+    validate_crypto_tournament_v2_forward_shadow_activation,
 )
 
 
@@ -44,6 +46,7 @@ def _waiting_packet() -> dict[str, object]:
         "terminal_scoring_performed": False,
         "terminal_evidence_fingerprint": "",
         "selected_candidate": {},
+        "broker_read_occurred": False,
         "paper_or_broker_eligible": False,
         "paper_planning_eligibility": "not_eligible",
         "paper_or_live_execution_authorized": False,
@@ -230,6 +233,90 @@ def test_rejects_any_source_mutation_authority() -> None:
             source,
             as_of="2026-08-13T00:00:00Z",
         )
+
+
+def test_rejects_source_broker_read_activity() -> None:
+    source = _terminal_packet()
+    source["broker_read_occurred"] = True
+
+    with pytest.raises(ValidationError, match="broker_read_occurred"):
+        build_crypto_tournament_v2_forward_shadow_activation(
+            source,
+            as_of="2026-08-13T00:00:00Z",
+        )
+
+
+def test_rejects_eligible_terminal_with_consistently_false_scoring() -> None:
+    source = _terminal_packet()
+    source["terminal_scoring_performed"] = False
+    source["frozen_state"]["terminal_scoring_performed"] = False
+    source["terminal_closure"]["terminal_scoring_performed"] = False
+
+    with pytest.raises(ValidationError, match="requires terminal scoring"):
+        build_crypto_tournament_v2_forward_shadow_activation(
+            source,
+            as_of="2026-08-13T00:00:00Z",
+        )
+
+
+def test_activation_identity_binds_source_state_fingerprint() -> None:
+    first = build_crypto_tournament_v2_forward_shadow_activation(
+        _terminal_packet(),
+        as_of="2026-08-13T00:00:00Z",
+    )
+    changed_source = _terminal_packet()
+    changed_source["frozen_state"]["state_fingerprint"] = "e" * 64
+    second = build_crypto_tournament_v2_forward_shadow_activation(
+        changed_source,
+        as_of="2026-08-13T00:00:00Z",
+    )
+
+    assert first["activation_fingerprint"] != second["activation_fingerprint"]
+    tampered = dict(first)
+    tampered["source_binding"] = dict(first["source_binding"])
+    tampered["source_binding"]["state_fingerprint"] = "f" * 64
+    with pytest.raises(ValidationError, match="activation fingerprint mismatch"):
+        validate_crypto_tournament_v2_forward_shadow_activation(tampered)
+
+
+def test_rejects_refingerprinted_later_shadow_window_start() -> None:
+    activation = build_crypto_tournament_v2_forward_shadow_activation(
+        _terminal_packet(),
+        as_of="2026-08-13T00:00:00Z",
+    )
+    source = activation["source_binding"]
+    candidate = activation["selected_candidate"]
+    window = dict(activation["shadow_window"])
+    window["start"] = "2026-08-13T01:00:00+00:00"
+    window["end_exclusive"] = "2026-08-20T01:00:00+00:00"
+    tampered = dict(activation)
+    tampered["shadow_window"] = window
+    basis = {
+        "forward_shadow_preregistration_fingerprint": tampered[
+            "preregistration_fingerprint"
+        ],
+        "source_terminal_packet_sha256": source["terminal_packet_sha256"],
+        "source_terminal_evidence_fingerprint": source[
+            "terminal_evidence_fingerprint"
+        ],
+        "source_state_fingerprint": source["state_fingerprint"],
+        "selected_candidate_id": candidate["candidate_id"],
+        "selected_candidate_fingerprint": candidate["candidate_fingerprint"],
+        "start": window["start"],
+        "end_exclusive": window["end_exclusive"],
+        "hourly_bars": FORWARD_SHADOW_HOURLY_BARS,
+    }
+    tampered["activation_fingerprint"] = hashlib.sha256(
+        json.dumps(
+            basis,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    with pytest.raises(ValidationError, match="must equal the first eligible"):
+        validate_crypto_tournament_v2_forward_shadow_activation(tampered)
 
 
 def test_runner_writes_only_local_offline_readiness_artifacts(

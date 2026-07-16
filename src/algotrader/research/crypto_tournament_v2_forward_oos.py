@@ -105,10 +105,112 @@ __all__ = [
     "CRYPTO_TOURNAMENT_V2_DEFAULT_OUTPUT_ROOT",
     "CRYPTO_TOURNAMENT_V2_FORWARD_OOS_SCHEMA_VERSION",
     "CRYPTO_TOURNAMENT_V2_STATE_SCHEMA_VERSION",
+    "export_crypto_tournament_v2_selected_shadow_context",
     "initialize_crypto_tournament_v2_forward_oos",
     "render_crypto_tournament_v2_forward_oos_markdown",
     "run_crypto_tournament_v2_forward_oos",
 ]
+
+
+def export_crypto_tournament_v2_selected_shadow_context(
+    *,
+    output_root: Path | str = CRYPTO_TOURNAMENT_V2_DEFAULT_OUTPUT_ROOT,
+    as_of: datetime | str,
+) -> dict[str, object]:
+    """Export 169 validated selected-symbol bars from one sealed v2 winner."""
+
+    root = Path(output_root)
+    evaluated_at = _utc_datetime(as_of, "as_of")
+    packet = run_crypto_tournament_v2_forward_oos(
+        output_root=root,
+        as_of=evaluated_at,
+        write_artifacts=False,
+    )
+    if packet.get("classification") != (
+        "eligible_for_no_submit_shadow_evaluation"
+    ):
+        raise ValidationError(
+            "selected shadow context requires one sealed eligible v2 winner."
+        )
+    state, _, _, raw_oos, _ = _load_and_validate_state(_state_paths(root))
+    normalized, quality, errors = _normalize_window(
+        raw_oos,
+        start=_utc_datetime(OOS_START, "oos_start"),
+        end_exclusive=_utc_datetime(OOS_END_EXCLUSIVE, "oos_end"),
+        phase="shadow_context",
+        strict_complete=False,
+        boundary_missing_allowed=False,
+    )
+    if errors:
+        raise ValidationError(
+            "sealed v2 winner context failed replayed input quality: "
+            + ",".join(errors)
+        )
+    selected = _mapping(packet.get("selected_candidate"))
+    candidate_id = str(selected.get("candidate_id", ""))
+    candidate_fingerprint = str(
+        selected.get("candidate_fingerprint", "")
+    )
+    candidates = _mapping_sequence(
+        build_crypto_tournament_v2_preregistration().get("candidates")
+    )
+    matches = tuple(
+        dict(candidate)
+        for candidate in candidates
+        if candidate.get("candidate_id") == candidate_id
+        and candidate.get("candidate_fingerprint") == candidate_fingerprint
+    )
+    if len(matches) != 1:
+        raise ValidationError(
+            "sealed v2 selected candidate drifted from preregistration."
+        )
+    candidate = matches[0]
+    symbol = str(candidate.get("symbol", ""))
+    selected_rows = tuple(row for row in normalized if row.symbol == symbol)
+    if len(selected_rows) < 169:
+        raise ValidationError(
+            "sealed v2 winner lacks 169 causal context bars."
+        )
+    context = selected_rows[-169:]
+    expected_end = _utc_datetime(OOS_END_EXCLUSIVE, "oos_end")
+    if (
+        context[-1].timestamp != expected_end - _ONE_HOUR
+        or context[-1].imputed
+    ):
+        raise ValidationError(
+            "sealed v2 context requires a raw final boundary bar."
+        )
+    terminal_path = _state_paths(root)["terminal_packet"]
+    return {
+        "schema_version": "v5_25_crypto_tournament_v2_shadow_context_v1",
+        "record_type": "crypto_tournament_v2_selected_shadow_context",
+        "as_of": evaluated_at.isoformat(),
+        "candidate": candidate,
+        "context_rows": [row.canonical() for row in context],
+        "context_row_count": len(context),
+        "context_sha256": _rows_hash(context),
+        "context_quality": quality,
+        "source_binding": {
+            "tournament_preregistration_fingerprint": (
+                CRYPTO_TOURNAMENT_V2_PREREGISTRATION_FINGERPRINT
+            ),
+            "terminal_packet_path": str(terminal_path),
+            "terminal_packet_sha256": state.get(
+                "terminal_packet_sha256", ""
+            ),
+            "terminal_evidence_fingerprint": state.get(
+                "terminal_evidence_fingerprint", ""
+            ),
+            "state_fingerprint": state.get("state_fingerprint", ""),
+            "terminal_closed_at": state.get("terminal_closed_at", ""),
+        },
+        "network_access_attempted": False,
+        "broker_read_occurred": False,
+        "broker_mutation_occurred": False,
+        "paper_or_live_execution_authorized": False,
+        "live_authorized": False,
+        "profit_claim": "none",
+    }
 
 
 @dataclass(frozen=True, slots=True)

@@ -51,6 +51,7 @@ FORWARD_SHADOW_HOURLY_BARS = 168
 FORWARD_SHADOW_CHECKPOINT_HOURS = (24, 72, 168)
 
 _ZERO_AUTHORITY_FIELDS = (
+    "broker_read_occurred",
     "paper_or_broker_eligible",
     "paper_or_live_execution_authorized",
     "broker_mutation_authorized",
@@ -90,6 +91,7 @@ __all__ = [
     "build_crypto_tournament_v2_forward_shadow_preregistration",
     "render_crypto_tournament_v2_forward_shadow_markdown",
     "run_crypto_tournament_v2_forward_shadow_readiness",
+    "validate_crypto_tournament_v2_forward_shadow_activation",
 ]
 
 
@@ -324,6 +326,9 @@ def build_crypto_tournament_v2_forward_shadow_activation(
         "source_terminal_evidence_fingerprint": source_binding[
             "terminal_evidence_fingerprint"
         ],
+        "source_state_fingerprint": source_binding[
+            "state_fingerprint"
+        ],
         "selected_candidate_id": candidate["candidate_id"],
         "selected_candidate_fingerprint": candidate[
             "candidate_fingerprint"
@@ -353,7 +358,136 @@ def build_crypto_tournament_v2_forward_shadow_activation(
             ),
         }
     )
+    validate_crypto_tournament_v2_forward_shadow_activation(packet)
     return packet
+
+
+def validate_crypto_tournament_v2_forward_shadow_activation(
+    packet: Mapping[str, object],
+) -> dict[str, object]:
+    """Validate one immutable ready activation without broadening authority."""
+
+    if packet.get("classification") != (
+        "ready_to_activate_no_submit_forward_shadow"
+    ):
+        raise ValidationError(
+            "forward-shadow activation is not ready."
+        )
+    if packet.get("preregistration_fingerprint") != (
+        CRYPTO_TOURNAMENT_V2_FORWARD_SHADOW_PREREGISTRATION_FINGERPRINT
+    ):
+        raise ValidationError(
+            "forward-shadow activation preregistration mismatch."
+        )
+    source = _mapping(packet.get("source_binding"), "source_binding")
+    if source.get("tournament_preregistration_fingerprint") != (
+        CRYPTO_TOURNAMENT_V2_PREREGISTRATION_FINGERPRINT
+    ):
+        raise ValidationError(
+            "forward-shadow activation tournament fingerprint mismatch."
+        )
+    if source.get("terminal_outcome_closed") is not True:
+        raise ValidationError(
+            "forward-shadow activation requires terminal closure."
+        )
+    if source.get("terminal_classification") != (
+        _ELIGIBLE_TERMINAL_CLASSIFICATION
+    ):
+        raise ValidationError(
+            "forward-shadow activation terminal classification mismatch."
+        )
+    for field_name in (
+        "terminal_packet_sha256",
+        "terminal_evidence_fingerprint",
+        "state_fingerprint",
+    ):
+        value = _required_text(source.get(field_name), f"source_binding.{field_name}")
+        _require_sha256(value, f"source_binding.{field_name}")
+    closed_at = _utc_datetime(
+        source.get("terminal_closed_at"),
+        "source_binding.terminal_closed_at",
+    )
+    candidate = _validated_activation_candidate(
+        _mapping(packet.get("selected_candidate"), "selected_candidate")
+    )
+    window = _mapping(packet.get("shadow_window"), "shadow_window")
+    start = _utc_datetime(window.get("start"), "shadow_window.start")
+    end_exclusive = _utc_datetime(
+        window.get("end_exclusive"),
+        "shadow_window.end_exclusive",
+    )
+    if window.get("status") != "frozen_untouched_future_window":
+        raise ValidationError("forward-shadow window is not frozen.")
+    if window.get("hourly_bars") != FORWARD_SHADOW_HOURLY_BARS:
+        raise ValidationError("forward-shadow hourly bar count drifted.")
+    if window.get("checkpoint_hours") != list(FORWARD_SHADOW_CHECKPOINT_HOURS):
+        raise ValidationError("forward-shadow checkpoints drifted.")
+    if end_exclusive - start != timedelta(hours=FORWARD_SHADOW_HOURLY_BARS):
+        raise ValidationError("forward-shadow window duration drifted.")
+    required_start = max(
+        _utc_datetime(OOS_END_EXCLUSIVE, "oos_end_exclusive"),
+        _ceil_hour(closed_at),
+    )
+    if start != required_start:
+        raise ValidationError(
+            "forward-shadow window start must equal the first eligible UTC hour."
+        )
+    activation_basis = {
+        "forward_shadow_preregistration_fingerprint": packet[
+            "preregistration_fingerprint"
+        ],
+        "source_terminal_packet_sha256": source[
+            "terminal_packet_sha256"
+        ],
+        "source_terminal_evidence_fingerprint": source[
+            "terminal_evidence_fingerprint"
+        ],
+        "source_state_fingerprint": source["state_fingerprint"],
+        "selected_candidate_id": candidate["candidate_id"],
+        "selected_candidate_fingerprint": candidate[
+            "candidate_fingerprint"
+        ],
+        "start": start.isoformat(),
+        "end_exclusive": end_exclusive.isoformat(),
+        "hourly_bars": FORWARD_SHADOW_HOURLY_BARS,
+    }
+    if packet.get("activation_fingerprint") != _stable_hash(activation_basis):
+        raise ValidationError("forward-shadow activation fingerprint mismatch.")
+    for field_name in (
+        "network_access_attempted",
+        "market_data_fetch_occurred",
+        "broker_read_occurred",
+        "broker_mutation_authorized",
+        "broker_mutation_occurred",
+        "paper_submit_authorized",
+        "paper_submit_occurred",
+        "paper_cancel_occurred",
+        "paper_replace_occurred",
+        "paper_close_occurred",
+        "paper_liquidate_occurred",
+        "paper_or_broker_eligible",
+        "paper_or_live_execution_authorized",
+        "capital_allocation_authorized",
+        "live_authorized",
+        "live_endpoint_touched",
+        "credential_values_exposed",
+    ):
+        if packet.get(field_name) is not False:
+            raise ValidationError(
+                f"forward-shadow activation safety field must be false: {field_name}"
+            )
+    if packet.get("paper_planning_eligibility") != "not_eligible":
+        raise ValidationError(
+            "forward-shadow activation paper planning must be ineligible."
+        )
+    if packet.get("profit_claim") != "none":
+        raise ValidationError("forward-shadow activation profit claim must be none.")
+    return {
+        "activation_fingerprint": packet["activation_fingerprint"],
+        "selected_candidate": candidate,
+        "source_binding": dict(source),
+        "shadow_window": dict(window),
+    }
 
 
 def run_crypto_tournament_v2_forward_shadow_readiness(
@@ -563,6 +697,10 @@ def _validate_terminal_binding(
         raise ValidationError(
             "forward-shadow terminal scoring binding mismatch."
         )
+    if classification == _ELIGIBLE_TERMINAL_CLASSIFICATION and not scoring:
+        raise ValidationError(
+            "eligible forward-shadow activation requires terminal scoring."
+        )
     closure = _mapping(
         tournament_packet.get("terminal_closure"),
         "tournament_packet.terminal_closure",
@@ -619,6 +757,34 @@ def _validated_selected_candidate(
             "selected shadow candidate must remain broker-ineligible."
         )
     return dict(matches[0])
+
+
+def _validated_activation_candidate(
+    selected: Mapping[str, object],
+) -> dict[str, object]:
+    candidate_id = _required_text(
+        selected.get("candidate_id"),
+        "selected_candidate.candidate_id",
+    )
+    candidate_fingerprint = _required_text(
+        selected.get("candidate_fingerprint"),
+        "selected_candidate.candidate_fingerprint",
+    )
+    candidates = _mapping_sequence(
+        build_crypto_tournament_v2_preregistration().get("candidates"),
+        "candidates",
+    )
+    matches = tuple(
+        dict(candidate)
+        for candidate in candidates
+        if candidate.get("candidate_id") == candidate_id
+        and candidate.get("candidate_fingerprint") == candidate_fingerprint
+    )
+    if len(matches) != 1 or dict(selected) != matches[0]:
+        raise ValidationError(
+            "forward-shadow activation candidate drifted from the frozen v2 manifest."
+        )
+    return matches[0]
 
 
 def _validate_false_authority(packet: Mapping[str, object]) -> None:
