@@ -880,3 +880,23 @@ deltas or rescoring. Terminal input failure does not extend the endpoint.
 Even a terminal winner is eligible only for a new no-submit single-winner
 forward-shadow contract. Paper planning, paper mutation, broker execution,
 capital allocation, live trading, and profit claims remain unauthorized.
+
+## Tournament V2 Forward-Shadow Activation Contract
+
+The candidate-agnostic V5.24 forward-shadow contract is frozen before
+tournament-v2 selection under fingerprint
+7ff152e69bd00eb8da9376d1f2be15194fbd04ed6a420151e30c3c46bec82436.
+It accepts only the public tournament state machine's validated terminal
+packet, requires the sealed terminal packet SHA-256 and evidence fingerprint,
+and binds exactly one selected candidate ID/fingerprint from the frozen v2
+manifest. A nonterminal tournament emits only
+`waiting_for_tournament_terminal`; a terminal rejection cannot mint a shadow
+activation.
+
+The future window contains 168 untouched one-hour observations beginning at
+the first complete UTC hour not earlier than both terminal closure and the v2
+OOS endpoint. A delayed closure advances the start to the next full hour.
+Early stopping, extension, parameter changes, post-selection gate changes,
+paper planning, broker access, paper mutation, capital allocation, and live
+trading remain disabled. Even complete shadow evidence permits only a later
+bounded-paper-probe review, not a paper probe or live-capital action.

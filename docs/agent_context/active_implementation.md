@@ -1,6 +1,149 @@
 # Active Implementation Checkpoint
 
-## Current Slice — V5.23 Preregistered Crypto Tournament V2
+## Current Slice — V5.24 Tournament V2 Forward-Shadow Activation
+
+- Execution date: `2026-07-15` America/New_York.
+- Branch: `codex/crypto-frozen-state-reset-workflow`.
+- Parent HEAD: `affcbc18e196786c255040cbaa69f0370a8624c6`
+  (`Implement crypto tournament v2 accrual`).
+- Exactly one implementation writer owned the checkout.
+- Protected operator-owned files were not edited, staged, or committed.
+
+## Verified Baseline Locked By This Slice
+
+- The operator's exact read-only BTCUSD/ETHUSD/SOLUSD refresh succeeded for
+  `2026-07-15T00:00:00Z` through `2026-07-15T23:00:00Z`.
+- The refresh packet is `market_data_refresh_ready`, `data_intake_only=true`,
+  and `strategy_evidence_evaluation_performed=false`.
+- Refresh output SHA-256:
+  `480931a8ca4cdd0a342ce8348605fb1cafa04b9a14829cf38d532ee2320f3e99`.
+- Raw response SHA-256:
+  `207de6f7cbc315948bcf8d5cffb44f6979757fb06b3dc07ddef92df2b2e54f69`.
+- Embargo is complete at 24 rows per symbol and 72 rows total through
+  `2026-07-15T23:00:00Z`.
+- Tournament v2 is `collecting_untouched_oos`; zero OOS rows was correct at
+  the fetch timestamp because no first OOS calendar hour had completed.
+- Receipt count is 2. Candidate evaluations, ranking, and selected candidate
+  remain empty. Terminal scoring has not occurred.
+- Current tournament state fingerprint:
+  `78bbfba22e75fabbe0570571a81436bf686448ceb0b7e23a2b0c5e1fa4bb7371`.
+- Tournament v2 preregistration fingerprint remains
+  `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
+- Tournament v1 remains closed; no v1 candidate or OOS evidence was reused.
+
+## Principal Bottleneck And Implemented Milestone
+
+The immediate bottleneck is decision evidence, not another API or OMS layer.
+The repository already has bounded paper submit/cancel, durable journal,
+reconciliation, and certification machinery. It does not yet have a proven
+crypto strategy that may feed those controls.
+
+V5.24 removes the highest-leverage delegated downstream stop before a winner
+is known. It freezes the single-winner no-submit forward-shadow activation
+contract under fingerprint
+`7ff152e69bd00eb8da9376d1f2be15194fbd04ed6a420151e30c3c46bec82436`.
+The contract requires the sealed terminal packet hash, terminal evidence and
+state fingerprints, exact eligible terminal classification, and exact
+candidate ID/fingerprint from the frozen v2 manifest. It derives 168 untouched
+future hourly observations beginning no earlier than the first complete UTC
+hour after terminal closure and the tournament endpoint.
+
+The real local readiness run at `2026-07-16T00:45:19.200229Z` classified
+`waiting_for_tournament_terminal`, bound the current tournament state
+fingerprint, selected no candidate, created no activation fingerprint or
+shadow window, and performed no strategy evaluation, network operation,
+broker read, broker mutation, or paper/live action. This is the correct
+nonterminal baseline.
+
+## Strategic Trajectory
+
+- Recent market-data scheduling and OMS work materially increased operational
+  autonomy but did not prove alpha.
+- The frozen ADA forward-OOS rejection and v1 input-quality closure produced
+  decision-quality negative evidence rather than deployable strategy support.
+- Tournament v2 is the first current lane actively accumulating a sufficiently
+  long, untouched, multi-candidate crypto decision dataset. It is evidence
+  progress, not merely orchestration progress, but no result exists yet.
+- V5.24 is targeted evidence plumbing: it prevents post-selection gate drift
+  and removes delay after a terminal winner. It does not itself add performance
+  evidence or justify paper/live capital.
+- Adding Claude, Antigravity, QuantConnect, another retrieval API, or another
+  execution framework would not remove the principal bottleneck. The limiting
+  input is untouched causal market evidence from the already frozen strategy
+  family.
+
+## Unresolved Risks
+
+- Tournament v2 may produce no qualifying candidate or may close at its input
+  quality gate. That outcome must not be rescue-tuned or window-extended.
+- The untouched OOS window remains incomplete and is exposed to provider gaps,
+  volume-quality failure, weak fold stability, cost sensitivity, excessive
+  drawdown, benchmark underperformance, or insufficient transitions/round
+  trips.
+- The 168-hour forward-shadow accrual/evaluation state machine and its
+  selected-symbol guarded refresh bridge are not implemented yet. V5.24 locks
+  their contract and activation boundary only.
+- Even a successful terminal tournament and complete forward shadow would
+  justify only a bounded paper-probe review. Paper mutation still requires an
+  exact operator authorization; live credentials, capital allocation, live
+  endpoints, and live trading remain unauthorized repository hard gates.
+- No real small-capital loss budget, venue-specific live order constraints,
+  live reconciliation acceptance packet, or live rollback/kill procedure has
+  been approved. These remain later work after strategy and paper evidence.
+
+## Safety And Verification Receipt
+
+- Preflight and every verifier found `APP_PROFILE=paper` false and all six
+  checked Alpaca credential aliases absent; no values were printed.
+- This slice performed no network request, market-data fetch, broker/account
+  read, broker mutation, submit, cancel, replace, close, liquidation, paper
+  mutation, or live-endpoint access.
+- New focused forward-shadow tests: 11 passed in 0.82 seconds.
+- Expanded tournament/adapter/forward-shadow matrix: 47 passed in 47.38
+  seconds.
+- Dependency-direction gate: 33 passed in 10.20 seconds.
+- Standard repository offline verifier: 97 passed in 106.91 seconds; `PASS`.
+- The first bounded-full attempt reached the default 300-second Windows shard
+  collection limit before execution; no test node failed.
+- Established 600-second collection rerun: canonical 9,018 nodes across 454
+  files; collection and execution equivalence passed; 9,014 passed, 4 skipped,
+  0 failures, 0 errors; bounded full suite `PASS`.
+- `git diff --check`: passed before handoff update and must be rerun before
+  commit.
+- Generated readiness state remains ignored under
+  `runs/crypto_strategy_tournament/v2/forward_shadow/latest`.
+- Protected user files remain byte-for-byte unchanged at SHA-256
+  `4FB473115578E2F25B353F50C409CD7566932ED5CC609DDDF19F7D6B9C34AF17`
+  and `602304A0D55369573B2AF4147850C7271EE518EB097D4AD86DB05D6FD50B4900`.
+
+## Files Owned By This Slice
+
+- `src/algotrader/research/crypto_tournament_v2_forward_shadow.py`
+- `scripts/run_crypto_tournament_v2_forward_shadow.ps1`
+- `tests/unit/test_crypto_tournament_v2_forward_shadow.py`
+- `docs/design/v5_24_crypto_tournament_v2_forward_shadow.md`
+- `docs/deterministic_core.md`
+- `docs/OPERATOR_RUNBOOK.md`
+- `docs/agent_context/active_implementation.md`
+
+## Already-Selected Next Action
+
+While tournament v2 continues its exact receipt-bound hourly OOS accrual,
+implement the V5.24 contract's local forward-shadow state machine and thin
+selected-symbol data-intake bridge. It must remain dormant until the public v2
+state machine returns one sealed eligible terminal winner, then accept only
+that immutable activation, accrue exactly 168 future one-hour observations,
+emit causal hypothetical target/position/transition logs, apply the frozen
+40/80 bps costs and cash/same-symbol benchmarks, and stop at evidence complete
+for bounded-paper-probe review. It must not authorize or invoke paper mutation,
+broker access, capital allocation, or live trading.
+
+The independent operating action remains the next exact read-only v2 market
+data refresh after at least one additional UTC hour has completed. Execute that
+only in the isolated credential-loaded paper market-data shell already
+documented in the runbook, then close that shell before development or tests.
+
+## Prior Slice — V5.23 Preregistered Crypto Tournament V2
 
 - Execution date: `2026-07-15`.
 - Branch: `codex/crypto-frozen-state-reset-workflow`.

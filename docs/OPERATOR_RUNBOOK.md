@@ -695,3 +695,26 @@ without retuning or extending the window. The terminal packet is hash-bound;
 later status checks replay it and reject new deltas or rescoring. A selected
 result authorizes only a separately preregistered no-submit single-winner
 forward-shadow milestone.
+
+## Tournament V2 Forward-Shadow Readiness
+
+The downstream single-winner shadow contract is already preregistered. Check
+it only from a normal credential-free shell:
+
+    .\scripts\run_crypto_tournament_v2_forward_shadow.ps1 -AsOf <CURRENT_UTC_TIMESTAMP>
+
+Before tournament v2 closes, the expected classification is
+`waiting_for_tournament_terminal`. That is not an error and creates no shadow
+window or candidate activation. Continue the exact receipt-bound v2 refresh
+cadence.
+
+After a sealed terminal winner exists, the command verifies the terminal
+packet hash, evidence fingerprint, state fingerprint, selection scope, and
+exact frozen candidate identity. It then derives a 168-hour untouched future
+window and one activation fingerprint. Do not hand-edit the winner, start,
+end, fingerprint, or contract. A terminal input-quality failure or
+`no_candidate_qualified` result closes without a shadow candidate.
+
+This readiness command performs no network or market-data fetch and must not
+be run in the credential-loaded refresh shell. A ready activation is still
+no-submit and grants no paper, broker, capital, or live authority.
