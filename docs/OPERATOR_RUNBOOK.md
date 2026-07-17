@@ -887,10 +887,24 @@ that is merely later than the V5.10 run timestamp is invalid. The sealed review
 re-derives this ordering and selected-symbol venue semantics rather than
 trusting normalized claims.
 
-Current operational limitations are intentional: the existing visibility
-supervisor captures full metadata only for its selected symbol and cannot
-select SOLUSD by default; the legacy lifecycle chain is BTCUSD-only; and the
-historical BTC chain no longer retains the exact V5.6 bytes cited downstream.
-Do not weaken those gates. The next delegated milestone is target-scoped,
-read-only visibility for BTCUSD, ETHUSD, and SOLUSD, followed by
-winner-specific lifecycle evidence after the terminal candidate is known.
+V5.28 provides exact target-scoped visibility for BTCUSD, ETHUSD, and SOLUSD.
+The target is validated case-sensitively before Python or SDK setup, becomes the
+sole supervisor preference, and never falls back to another observed symbol.
+
+A fresh real paper read remains an exact operator gate. Only after authorization
+for that specific read, use the paper shell and the frozen target, for example:
+
+```powershell
+.\scripts\run_crypto_universe_refresh.ps1 `
+  -Mode paper_read_only `
+  -TargetSymbol SOLUSD `
+  -PaperReadOnlyAuthorized
+```
+
+Do not run that command from a credential-free development shell or without the
+exact read authorization. Untargeted visibility remains available for general
+observation, but it cannot satisfy V5.27 winner-scoped venue eligibility. The
+legacy lifecycle chain is BTCUSD-only, and the historical BTC chain no longer
+retains the exact V5.6 bytes cited downstream. The next evidence milestone is
+winner-specific lifecycle and independent-flat evidence after the terminal
+candidate is known; do not weaken those gates.

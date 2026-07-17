@@ -2037,6 +2037,8 @@ def _derive_capability_source_claims(
             metadata.get("schema_version") != "v5_1_crypto_universe_refresh_v1"
             or metadata.get("asset_class") != "crypto"
             or metadata.get("broker_state_mode") != "alpaca_paper_observed"
+            or metadata.get("target_symbol") != symbol
+            or metadata.get("target_scoped") is not True
         ):
             raise ValidationError("orderability metadata identity mismatch.")
         records = _mapping_sequence(metadata.get("records"), "metadata.records")
@@ -2320,7 +2322,7 @@ _VENUE_NORMALIZED_UPSTREAM_KEYS = frozenset(
     {
         "schema_version", "record_type", "as_of", "asset_class",
         "broker_state_mode", "records", "resolved_source_sha256",
-        "resolved_source_digests",
+        "target_symbol", "target_scoped", "resolved_source_digests",
     }
 )
 _VENUE_NORMALIZED_RECORD_KEYS = frozenset(

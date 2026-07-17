@@ -190,6 +190,7 @@ def _build_venue_sources(root: Path) -> dict[str, bytes]:
         output_root=visibility_root,
         bars_csv=bars_path,
         timestamp=AS_OF,
+        target_symbol="BTCUSD",
         env={
             "APP_PROFILE": "paper",
             "ALPACA_API_KEY": "fixture-paper-key",
@@ -1342,6 +1343,36 @@ def test_fill_approval_manifest_timestamp_must_match_packet(
 
     assert production.status["capability_bundle_emitted"] is False
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("target_symbol", "ETHUSD"),
+        ("target_scoped", False),
+    ),
+)
+def test_runtime_visibility_must_bind_the_exact_target_before_bundle_emission(
+    safety_sources: dict[str, bytes],
+    field: str,
+    value: object,
+) -> None:
+    raw = _raw_sources(safety_sources, symbol="BTCUSD")
+    runtime = json.loads(raw["venue_runtime_visibility_status"])
+    runtime[field] = value
+    raw["venue_runtime_visibility_status"] = _json_bytes(runtime)
+
+    production = (
+        subject.build_crypto_tournament_v2_bounded_paper_probe_capability_production(
+            TERMINAL_EVIDENCE(),
+            resolved_input_bytes=raw,
+            as_of=AS_OF,
+        )
+    )
+
+    assert production.status["capability_bundle_emitted"] is False
+    assert any(
+        "source_normalization_failed:runtime venue visibility is invalid" in blocker
+        for blocker in production.status["blockers"]
+    )
 
 @pytest.mark.parametrize(
     "role",

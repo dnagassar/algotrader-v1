@@ -127,30 +127,33 @@ state that clearly and preserve the latest known full-suite checkpoint.
 
 ## 10. Current Crypto Tournament V2 Operational Baseline
 
-V5.27 is the current delegated implementation slice. It adds a default-paused,
-source-bound bounded-probe safety certification, canonical venue and lifecycle
-provenance validation, account-bound independent flat reconciliation, immutable
-capability publication, and pinned generation replay for the frozen BTCUSD,
-ETHUSD, and SOLUSD tournament. Every output remains no-submit, no-paper-
-mutation, no-capital, and no-live-authority.
+V5.28 is the current delegated implementation slice. It builds on V5.27's
+source-bound capability production and pinned replay with exact target-scoped
+read-only visibility for BTCUSD, ETHUSD, and SOLUSD. Every output remains
+no-submit, no-paper-mutation, no-capital, and no-live-authority.
 
-Lifecycle admission requires V5.8 zero fill and empty residual state, the exact
-canonical V5.9 packet/manifest and operator phrase, positive cross-bound V5.10
-entry and exit fills, and a flat observation no earlier than the exit order's
-broker-reported `filled_at`. The sealed review independently re-derives venue
-and final-mutation ordering and rejects unexpected authority-shaped fields.
+A nonempty target must be an exact frozen symbol and is validated before client
+construction or broker reads. It becomes the supervisor's sole preference, with
+no fallback when absent. Runtime receipts expose the target and scope; V5.27
+normalization and the sealed review require an exact target/selected-symbol/
+winner match for operational venue eligibility.
 
-The verified real offline classification is
+Lifecycle admission still requires V5.8 zero fill and empty residual state, the
+exact canonical V5.9 packet/manifest and operator phrase, positive cross-bound
+V5.10 entry and exit fills, and a flat observation no earlier than the exit
+order's broker-reported `filled_at`.
+
+The verified real offline classification remains
 `candidate_deferred_pending_terminal_winner`: V5.25 has not sealed an accepted
-winner, so no subject-bound capability bundle may be emitted. This is an
-operational-autonomy improvement, not new alpha or OOS evidence. The immediate
-offline bottleneck is target-scoped read-only venue visibility that preserves
-full metadata for each frozen symbol, especially SOLUSD. New LLM APIs,
-retrieval services, QuantConnect, or additional strategy tournaments are not
-the principal constraint.
+winner, so no subject-bound capability bundle may be emitted. The next evidence
+dependency is winner-specific lifecycle and independent-flat evidence,
+especially if ETHUSD or SOLUSD wins because the legacy chain is BTCUSD-only.
+New LLM APIs, retrieval services, QuantConnect, or additional strategy
+tournaments are not the principal constraint.
 
-Read
-`docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
-before changing this path. Preserve the exact V5.26 preregistration and V5.27
+Read `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
+and
+`docs/design/v5_28_crypto_target_scoped_read_only_venue_visibility.md` before
+changing this path. Preserve the exact V5.26 preregistration and V5.27
 safety-policy fingerprints, the untouched OOS/shadow calendar, immutable
 source provenance, account binding, and all operator gates.

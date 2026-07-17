@@ -332,6 +332,8 @@ def _upstream_artifacts(
                 "as_of": observed_at.isoformat(),
                 "asset_class": "crypto",
                 "broker_state_mode": "alpaca_paper_observed",
+                "target_symbol": symbol,
+                "target_scoped": True,
                 "resolved_source_sha256": SHA_D,
                 "resolved_source_digests": {},
                 "records": [
@@ -1164,6 +1166,36 @@ def test_normalized_upstream_rejects_injected_authority_field() -> None:
             },
             upstreams=upstreams,
         )
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("target_symbol", "ETHUSD"),
+        ("target_scoped", False),
+    ),
+)
+def test_venue_upstream_requires_exact_target_scope(
+    field: str,
+    value: object,
+) -> None:
+    upstreams = _upstream_artifacts(
+        "venue_orderability",
+        symbol="BTCUSD",
+        observed_at=AS_OF - timedelta(hours=1),
+    )
+    upstreams["orderability_metadata"][field] = value
+
+    with pytest.raises(ValidationError, match="metadata identity mismatch"):
+        subject._derive_capability_source_claims(
+            "venue_orderability",
+            subject={
+                "asset_class": "crypto",
+                "symbol": "BTCUSD",
+                "environment": "alpaca_paper",
+            },
+            upstreams=upstreams,
+        )
+
 
 
 @pytest.mark.parametrize(

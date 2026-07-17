@@ -21,6 +21,11 @@ def test_run_crypto_paper_visibility_cycle_script_contract() -> None:
         "Runs the crypto paper visibility cycle in no-submit mode",
         "[string]$OutputRoot = \"runs\\crypto_paper_visibility\\latest\"",
         "[string]$BarsCsv = \"runs\\operator_input\\crypto_paper_bars.csv\"",
+        "[string]$TargetSymbol",
+        "$AllowedTargetSymbols",
+        "$TargetSymbol -cnotin $AllowedTargetSymbols",
+        "crypto_visibility_target_symbol=$TargetSymbol",
+        "--target-symbol",
         "crypto_visibility_operating_mode=visibility/no_submit",
         "crypto_visibility_no_submit_enforced=true",
         "preflight_APP_PROFILE_is_paper",
@@ -70,6 +75,8 @@ def test_run_crypto_paper_visibility_cycle_invokes_read_only_operator(
             str(output_root),
             "-BarsCsv",
             str(bars_csv),
+            "-TargetSymbol",
+            "SOLUSD",
             "-AsOfTimestamp",
             "2026-07-03T02:00:00+00:00",
             "-Format",
@@ -89,6 +96,7 @@ def test_run_crypto_paper_visibility_cycle_invokes_read_only_operator(
     assert "crypto_visibility_operating_mode=visibility/no_submit" in result.stdout
     assert "crypto_visibility_no_submit_enforced=true" in result.stdout
     assert "preflight_APP_PROFILE_is_paper=true" in result.stdout
+    assert "crypto_visibility_target_symbol=SOLUSD" in result.stdout
     assert "preflight_APCA_API_KEY_ID_present=true" in result.stdout
     assert "preflight_APCA_API_SECRET_KEY_present=true" in result.stdout
     assert "preflight_paper_endpoint_exact_match_indicator=true" in result.stdout
@@ -100,10 +108,44 @@ def test_run_crypto_paper_visibility_cycle_invokes_read_only_operator(
     assert "--bars-csv" in args
     assert str(bars_csv) in args
     assert "--timestamp 2026-07-03T02:00:00+00:00" in args
+    assert "--target-symbol SOLUSD" in args
     assert "--format json" in args
     assert "--submit" not in args
     assert SENSITIVE_KEY not in combined
     assert SENSITIVE_SECRET not in combined
+
+def test_run_crypto_paper_visibility_cycle_rejects_nonexact_target_before_python(
+    tmp_path: Path,
+) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(tmp_path, capture_path)
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT),
+            "-TargetSymbol",
+            "btcusd",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, combined
+    assert "TargetSymbol must be exactly BTCUSD, ETHUSD, SOLUSD" in combined
+    assert not capture_path.exists()
+    assert SENSITIVE_KEY not in combined
+    assert SENSITIVE_SECRET not in combined
+
 
 
 def test_run_crypto_paper_visibility_cycle_stops_on_live_endpoint(

@@ -14,10 +14,12 @@ from algotrader.config import (
     DEFAULT_ALPACA_PAPER_BASE_URL,
     AlpacaPaperConfig,
 )
+from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
 from algotrader.execution.crypto_paper_supervisor import (
     CRYPTO_PAPER_SUPERVISOR_DEFAULT_BARS_CSV,
     CRYPTO_PAPER_SUPERVISOR_DEFAULT_OUTPUT_ROOT,
+    CRYPTO_PAPER_SUPERVISOR_PREFERRED_SYMBOLS,
     CryptoPaperSupervisorConfig,
     run_crypto_paper_supervisor,
     write_crypto_paper_supervisor_artifacts,
@@ -25,6 +27,7 @@ from algotrader.execution.crypto_paper_supervisor import (
 
 CRYPTO_PAPER_VISIBILITY_COMMAND = "run_crypto_paper_visibility_cycle"
 CRYPTO_PAPER_VISIBILITY_OPERATING_MODE = "visibility/no_submit"
+CRYPTO_PAPER_VISIBILITY_TARGET_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD")
 
 SdkClientFactory = Callable[[AlpacaPaperConfig], Any]
 
@@ -50,9 +53,11 @@ _PUBLIC_ENV_NAMES = (
 __all__ = [
     "CRYPTO_PAPER_VISIBILITY_COMMAND",
     "CRYPTO_PAPER_VISIBILITY_OPERATING_MODE",
+    "CRYPTO_PAPER_VISIBILITY_TARGET_SYMBOLS",
     "crypto_visibility_environment_preflight",
     "render_crypto_visibility_text",
     "run_crypto_paper_visibility_cycle",
+    "validate_crypto_visibility_target_symbol",
 ]
 
 
@@ -61,12 +66,14 @@ def run_crypto_paper_visibility_cycle(
     output_root: str | Path = CRYPTO_PAPER_SUPERVISOR_DEFAULT_OUTPUT_ROOT,
     bars_csv: str | Path = CRYPTO_PAPER_SUPERVISOR_DEFAULT_BARS_CSV,
     timestamp: datetime | str | None = None,
+    target_symbol: str | None = None,
     env: Mapping[str, str] | None = None,
     sdk_client_factory: SdkClientFactory | None = None,
     write_artifacts: bool = True,
 ) -> dict[str, Any]:
     """Run a no-submit crypto visibility cycle with optional paper asset read."""
 
+    checked_target_symbol = validate_crypto_visibility_target_symbol(target_symbol)
     source_env = _env_mapping(env)
     preflight = crypto_visibility_environment_preflight(source_env)
     broker = None
@@ -93,6 +100,11 @@ def run_crypto_paper_visibility_cycle(
         CryptoPaperSupervisorConfig(
             output_root=output_root,
             bars_csv=bars_csv,
+            preferred_symbols=(
+                (checked_target_symbol,)
+                if checked_target_symbol
+                else CRYPTO_PAPER_SUPERVISOR_PREFERRED_SYMBOLS
+            ),
         ),
         env=_public_broker_env(source_env),
         broker=broker,
@@ -100,6 +112,8 @@ def run_crypto_paper_visibility_cycle(
         write_artifacts=False,
     )
     record["operator_command"] = CRYPTO_PAPER_VISIBILITY_COMMAND
+    record["target_symbol"] = checked_target_symbol
+    record["target_scoped"] = bool(checked_target_symbol)
     record["operating_mode"] = CRYPTO_PAPER_VISIBILITY_OPERATING_MODE
     record["operator_preflight"] = preflight
     record["broker_read_requested"] = broker_read_requested
@@ -120,6 +134,21 @@ def run_crypto_paper_visibility_cycle(
         )
 
     return record
+
+
+def validate_crypto_visibility_target_symbol(target_symbol: object) -> str:
+    """Return an exact frozen-universe target or fail before any broker setup."""
+
+    if target_symbol in (None, ""):
+        return ""
+    if (
+        type(target_symbol) is not str
+        or target_symbol not in CRYPTO_PAPER_VISIBILITY_TARGET_SYMBOLS
+    ):
+        raise ValidationError(
+            "target_symbol must be exactly BTCUSD, ETHUSD, SOLUSD, or omitted."
+        )
+    return target_symbol
 
 
 def crypto_visibility_environment_preflight(
@@ -181,6 +210,8 @@ def render_crypto_visibility_text(record: Mapping[str, Any]) -> str:
             f"broker_read_performed={_bool_text(record.get('broker_read_performed'))}",
             f"broker_state_mode={_value_text(record.get('broker_state_mode'))}",
             f"capability_source={_value_text(record.get('capability_source'))}",
+            f"target_symbol={_value_text(record.get('target_symbol'))}",
+            f"target_scoped={_bool_text(record.get('target_scoped'))}",
             f"crypto_trading_supported={_bool_text(record.get('crypto_trading_supported'))}",
             f"eligible_crypto_symbols={_csv_text(record.get('eligible_crypto_symbols'))}",
             f"selected_symbol={_value_text(record.get('selected_symbol'))}",
@@ -231,6 +262,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="CSV of crypto bars used for the preview lane.",
     )
     parser.add_argument(
+        "--target-symbol",
+        choices=CRYPTO_PAPER_VISIBILITY_TARGET_SYMBOLS,
+        default="",
+        help="Optional exact frozen-universe symbol with no fallback.",
+    )
+    parser.add_argument(
         "--timestamp",
         default="",
         help="Optional ISO timestamp for deterministic visibility receipts.",
@@ -247,6 +284,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_root=args.output_root,
         bars_csv=args.bars_csv,
         timestamp=args.timestamp or datetime.now(UTC),
+        target_symbol=args.target_symbol,
     )
     if args.format == "json":
         print(json.dumps(record, sort_keys=True, indent=2))

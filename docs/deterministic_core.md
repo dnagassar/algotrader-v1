@@ -1035,10 +1035,12 @@ refresh, visibility-wrapper, and supervisor source bytes. It validates manifest
 hashes, read-only safety fields, candidate-specific order increments and
 notional limits, nested runtime metadata, and an exact selected-symbol match.
 Both runtime visibility and the V5.1 refresh independently expire after 24
-hours; the older observation controls. The current supervisor retains detailed
-metadata only for its selected symbol and cannot select SOLUSD under its default
-preference, so a target-scoped or multi-asset read-only visibility producer is
-the next delegated operational bottleneck.
+hours; the older observation controls. V5.28 adds an optional exact BTCUSD,
+ETHUSD, or SOLUSD target validated before SDK construction or broker reads. The
+target is the supervisor's sole preference and absence never falls back to
+another symbol. Operational venue normalization requires target scope and an
+exact target/selected-symbol/winner match; the sealed review independently
+validates those normalized target fields.
 
 Advertised minimum notional, size, and trade increments must exactly match
 their broker-observed and runtime counterparts. Optional required fields must

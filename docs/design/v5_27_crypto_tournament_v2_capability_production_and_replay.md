@@ -101,11 +101,12 @@ positive. A nonempty alternate `min_order_notional` must equal the cross-bound
 primary minimum. A derived minimum order value above USD 10 blocks the probe
 envelope.
 
-The current supervisor retains detailed metadata only for its selected symbol
-and its default preference cannot select SOLUSD. Therefore BTC evidence cannot
-certify ETH or SOL, and SOL remains blocked until a target-scoped or multi-asset
-read-only visibility producer captures full allowlisted metadata. This is the
-principal delegated operational bottleneck after V5.27.
+V5.28 adds an optional exact BTCUSD, ETHUSD, or SOLUSD target to the read-only
+visibility operator and both wrappers. It validates the target before client
+construction, uses it as the sole supervisor preference, and leaves selection
+empty when the target is absent. Operational venue normalization now requires
+the runtime target and selected symbol to match the terminal winner and emits
+explicit target-scope fields for independent sealed-review validation.
 
 ## Lifecycle And Flat Provenance
 
@@ -226,15 +227,17 @@ its mutable latest pointer. It revalidates the review manifest, captured
 sources, embedded capability pointer, trusted current UTC, and exact historical
 fingerprints. It remains non-authorizing.
 
-## Verified Baseline And Next Milestone
+## Verified Baseline And V5.28 Continuation
 
-The real 2026-07-16 offline run certified BTCUSD, ETHUSD, and SOLUSD safety and
+The real 2026-07-17 offline run certified BTCUSD, ETHUSD, and SOLUSD safety and
 published the correct candidate-deferred generation with every authority field
 false. This increases operational autonomy and trustworthiness; it does not
 change the strategy-evidence clock or live-capital readiness.
 
-The next delegated milestone is a target-scoped, no-submit, read-only crypto
-venue visibility producer that can capture full metadata for each frozen
-symbol, followed by winner-specific lifecycle evidence where the legacy BTC
-chain is inapplicable. No additional LLM API, retrieval service, QuantConnect
-integration, or new strategy tournament addresses this bottleneck.
+V5.28 now provides target-scoped, no-submit, read-only visibility for each
+frozen symbol and binds a future operational venue capability to exactly that
+target. The next evidence milestone remains terminal-winner-specific lifecycle
+and flat evidence; the legacy lifecycle chain is BTCUSD-only and cannot certify
+an ETHUSD or SOLUSD winner. Additional LLM APIs, retrieval services,
+QuantConnect integration, or a new strategy tournament do not address that
+evidence dependency.

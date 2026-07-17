@@ -12,6 +12,7 @@ Credential values are never printed.
 param(
     [string]$OutputRoot = "runs\crypto_paper_visibility\latest",
     [string]$BarsCsv = "runs\operator_input\crypto_paper_bars.csv",
+    [string]$TargetSymbol,
     [string]$AsOfTimestamp,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -19,6 +20,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$AllowedTargetSymbols = @("BTCUSD", "ETHUSD", "SOLUSD")
+if (-not [string]::IsNullOrEmpty($TargetSymbol) -and $TargetSymbol -cnotin $AllowedTargetSymbols) {
+    throw "TargetSymbol must be exactly BTCUSD, ETHUSD, SOLUSD, or omitted."
+}
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $DefaultPaperBaseUrl = "https://paper-api.alpaca.markets"
@@ -74,6 +79,7 @@ Write-Host "crypto_visibility_command=run_crypto_paper_visibility_cycle"
 Write-Host "crypto_visibility_operating_mode=visibility/no_submit"
 Write-Host "crypto_visibility_no_submit_enforced=true"
 Write-Host "preflight_APP_PROFILE_is_paper=$(Format-Bool $AppProfileIsPaper)"
+Write-Host "crypto_visibility_target_symbol=$TargetSymbol"
 Write-Host "preflight_APP_PROFILE_is_live=$(Format-Bool $AppProfileIsLive)"
 foreach ($Name in $CredentialVariableNames) {
     Write-Host "preflight_$($Name)_present=$(Format-Bool (Test-ProcessEnvironmentVariableLoaded -Name $Name))"
@@ -96,6 +102,9 @@ $CliArgs = @(
     "--format", $Format
 )
 
+if (-not [string]::IsNullOrEmpty($TargetSymbol)) {
+    $CliArgs += @("--target-symbol", $TargetSymbol)
+}
 if (-not [string]::IsNullOrWhiteSpace($AsOfTimestamp)) {
     $CliArgs += @("--timestamp", $AsOfTimestamp)
 }

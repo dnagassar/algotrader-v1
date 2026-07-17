@@ -1,13 +1,13 @@
 # Active Implementation Checkpoint
 
-## Current Slice — V5.27 Release Closure Ready For Local Commit
+## Current Slice — V5.28 Target-Scoped Read-Only Venue Visibility
 
 - Checkpoint date: `2026-07-17`, America/New_York.
 - Branch: `codex/crypto-frozen-state-reset-workflow`.
-- Current HEAD: `8345234` (`Implement durable crypto bounded probe safety`).
-- The V5.27 capability producer, certifiers, replay validator, wrappers,
-  integration tests, and reconciled documentation have passed their final
-  offline verification and are staged for the scoped local commit.
+- Current HEAD: `e56e577` (`Implement crypto capability production and replay`).
+- V5.27 is committed locally. The V5.28 operator, producer/reviewer target
+  binding, wrappers, tests, and documentation are the only owned uncommitted
+  implementation slice.
 - Exactly one implementation writer may continue this checkout. Inspect branch,
   HEAD, status, staged and unstaged diffs before editing. Do not reset, clean,
   stash, restore, rebase, or switch branches during takeover.
@@ -106,6 +106,14 @@ Final V5.27 release checks from this exact worktree:
 - No network request, market-data fetch, broker/account read, broker mutation,
   submit, cancel, replace, close, liquidation, paper mutation, live endpoint,
   or capital action was executed during this slice.
+V5.28 verification from the current worktree:
+
+- Combined target-scope and V5.27 consumer regression matrix: `186 passed in 70.22s`.
+- `scripts/verify_offline.ps1`: PASS, including `97 passed in 198.74s`.
+- Bounded exact-node full suite: collection/execution equivalence PASS;
+  `9,279 passed`, `4 skipped`, zero failures/errors across 9,283 tests.
+- No network, broker/account read, broker mutation, paper mutation, live
+  endpoint, or capital action occurred in the V5.28 tests.
 
 ## Strategic Classification And Trajectory
 
@@ -134,11 +142,8 @@ Final V5.27 release checks from this exact worktree:
 - Tournament v2 may terminate with no winner or with an input-quality/economic
   rejection. No retuning, window extension, rescue ranking, or fingerprint
   reuse is authorized.
-- V5.27 is release-green; only scoped staging and its local commit remain.
-- Fresh venue evidence must be exact-winner-scoped. The next implementation
-  milestone should add an optional validated `target_symbol` for exactly
-  BTCUSD/ETHUSD/SOLUSD to the read-only visibility path, with no symbol fallback
-  and validation before any SDK factory or broker read.
+- V5.28 implementation is complete; final offline verification, scoped staging,
+  and its local commit remain.
 - Running a fresh paper broker/account/venue read requires a credential-loaded
   paper shell and exact scoped operator authorization. It is not authorized by
   this checkpoint.
@@ -150,12 +155,12 @@ Final V5.27 release checks from this exact worktree:
 
 ## Worktree Ownership
 
-Committed at HEAD as part of V5.27:
+V5.27 committed locally as `e56e577` includes:
 
 - `src/algotrader/execution/crypto_bounded_probe_safety.py`
 - `tests/unit/test_crypto_bounded_probe_safety.py`
 
-Owned uncommitted implementation/doc slice:
+Additional committed V5.27 continuation files:
 
 - `src/algotrader/core/paper_account_binding.py`
 - `src/algotrader/execution/crypto_bounded_probe_independent_flat_reconciliation.py`
@@ -180,6 +185,24 @@ Owned uncommitted implementation/doc slice:
 - `docs/agent_context/codex_operating_context.md`
 - `docs/agent_context/active_implementation.md`
 
+Owned uncommitted V5.28 slice:
+
+- `src/algotrader/execution/crypto_paper_visibility_operator.py`
+- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_capability_producer.py`
+- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_review.py`
+- `scripts/run_crypto_paper_visibility_cycle.ps1`
+- `scripts/run_crypto_universe_refresh.ps1`
+- `tests/unit/test_crypto_paper_visibility_operator.py`
+- `tests/unit/test_run_crypto_paper_visibility_cycle_script.py`
+- `tests/unit/test_crypto_universe_refresh.py`
+- `tests/unit/test_crypto_tournament_v2_capability_producer.py`
+- `tests/unit/test_crypto_tournament_v2_bounded_paper_probe_review.py`
+- `docs/design/v5_28_crypto_target_scoped_read_only_venue_visibility.md`
+- `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
+- `docs/deterministic_core.md`
+- `docs/OPERATOR_RUNBOOK.md`
+- `docs/agent_context/codex_operating_context.md`
+- `docs/agent_context/active_implementation.md`
 ## Protected Dirty Work
 
 - Preserve `docs/project_checkpoint.md` as unrelated modified operator work at
@@ -193,14 +216,12 @@ Owned uncommitted implementation/doc slice:
 
 ## Already-Selected Next Action
 
-Stage only the owned V5.27 slice, inspect it, and create one coherent local
-commit without pushing.
+Finish and commit V5.28 without pushing:
 
-Then implement V5.28 target-scoped read-only venue visibility:
+1. Recheck credential/profile presence and both protected hashes.
+2. Stage only the owned V5.28 slice and inspect the staged diff.
+3. Create one coherent local V5.28 commit.
 
-1. Accept only an
-   exact optional target symbol in BTCUSD/ETHUSD/SOLUSD, validate it before any
-   client construction/read, use it as the sole preferred symbol with no
-   fallback, and thread it through the Python visibility operator and both
-   PowerShell wrappers.
-2. Keep offline implementation and tests credential-free and broker-free. A
+Do not perform a real paper venue read without fresh exact scoped operator
+authorization. After V5.28, the next evidence milestone is terminal-winner-
+specific lifecycle and independent-flat evidence, not another visibility layer.

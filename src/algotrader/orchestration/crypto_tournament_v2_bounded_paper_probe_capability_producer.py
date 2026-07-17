@@ -367,7 +367,7 @@ _VENUE_RUNTIME_KEYS = {
     "final_operator_action", "safety_labels", "paper_only_mode",
     "live_endpoint_indicator", "operator_command", "operating_mode",
     "operator_preflight", "broker_read_requested", "broker_read_error_type",
-    "no_submit_wrapper",
+    "no_submit_wrapper", "target_symbol", "target_scoped",
 }
 _VENUE_RUNTIME_CAPABILITY_KEYS = {
     "universe", "asset_class", "broker_read_performed", "broker_state_mode",
@@ -1107,6 +1107,8 @@ def _normalize_venue(
         "as_of": observed.isoformat(),
         "asset_class": "crypto",
         "broker_state_mode": "alpaca_paper_observed",
+        "target_symbol": symbol,
+        "target_scoped": True,
         "records": [record],
         "resolved_source_sha256": raw_sha256,
         "resolved_source_digests": {
@@ -1254,6 +1256,8 @@ def _validate_venue_provenance(
         or runtime.get("asset_class") != "crypto"
         or runtime.get("operator_command")
         != "run_crypto_paper_visibility_cycle"
+        or runtime.get("target_symbol") != symbol
+        or runtime.get("target_scoped") is not True
         or runtime.get("operating_mode") != "visibility/no_submit"
         or runtime.get("broker_read_requested") is not True
         or runtime.get("broker_read_performed") is not True

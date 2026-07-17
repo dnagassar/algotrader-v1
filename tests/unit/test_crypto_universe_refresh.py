@@ -522,6 +522,10 @@ def test_run_crypto_universe_refresh_script_contract() -> None:
     assert "Credential values are never printed" in script
     assert "blocked_unsafe_environment" in script
     assert "run_crypto_paper_visibility_cycle.ps1" in script
+    assert "[string]$TargetSymbol" in script
+    assert "$TargetSymbol -cnotin $AllowedTargetSymbols" in script
+    assert "TargetSymbol is valid only when Mode is paper_read_only" in script
+    assert '$VisibilityArgs["TargetSymbol"] = $TargetSymbol' in script
     assert '"-m", "algotrader.orchestration.crypto_universe_refresh"' in script
     assert "paper_submit_performed=false" in script
     assert "broker_mutation_performed=false" in script
