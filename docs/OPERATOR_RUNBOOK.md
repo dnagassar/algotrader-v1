@@ -796,8 +796,9 @@ Run the V5.26 review only from a normal credential-free development shell:
 .\scripts\run_crypto_tournament_v2_bounded_paper_probe_review.ps1
 ```
 
-The default uses the current UTC clock. For a deterministic historical replay,
-pass an explicit ISO-8601 `-AsOf` value; never use a placeholder literally.
+The default uses the current UTC clock. For deterministic reevaluation at an
+explicit clock, pass an ISO-8601 `-AsOf` value; never use a placeholder
+literally. This is not the pinned immutable-publication replay described below.
 
 Do not load the paper shell for this command. It rejects `APP_PROFILE=paper` or
 `live`, all Alpaca credential aliases, network-test flags, and live endpoint
@@ -818,11 +819,10 @@ Follow `latest_manifest.json` to its immutable generation. That generation
 contains the preregistration, JSON and Markdown review, generation manifest,
 and snapshots of terminal evidence plus only capability, producer, and upstream
 inputs actually evaluated after the strategy gates pass. File existence alone
-does not establish readiness. The persisted packet validator is structural
-only. Rerun this wrapper with its default current UTC clock to replay the local
-sources. A future authorization consumer must additionally validate the pointer,
-manifest, hashes, and exact replayed fingerprint before any mutation review can
-rely on a generation; that consumer does not yet exist.
+does not establish readiness. The V5.26 persisted packet validator is
+structural only. V5.27 adds the separate source-bound production and pinned
+replay path described below. A review generation remains non-authorizing even
+when replay succeeds.
 
 The strongest possible result is `eligible_for_operator_review_only`. It still
 has approval state `not_authorized`, expires at the earliest capability expiry,
@@ -831,3 +831,66 @@ require a separate exact operator authorization. A later live test additionally
 requires completed paper evidence, a separate live-readiness review, explicit
 capital allocation, live credential/endpoint controls, and exact operator
 authorization.
+
+## Tournament V2 Capability Production And Pinned Replay
+
+Run the complete V5.27 offline capability pipeline from a normal
+credential-free development shell, never from the paper shell:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_capability_pipeline.ps1
+```
+
+The wrapper rejects paper/live profiles, all supported Alpaca credential
+aliases, network-test switches, and live endpoint indicators before Python
+starts. It performs no network request, broker/account read, broker mutation,
+submit, cancel, replace, close, liquidation, paper mutation, capital action, or
+live action. It refreshes the source-bound safety certification and publishes
+from existing local venue, lifecycle, and flat evidence; it does not fetch or
+create those observations. Candidate-specific evidence is resolved only after
+V5.25 names the exact accepted winner.
+
+Until that terminal winner exists, the expected production classification is
+`candidate_deferred_pending_terminal_winner` with blocker
+`v5_25_terminal_winner_not_available`. This is a successful fail-closed result,
+not an instruction to hand-create capability data or change the OOS calendar.
+
+If capability production eventually emits an eligible bundle, run the V5.26
+review command above. Then replay that exact immutable review publication by
+pinning its 64-character publication fingerprint:
+
+```powershell
+.\scripts\replay_crypto_tournament_v2_bounded_paper_probe_review.ps1 `
+  -ExpectedPublicationFingerprint <64-character-fingerprint>
+```
+
+The replay command resolves the pinned outer review generation directly; it
+does not trust the outer mutable-latest pointer. It validates that generation's
+manifest and artifact hashes, the embedded pinned capability pointer, captured
+raw sources, canonical JSON, trusted current UTC, and exact recomputed
+fingerprints. An unpinned mutable-latest lookup is not sufficient for a later
+authorization review. Replay success still grants no mutation, capital,
+broker, paper, or live authority.
+
+A fully validated eligible generation retains exact legacy lifecycle source
+bytes for pinned replay. Those ignored local `runs\` artifacts may contain
+noncredential broker/account/order identifiers even though normalized outputs
+use a hashed account binding. Do not attach, publish, or copy a generation as a
+routine report. Blocked and malformed inputs are not snapshotted.
+
+Lifecycle eligibility is intentionally strict. V5.8 must show zero fill and no
+residual state; V5.9 must be the exact canonical packet/manifest output with its
+unchanged operator phrase and false authority fields; and V5.10 must show
+positive, cross-bound entry and exit fills. A fresh independent flat read must
+occur at or after the broker-reported V5.10 exit-order `filled_at`. A flat read
+that is merely later than the V5.10 run timestamp is invalid. The sealed review
+re-derives this ordering and selected-symbol venue semantics rather than
+trusting normalized claims.
+
+Current operational limitations are intentional: the existing visibility
+supervisor captures full metadata only for its selected symbol and cannot
+select SOLUSD by default; the legacy lifecycle chain is BTCUSD-only; and the
+historical BTC chain no longer retains the exact V5.6 bytes cited downstream.
+Do not weaken those gates. The next delegated milestone is target-scoped,
+read-only visibility for BTCUSD, ETHUSD, and SOLUSD, followed by
+winner-specific lifecycle evidence after the terminal candidate is known.

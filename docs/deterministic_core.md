@@ -21,7 +21,9 @@ Live capital remains locked down.
 - No agent or LLM may autonomously submit, cancel, replace, close, liquidate,
   or otherwise mutate broker/account/order state.
 - LLMs and agents are not allowed in the trading hot path.
-- The current active strategy path is SPY daily long-only ETF SMA 50/200.
+- SPY daily long-only ETF SMA 50/200 remains the initial paper-lab path;
+  tournament-v2 BTCUSD/ETHUSD/SOLUSD is the current primary research-to-paper
+  evidence lane. Neither path grants live authority.
 - M376 remains treated as an open/nonterminal SPY paper close order until a
   read-only reconciliation artifact says terminal.
 
@@ -994,17 +996,95 @@ The deterministic outcomes are waiting, terminal input-quality closure,
 economic rejection, operational-evidence block, or
 `eligible_for_operator_review_only`. Eligible review packets expire at the
 earliest effective capability expiry. Their full safety-critical identity is
-fingerprinted. The persisted validator is structural only: a future
-authorization consumer must replay the snapshotted terminal, capability,
-producer, and upstream sources with trusted current UTC and match the exact
+fingerprinted. The V5.26 persisted validator is structural only. V5.27 supplies
+the separate source-bound capability producer and pinned generation-replay
+consumer that replays the snapshotted terminal, capability, producer, and
+upstream sources with trusted current UTC and requires the exact historical
 fingerprint. Publication uses a local process lock, immutable
 fingerprint-addressed generations containing the terminal source and only
 capability sources actually evaluated after strategy acceptance, and an atomic
-latest manifest written last. No authorization-grade generation replay consumer
-exists yet; persisted validation remains non-authorizing.
+latest manifest written last. Replay validation remains non-authorizing.
 
 This module imports no execution adapter and has no network, credential,
 account, broker, order, paper-mutation, capital, or live path. Its strongest
 outcome still has every authority field false and requires a separate exact
 operator authorization. The full contract is in
 `docs/design/v5_26_crypto_tournament_v2_bounded_paper_probe_review.md`.
+
+## Tournament V2 Capability Production And Replay Contract
+
+V5.27 implements the candidate-deferred operational-evidence path for the
+frozen BTCUSD, ETHUSD, and SOLUSD tournament. Its bounded-probe safety-policy
+fingerprint is
+`c0abbc047f7bdf01f19d46e06d3824acd980016b4bd992d78dd4994db6d2c407`.
+Before V5.25 seals an accepted terminal winner, production publishes only
+`candidate_deferred_pending_terminal_winner`; malformed or irrelevant
+capability inputs cannot alter that classification. A quality or economic
+rejection also terminates before capability resolution.
+
+The offline bounded-probe safety module combines a pure evaluator with a durable
+local SQLite control store. It is default-paused and has no broker, credential,
+network, adapter, or order-submission import. Its source-bound certification
+covers the USD 1-10 entry envelope, cash/account/data gates, durable
+restart-latched USD 2 loss halt, atomic entry admission, persistent
+entry/cancel/exit attempt budgets, and risk-reducing cancel or exit admission
+while entry is halted. All authority fields remain false.
+
+Venue capability requires one coherent V5.1 paper-read packet plus the exact
+refresh, visibility-wrapper, and supervisor source bytes. It validates manifest
+hashes, read-only safety fields, candidate-specific order increments and
+notional limits, nested runtime metadata, and an exact selected-symbol match.
+Both runtime visibility and the V5.1 refresh independently expire after 24
+hours; the older observation controls. The current supervisor retains detailed
+metadata only for its selected symbol and cannot select SOLUSD under its default
+preference, so a target-scoped or multi-asset read-only visibility producer is
+the next delegated operational bottleneck.
+
+Advertised minimum notional, size, and trade increments must exactly match
+their broker-observed and runtime counterparts. Optional required fields must
+contain matching empty strings when unavailable; a nonempty alternate
+`min_order_notional` must equal the primary minimum. A derived minimum order
+value above USD 10 fails closed.
+
+Lifecycle capability requires a locally hash-coherent V5.6-V5.10 chain and the
+exact producer source bytes. The legacy V5.8/V5.10 path is BTCUSD-only and
+cannot certify ETHUSD or SOLUSD. The current historical mutable-latest chain is
+also rejected because it no longer retains the exact V5.6 bytes named by V5.8.
+All five lifecycle timestamps must be ordered and non-future, and the earliest
+antecedent controls freshness. A newer downstream receipt cannot refresh an
+older precursor. Historical lifecycle account observations must be active and
+carry all three explicit false block flags; the V5.9 packet has an exact schema
+and canonical operator phrase, with all authority, network, and
+credential-exposure fields false. V5.8 must have zero fill and empty residual
+state. V5.10 entry and exit fills must both be positive, match the nested final
+orders, and follow the ordered run, submit, fill, exit-submit, exit-fill
+chronology. Its broker-reported exit `filled_at` is the final mutation time.
+Independent flat reconciliation requires completed account/position/order read
+attestations, zero account-wide positions and open orders, and a fresh receipt
+observed at or after that final mutation time. The sealed review independently
+re-derives that ordering and the venue semantics from normalized upstreams.
+Lifecycle and flat evidence must bind the same expected paper account through a
+domain-separated hash; raw account identifiers are absent from normalized
+capability and flat outputs.
+
+Capability and review generations are immutable and fingerprint-addressed,
+with an exclusive local lock and latest pointer written last. Canonical loaders
+and replay reject duplicate or noncanonical JSON, unsafe paths and Windows path
+aliases, links/reparse points, hash or manifest drift, authority injection,
+mixed layouts, and stale or future-dated evidence. A pinned replay reconstructs
+production from captured source bytes and trusted current UTC and must match the
+exact historical fingerprints. It grants no paper mutation, capital, live, or
+broker authority.
+
+Blocked or malformed inputs are not snapshotted. Exact raw lifecycle bytes are
+retained only for a fully validated local bundle so replay can re-execute the
+legacy provenance chain. These ignored `runs/` artifacts may contain
+noncredential account/order identifiers and must not be treated as shareable
+reports; normalized outputs use the non-secret account binding.
+
+The real 2026-07-17 offline pipeline run certified the safety kernel for all
+three frozen symbols and correctly remained candidate-deferred because no
+V5.25 terminal winner exists. This materially improves research-to-paper
+operational autonomy and evidence integrity, but adds no strategy-return
+evidence and does not change live-capital readiness. The full contract is in
+`docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`.

@@ -1,161 +1,183 @@
 # Active Implementation Checkpoint
 
-## Current Slice — V5.26 Tournament V2 Bounded Paper-Probe Review
+## Current Slice — V5.27 Release Closure Ready For Local Commit
 
-- Execution date: `2026-07-16`, America/New_York.
+- Checkpoint date: `2026-07-17`, America/New_York.
 - Branch: `codex/crypto-frozen-state-reset-workflow`.
-- Parent HEAD: `c20697d21c3241c0bcf820bc00936c75d27cef1b`
-  (`Implement crypto winner forward shadow state`).
-- Exactly one implementation writer owned the checkout. Two independent
-  read-only reviewers audited the core trust boundary and release hygiene.
-- Protected operator-owned files were not edited, staged, or committed.
+- Current HEAD: `8345234` (`Implement durable crypto bounded probe safety`).
+- The V5.27 capability producer, certifiers, replay validator, wrappers,
+  integration tests, and reconciled documentation have passed their final
+  offline verification and are staged for the scoped local commit.
+- Exactly one implementation writer may continue this checkout. Inspect branch,
+  HEAD, status, staged and unstaged diffs before editing. Do not reset, clean,
+  stash, restore, rebase, or switch branches during takeover.
 
 ## Verified Baseline
 
-- Tournament v1 remains terminal and closed. V1 evidence and rescue tuning are
-  not reusable in v2.
-- Tournament v2 remains the frozen BTCUSD/ETHUSD/SOLUSD lane. The real generated
-  state is still `collecting_untouched_oos`: 72 embargo rows, zero OOS rows, no
-  terminal outcome, no ranking, and no selected candidate.
-- V5.25 forward-shadow state therefore correctly remains absent/dormant, and the
-  real V5.26 wrapper returns `waiting_for_v5_25_terminal_evidence`.
-- The V5.24 forward-shadow preregistration remains frozen under fingerprint
-  `7ff152e69bd00eb8da9376d1f2be15194fbd04ed6a420151e30c3c46bec82436`.
-- The hardened V5.26 bounded-probe review preregistration is frozen under
-  fingerprint
+- Tournament v1 remains terminal and closed. None of its evidence may be reused
+  to rescue or retune tournament v2.
+- Tournament v2 remains preregistered for exactly BTCUSD, ETHUSD, and SOLUSD
+  under the existing frozen fingerprints and untouched-OOS rules.
+- The latest real pipeline observation verified on 2026-07-17 remained
+  `candidate_deferred_pending_terminal_winner` with blocker
+  `v5_25_terminal_winner_not_available`. No V5.25 terminal winner, ranking, or
+  selected subject is available. Recheck current generated state; do not infer
+  a calendar outcome from elapsed wall time.
+- V5.26 bounded-probe preregistration remains frozen at
   `3b82ebcaf3c80b9c1fbda5797623b2e616dfef0a3ed38d2cc52c0b1d3151efb5`.
+- V5.27 bounded-probe safety policy remains frozen at
+  `c0abbc047f7bdf01f19d46e06d3824acd980016b4bd992d78dd4994db6d2c407`.
+- No real capability bundle or eligible review packet has been emitted. The
+  positive tests use synthetic or locally generated canonical fixtures only.
 
-## Capability Implemented And Proven
+## Capability Implemented In The Current Worktree
 
-V5.26 closes the post-shadow decision gap without granting paper or live
-authority.
+V5.27 materially closes the gap between a future terminal strategy winner and
+a trustworthy, no-submit operational-capability review.
 
-- A public V5.25 terminal exporter locks and validates persisted state, completes
-  any already-journaled recovery, regenerates normalization, causal decisions,
-  metrics, quality algebra, and the terminal evidence fingerprint, and returns
-  one path-free export. It writes no new evidence generation.
-- The reviewer requires the exact frozen v2 manifest candidate and symbol, exact
-  168-hour untouched window, canonical checkpoint prefix, terminal scoring and
-  timestamp ordering, complete quality/progress cross-binding, exact metric
-  schemas and algebra, and exact terminal/source/safety/artifact key manifests.
-- Eight manifest-driven economic gates require positive base/stress returns,
-  positive base/stress excess versus same-symbol buy-and-hold, base/stress
-  drawdown no greater than 20 percent, and drawdown no worse than the matching
-  buy-and-hold case. No retuning, substitution, ranking rescue, transition
-  minimum, or window extension is permitted.
-- The prospective paper-probe envelope is exact-selected-symbol, long/cash,
-  maximum USD 10 notional/principal, USD 2 durable loss halt, one position/open
-  order/entry/exit, at most one cancel per order, zero replacements, maximum 168
-  hours, and no leverage, margin, shorting, pyramiding, or cross-symbol exposure.
-- Four operational capabilities are required: fresh venue orderability, bounded
-  order policy, lifecycle plus independent flat reconciliation, and durable
-  kill/loss control. Canonical bytes, producer sources, every preregistered
-  upstream, claims, timestamps, policy identity, and one coherent bundle
-  fingerprint are validated. The earliest lifecycle upstream observation
-  controls expiry, so fresh reconciliation cannot refresh stale mechanics.
-- The real repository has no qualifying capability bundle. Synthetic positive
-  fixtures prove the validator contract only and are explicitly not operational
-  evidence.
-- Waiting, input-quality closure, economic rejection, operational block, and
-  `eligible_for_operator_review_only` are the only outcomes. Even the strongest
-  outcome has approval state `not_authorized` and every authority field false.
-- Review publication is process-locked, immutable, fingerprint-addressed, and
-  latest-pointer-last. Capability inputs are loaded and snapshotted only after
-  strategy acceptance; irrelevant or malformed capability files cannot affect a
-  waiting, quality-closed, or economically rejected generation.
-- Persisted packet validation is structural only. Future authorization must use
-  trusted current UTC, replay original source bytes, validate the immutable
-  generation, and match the exact fingerprint.
-- The wrapper is credential-free, network-free, broker-free, no-submit, and
-  no-mutation. It trims and rejects paper/live profiles, all supported Alpaca
-  credential aliases, network-test flags, and live endpoint indicators. Its
-  primary runbook command is directly executable with current UTC.
+- `crypto_bounded_probe_safety.py` is a durable, local-only safety kernel with a
+  restart-latched USD 2 loss halt; exact USD 10 principal/notional envelope;
+  long/cash, one-symbol, one-position, one-open-order, one-entry, one-exit,
+  one-cancel, zero-replacement limits; entry expiry; broker-ambiguity denial;
+  and risk-reducing cancel/exit behavior while new entries are halted.
+- Paper-account identity is domain-separated and normalized without persisting
+  raw account identifiers. ACTIVE/unblocked observations and expected-account
+  matching are mandatory.
+- Independent flat reconciliation requires explicit successful account,
+  position, and open-order reads; zero positions and open orders; matching
+  account binding; read-only behavior; no mutation; no live endpoint; and exact
+  freshness.
+- The safety certifier binds the exact local kernel, certifier, and focused-test
+  bytes to deterministic passing receipts for BTCUSD, ETHUSD, and SOLUSD.
+- The candidate-deferred capability producer resolves canonical local bytes and
+  historical lifecycle artifacts before emitting anything. It snapshots raw
+  sources only after the entire bundle validates.
+- Venue evidence requires exact paper-read identity, selected-symbol uniqueness,
+  active/tradable orderability, minimum notional at or below USD 10, positive
+  size/trade increments, exact primary-to-broker/runtime cross-binding, exact
+  optional increment agreement, exact alternate-minimum agreement, and a
+  positive derived minimum no greater than USD 10 when present.
+- Lifecycle validation binds V5.6 through V5.10 chronology, manifests, hashes,
+  sizes, summaries, labels, account state, authorization fields, one-shot
+  attempt counts, V5.8 zero fill and empty residual state, V5.9 canonical packet
+  schema and operator phrase, and V5.10 positive entry/exit fills.
+- Independent flat evidence must occur after the broker-reported V5.10 exit
+  order `filled_at`, not merely after the V5.10 run-start `as_of`. Entry and exit
+  submit/fill timestamps must be timezone-aware, ordered, nonfuture, and
+  cross-bound to the nested final-order quantities and statuses.
+- The canonical V5.9 writer is exercised end to end: its persisted packet and
+  manifest bytes are consumed by the public V5.27 producer and linked through
+  the downstream V5.10 fixture. This proves actual serialization, artifact
+  paths, hashes, sizes, labels, schema, and summary compatibility.
+- The sealed V5.26 review independently re-derives venue semantics and verifies
+  final-mutation-to-flat ordering from the normalized capability upstreams. It
+  rejects unexpected authority-, permission-, credential-, occurrence-,
+  performance-, attempt-, and endpoint-shaped fields.
+- Immutable capability generations and review publications are replayed from
+  pinned bytes with exact fingerprints. Waiting generations remain
+  candidate-deferred and do not replace the last qualifying publication.
+- Both PowerShell wrappers are offline, local-artifact-only, no-submit,
+  no-paper-mutation, no-live, and credential rejecting.
 
-## Classification And Strategic Trajectory
+## Current Verification Evidence
 
-- Task classification:
-  `material_end_to_end_research_to_paper_decision_autonomy`.
-- Autonomy impact: materially positive. A sealed winner can now move through
-  terminal export, economic admission, operational evidence review, immutable
-  publication, and explicit blocker selection without routine management.
-- Decision-evidence impact today: no new alpha evidence. The untouched OOS and
-  future shadow observations do not yet exist. V5.26 evaluates future evidence
-  honestly; it does not manufacture it.
-- Safety/orchestration balance: V5.26 is targeted admission infrastructure tied
-  directly to one frozen strategy-evidence path. It is not live readiness and
-  does not justify adding Claude, Antigravity, QuantConnect, another retrieval
-  API, or another strategy tournament as the principal next step.
-- Principal bottleneck has shifted from post-shadow orchestration to genuine,
-  execution-bound crypto safety capabilities and their canonical evidence
-  producers. This work can proceed offline while calendar evidence accrues.
-- Live-capital readiness remains false. A successful paper probe, later
-  live-readiness review, explicit capital allocation, live credential/endpoint
-  controls, and exact operator authorization are still required.
+Credential-safe preflight on 2026-07-17:
+
+- `APP_PROFILE=paper`: false.
+- `ALPACA_API_KEY`, `ALPACA_API_SECRET_KEY`, `ALPACA_SECRET_KEY`,
+  `APCA_API_KEY_ID`, and `APCA_API_SECRET_KEY`: absent.
+- No credential value was printed.
+
+Final V5.27 release checks from this exact worktree:
+
+- Complete producer/review/replay/wrapper matrix: `160 passed in 214.78s`.
+- Dependency direction: `33 passed in 19.27s`.
+- `scripts/verify_offline.ps1`: PASS, including `97 passed in 155.32s`.
+- Bounded exact-node full suite: collection equivalence PASS for 9,271 tests;
+  `9,267 passed`, `4 skipped`, zero failures/errors, execution equivalence PASS.
+- The direct monolithic `python -m pytest` attempt exceeded the 15-minute tool
+  ceiling without a result; the repository's exact-node bounded runner above is
+  the completed full-suite evidence.
+- Real local-only pipeline: `candidate_deferred_pending_terminal_winner` with
+  blocker `v5_25_terminal_winner_not_available` and every authority field false.
+- Final source audit found no remaining lifecycle, canonical V5.9, independent
+  review, replay-pinning, or authority-denial defect.
+- `git diff --check` passed after documentation reconciliation.
+- No network request, market-data fetch, broker/account read, broker mutation,
+  submit, cancel, replace, close, liquidation, paper mutation, live endpoint,
+  or capital action was executed during this slice.
+
+## Strategic Classification And Trajectory
+
+- Current classification:
+  `material_end_to_end_research_to_paper_operational_autonomy`.
+- Autonomy impact: materially positive. Once genuine V5.25 terminal evidence
+  names a winner, the system can now produce and replay a source-bound
+  operational bundle and default-denied review without routine management.
+- Strategy-evidence impact: none. No new alpha, untouched OOS, or forward-shadow
+  decision evidence was created. The calendar-bound evidence remains the
+  principal strategy-selection gate and must not be fabricated or shortened.
+- Infrastructure balance: V5.27 is targeted execution-readiness evidence, not
+  generic orchestration accumulation. It still does not prove profitability,
+  paper performance, or live readiness.
+- Adding Claude, Antigravity, QuantConnect, another retrieval source, or another
+  external API is not the principal bottleneck. The next leverage comes from
+  exact winner-scoped operational observations and paper evidence, not more
+  information plumbing.
+- Live-capital readiness remains false. A genuine terminal winner, fresh
+  target-specific venue and flat observations, successful bounded paper
+  evidence, a separate live-readiness review, explicit capital allocation,
+  live credentials/endpoints, and exact operator authorization remain required.
 
 ## Unresolved Risks And Hard Gates
 
-- Tournament v2 can still end with no winner or an input-quality gate. Neither
-  the OOS endpoint nor the V5.25 shadow window may be extended, rescue-tuned, or
-  re-fingerprinted.
-- The selected strategy can still fail cost, benchmark-relative return, or
-  drawdown gates after 168 untouched shadow hours.
-- There is no winner yet, so no real subject-bound capability bundle may be
-  emitted. Offline V5.27 code must remain candidate-deferred across BTCUSD,
-  ETHUSD, and SOLUSD.
-- Venue evidence is stale under the 24-hour rule; the last real paper-observed
-  artifact proved BTCUSD only, while ETHUSD/SOLUSD metadata was absent.
-- The current bounded crypto order policy is BTCUSD-only and does not yet bind
-  all USD 10/one-order/zero-replacement envelope limits into one dedicated
-  safety kernel.
-- BTCUSD has historical submit/cancel and fill/exit mechanics receipts, but no
-  separately fresh independent flat reconciliation. ETHUSD and SOLUSD have no
-  lifecycle certification.
-- No crypto-scoped durable, restart-latched USD 2 loss halt or resolved
-  certification receipt exists. Existing generic/autopilot controls are not a
-  substitute.
-- Normalized policy, lifecycle, and kill upstream schemas still need canonical
-  producers that resolve their code, V5.8/V5.10 receipts, and offline test
-  receipts by bytes. Hash-shaped assertions are not readiness evidence.
-- No authorization-grade immutable-generation replay consumer exists. A
-  persisted eligible-looking packet remains non-authorizing.
-- A fresh read-only venue/flat-account observation would require exact scoped
-  operator authorization and a credential-loaded paper shell. Any paper
-  mutation, capital allocation, live credentials/endpoints, or live trade
-  remains a hard operator gate.
+- Tournament v2 may terminate with no winner or with an input-quality/economic
+  rejection. No retuning, window extension, rescue ranking, or fingerprint
+  reuse is authorized.
+- V5.27 is release-green; only scoped staging and its local commit remain.
+- Fresh venue evidence must be exact-winner-scoped. The next implementation
+  milestone should add an optional validated `target_symbol` for exactly
+  BTCUSD/ETHUSD/SOLUSD to the read-only visibility path, with no symbol fallback
+  and validation before any SDK factory or broker read.
+- Running a fresh paper broker/account/venue read requires a credential-loaded
+  paper shell and exact scoped operator authorization. It is not authorized by
+  this checkpoint.
+- Any paper submit/cancel/fill/exit mutation requires exact operation-specific
+  operator authorization. No paper mutation is currently authorized.
+- Live credentials, live endpoints, capital allocation, and any live order are
+  hard operator gates. The repository remains paper-only and not live
+  authorized.
 
-## Safety And Verification Receipt
+## Worktree Ownership
 
-- Final preflight found `APP_PROFILE=paper` false and all checked Alpaca
-  credential aliases absent; no credential value was printed.
-- No network request, market-data fetch, broker/account read, broker mutation,
-  submit, cancel, replace, close, liquidation, paper mutation, live endpoint, or
-  capital action occurred in this slice.
-- Focused V5.26 exporter/reviewer/wrapper/dependency matrix: 101 passed in
-  47.98 seconds.
-- Required offline verifier: 97 passed in 110.87 seconds; `PASS`.
-- Full default suite: 9,094 collected; 9,090 passed, 4 skipped, 0 failures, and
-  0 errors in 2,503.87 seconds; `PASS`.
-- Two final independent read-only audits found no remaining P0, P1, or
-  release-blocking P2 issue.
-- The real copy/paste wrapper completed successfully with current UTC and
-  returned `waiting_for_v5_25_terminal_evidence`; all authority fields remained
-  false and no capability input was evaluated.
-- `git diff --check`: passed before this handoff update and must be repeated
-  after it.
-- No tracked `runs/` artifact was created.
+Committed at HEAD as part of V5.27:
 
-## Files Owned By This Slice
+- `src/algotrader/execution/crypto_bounded_probe_safety.py`
+- `tests/unit/test_crypto_bounded_probe_safety.py`
 
-- `src/algotrader/research/crypto_tournament_v2_forward_shadow_state.py`
+Owned uncommitted implementation/doc slice:
+
+- `src/algotrader/core/paper_account_binding.py`
+- `src/algotrader/execution/crypto_bounded_probe_independent_flat_reconciliation.py`
+- `src/algotrader/execution/crypto_bounded_probe_safety_certification.py`
+- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_capability_producer.py`
 - `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_review.py`
-- `scripts/run_crypto_tournament_v2_bounded_paper_probe_review.ps1`
-- `tests/unit/test_crypto_tournament_v2_forward_shadow_state.py`
+- `src/algotrader/certification/__init__.py`
+- `src/algotrader/certification/crypto_tournament_v2_bounded_paper_probe_generation_replay.py`
+- `scripts/run_crypto_tournament_v2_capability_pipeline.ps1`
+- `scripts/replay_crypto_tournament_v2_bounded_paper_probe_review.ps1`
+- `tests/unit/test_crypto_bounded_probe_independent_flat_reconciliation.py`
+- `tests/unit/test_crypto_bounded_probe_safety_certification.py`
+- `tests/unit/test_crypto_tournament_v2_capability_producer.py`
 - `tests/unit/test_crypto_tournament_v2_bounded_paper_probe_review.py`
-- `tests/unit/test_run_crypto_tournament_v2_bounded_paper_probe_review_script.py`
+- `tests/unit/test_crypto_tournament_v2_generation_replay.py`
+- `tests/unit/test_run_crypto_tournament_v2_capability_pipeline_script.py`
 - `tests/unit/test_dependency_direction.py`
+- `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
 - `docs/design/v5_26_crypto_tournament_v2_bounded_paper_probe_review.md`
 - `docs/deterministic_core.md`
 - `docs/OPERATOR_RUNBOOK.md`
+- `docs/agent_context/codex_operating_context.md`
 - `docs/agent_context/active_implementation.md`
 
 ## Protected Dirty Work
@@ -166,29 +188,19 @@ authority.
 - Preserve `docs/design/v5_20_3_crypto_frozen_state_reset_baseline.md` as
   unrelated untracked operator work at SHA-256
   `602304A0D55369573B2AF4147850C7271EE518EB097D4AD86DB05D6FD50B4900`.
-- Do not reset, clean, stash, restore, rebase, switch branches, stage, or commit
-  either file without explicit ownership transfer.
+- Do not reset, clean, stash, restore, rebase, switch branches, stage, commit,
+  or edit either file without explicit ownership transfer.
 
 ## Already-Selected Next Action
 
-Continue tournament-v2 receipt-bound OOS accrual through the existing isolated
-paper market-data command whenever an exact read-only refresh is authorized;
-that calendar operation is independent of offline development.
+Stage only the owned V5.27 slice, inspect it, and create one coherent local
+commit without pushing.
 
-Implement V5.27 as a candidate-deferred, default-paused crypto bounded-probe
-safety kernel and canonical capability producer. It should provide a durable
-local control store; restart-latched USD 2 loss halt; exact USD 10, long/cash,
-one-position/order/entry/exit, one-cancel, zero-replacement envelope; fail-closed
-entry admission for stale/future data, missing loss context, expiry, loss breach,
-unexpected state, and broker ambiguity; and risk-reducing cancel/exit admission
-while entries are halted. It must have no broker client, credential, network, or
-order-submission imports.
+Then implement V5.28 target-scoped read-only venue visibility:
 
-The producer must resolve policy source bytes, lifecycle certification receipts,
-kill-control test receipts, and eventual selected-symbol venue evidence rather
-than accept hash-shaped assertions. It may test all three frozen symbols
-offline, but production capability emission must remain blocked until a valid
-terminal export names the exact winner. Add the authorization-grade immutable
-generation replay validator in this path. This is the highest-leverage delegated
-milestone toward a later explicitly authorized small-capital live test while the
-untouched strategy evidence clock advances.
+1. Accept only an
+   exact optional target symbol in BTCUSD/ETHUSD/SOLUSD, validate it before any
+   client construction/read, use it as the sole preferred symbol with no
+   fallback, and thread it through the Python visibility operator and both
+   PowerShell wrappers.
+2. Keep offline implementation and tests credential-free and broker-free. A

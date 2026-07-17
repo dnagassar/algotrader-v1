@@ -9,6 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from algotrader.core.paper_account_binding import (
+    build_alpaca_paper_account_binding,
+)
 from algotrader.errors import ValidationError
 from algotrader.orchestration import (
     crypto_tournament_v2_bounded_paper_probe_review as subject,
@@ -325,19 +328,36 @@ def _upstream_artifacts(
         return {
             "orderability_metadata": {
                 "schema_version": "v5_1_crypto_universe_refresh_v1",
+                "record_type": "crypto_orderability_metadata",
                 "as_of": observed_at.isoformat(),
                 "asset_class": "crypto",
                 "broker_state_mode": "alpaca_paper_observed",
+                "resolved_source_sha256": SHA_D,
+                "resolved_source_digests": {},
                 "records": [
                     {
                         "asset_class": "crypto",
+                        "source_mode": "paper_read_only",
                         "broker_state_mode": "alpaca_paper_observed",
                         "metadata_status": "metadata_observed",
                         "orderability_status": "notional_orderable",
+                        "orderability_basis": (
+                            "broker_notional_and_qty_metadata"
+                        ),
                         "status": "active",
                         "symbol": symbol,
                         "tradable": True,
                         "min_notional": "1.00",
+                        "min_order_notional": "",
+                        "min_order_size": "0.0001",
+                        "min_trade_increment": "0.00000001",
+                        "price_increment": "",
+                        "qty_increment": "",
+                        "broker_observed_min_notional": "1.00",
+                        "broker_observed_min_order_size": "0.0001",
+                        "broker_observed_min_trade_increment": "0.00000001",
+                        "broker_observed_price_increment": "",
+                        "derived_min_order_value": "1.00",
                         "metadata_blockers": [],
                         "orderability_blockers": [],
                     }
@@ -353,11 +373,20 @@ def _upstream_artifacts(
                 "subject": subject_payload,
                 "claims": _capability_claims(kind),
                 "source_code_sha256": SHA_D,
+                "resolved_source_digests": {},
                 "authority": authority,
                 "profit_claim": "none",
             }
         }
     if kind == "lifecycle_flat_reconciliation":
+        account_binding = build_alpaca_paper_account_binding(
+            {
+                "account_id": "synthetic-review-paper-account",
+                "id": "synthetic-review-paper-account",
+            },
+            expected_account_configured=True,
+            expected_account_matched=True,
+        )
         return {
             "lifecycle_mechanics_certification": {
                 "schema_version": (
@@ -367,6 +396,7 @@ def _upstream_artifacts(
                     "crypto_lifecycle_mechanics_certification_result"
                 ),
                 "as_of": observed_at.isoformat(),
+                "last_broker_mutation_at": observed_at.isoformat(),
                 "subject": subject_payload,
                 "mechanics_certified": True,
                 "tested_notional_ceiling_usd": "25.00",
@@ -375,8 +405,13 @@ def _upstream_artifacts(
                 "cancel_attempts_max_per_order": 1,
                 "replacement_attempts": 0,
                 "broker_ambiguity": False,
+                "account_binding": account_binding,
                 "paper_only": True,
                 "live_endpoint_touched": False,
+                "resolved_source_digests": {},
+                "provenance_classification": (
+                    "local_hash_coherent_legacy_reconstruction"
+                ),
                 "authority": authority,
                 "profit_claim": "none",
             },
@@ -389,13 +424,22 @@ def _upstream_artifacts(
                 ),
                 "as_of": observed_at.isoformat(),
                 "subject": subject_payload,
+                "account_binding": account_binding,
                 "read_only_reconciliation": True,
+                "broker_read_occurred": True,
+                "account_read_occurred": True,
+                "positions_read_occurred": True,
+                "open_orders_read_occurred": True,
                 "fresh": True,
                 "final_position_count": 0,
                 "final_open_order_count": 0,
+                "observed_position_symbols": [],
+                "observed_open_order_symbols": [],
                 "broker_ambiguity": False,
                 "mutation_occurred": False,
                 "live_endpoint_touched": False,
+                "resolved_source_sha256": SHA_D,
+                "validator_source_sha256": SHA_E,
                 "authority": authority,
                 "profit_claim": "none",
             },
@@ -413,6 +457,7 @@ def _upstream_artifacts(
             "subject": subject_payload,
             "claims": _capability_claims(kind),
             "offline_test_receipt_sha256": SHA_E,
+            "resolved_source_digests": {},
             "authority": authority,
             "profit_claim": "none",
         }
@@ -1097,6 +1142,135 @@ def test_stale_lifecycle_mechanics_cannot_borrow_fresh_reconciliation_time() -> 
         "lifecycle_flat_reconciliation_evidence_invalid"
         in packet["blockers"]
     )
+
+
+def test_normalized_upstream_rejects_injected_authority_field() -> None:
+    upstreams = _upstream_artifacts(
+        "lifecycle_flat_reconciliation",
+        symbol="BTCUSD",
+        observed_at=AS_OF - timedelta(hours=1),
+    )
+    upstreams["lifecycle_mechanics_certification"][
+        "paper_submit_authorized"
+    ] = True
+
+    with pytest.raises(ValidationError, match="identity mismatch"):
+        subject._derive_capability_source_claims(
+            "lifecycle_flat_reconciliation",
+            subject={
+                "asset_class": "crypto",
+                "symbol": "BTCUSD",
+                "environment": "alpaca_paper",
+            },
+            upstreams=upstreams,
+        )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "live_trading_permitted",
+        "network_access_attempted",
+        "credential_values_exposed",
+    ),
+)
+def test_venue_upstream_rejects_injected_authority_field(field: str) -> None:
+    upstreams = _upstream_artifacts(
+        "venue_orderability",
+        symbol="BTCUSD",
+        observed_at=AS_OF - timedelta(hours=1),
+    )
+    upstreams["orderability_metadata"][field] = True
+
+    with pytest.raises(ValidationError):
+        subject._derive_capability_source_claims(
+            "venue_orderability",
+            subject={
+                "asset_class": "crypto",
+                "symbol": "BTCUSD",
+                "environment": "alpaca_paper",
+            },
+            upstreams=upstreams,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("source_mode", "unverified"),
+        ("orderability_basis", "asserted_only"),
+        ("min_order_notional", "100"),
+        ("broker_observed_min_notional", "2.00"),
+        ("derived_min_order_value", "100"),
+        ("price_increment", "0.01"),
+    ),
+)
+def test_venue_upstream_rejects_semantically_unsafe_record(
+    field: str,
+    value: str,
+) -> None:
+    upstreams = _upstream_artifacts(
+        "venue_orderability",
+        symbol="BTCUSD",
+        observed_at=AS_OF - timedelta(hours=1),
+    )
+    upstreams["orderability_metadata"]["records"][0][field] = value
+
+    with pytest.raises(ValidationError, match="orderability is not proven"):
+        subject._derive_capability_source_claims(
+            "venue_orderability",
+            subject={
+                "asset_class": "crypto",
+                "symbol": "BTCUSD",
+                "environment": "alpaca_paper",
+            },
+            upstreams=upstreams,
+        )
+
+
+def test_flat_reconciliation_must_follow_final_broker_mutation() -> None:
+    observed_at = AS_OF - timedelta(hours=1)
+    upstreams = _upstream_artifacts(
+        "lifecycle_flat_reconciliation",
+        symbol="BTCUSD",
+        observed_at=observed_at,
+    )
+    upstreams["lifecycle_mechanics_certification"][
+        "last_broker_mutation_at"
+    ] = (observed_at + timedelta(minutes=1)).isoformat()
+
+    with pytest.raises(ValidationError, match="predates the final broker mutation"):
+        subject._derive_capability_source_claims(
+            "lifecycle_flat_reconciliation",
+            subject={
+                "asset_class": "crypto",
+                "symbol": "BTCUSD",
+                "environment": "alpaca_paper",
+            },
+            upstreams=upstreams,
+        )
+
+
+def test_lifecycle_upstream_rejects_injected_network_attempt_field() -> None:
+    upstreams = _upstream_artifacts(
+        "lifecycle_flat_reconciliation",
+        symbol="BTCUSD",
+        observed_at=AS_OF - timedelta(hours=1),
+    )
+    upstreams["lifecycle_mechanics_certification"][
+        "network_access_attempted"
+    ] = True
+
+    with pytest.raises(ValidationError):
+        subject._derive_capability_source_claims(
+            "lifecycle_flat_reconciliation",
+            subject={
+                "asset_class": "crypto",
+                "symbol": "BTCUSD",
+                "environment": "alpaca_paper",
+            },
+            upstreams=upstreams,
+        )
 
 
 def test_offline_runner_waits_and_writes_only_local_review_artifacts(

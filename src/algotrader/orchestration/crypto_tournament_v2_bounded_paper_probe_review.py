@@ -20,6 +20,9 @@ import os
 from pathlib import Path
 from typing import BinaryIO, Iterator
 
+from algotrader.core.paper_account_binding import (
+    validate_alpaca_paper_account_binding,
+)
 from algotrader.errors import ValidationError
 from algotrader.research.crypto_preregistered_tournament_v2 import (
     MAXIMUM_CONSECUTIVE_MISSING_HOURS,
@@ -62,6 +65,39 @@ CRYPTO_TOURNAMENT_V2_BOUNDED_PAPER_PROBE_DEFAULT_OUTPUT_ROOT = Path(
 )
 CRYPTO_TOURNAMENT_V2_BOUNDED_PAPER_PROBE_DEFAULT_CAPABILITY_ROOT = Path(
     "runs/crypto_strategy_tournament/v2/bounded_paper_probe_capabilities/latest"
+)
+
+_REVIEW_GENERATION_MANIFEST_KEYS = frozenset(
+    {
+        "schema_version",
+        "record_type",
+        "publication_fingerprint",
+        "review_fingerprint",
+        "admission_fingerprint",
+        "as_of",
+        "artifact_sha256",
+        "broker_mutation_authorized",
+        "paper_mutation_authorized",
+        "capital_allocation_authorized",
+        "live_authorized",
+    }
+)
+_REVIEW_LATEST_POINTER_KEYS = frozenset(
+    {
+        "schema_version",
+        "record_type",
+        "publication_fingerprint",
+        "generation_relative_path",
+        "generation_manifest_sha256",
+        "review_fingerprint",
+        "admission_fingerprint",
+        "as_of",
+        "broker_mutation_authorized",
+        "paper_mutation_authorized",
+        "capital_allocation_authorized",
+        "live_authorized",
+        "pointer_fingerprint",
+    }
 )
 
 _ELIGIBLE_SOURCE_CLASSIFICATION = (
@@ -599,6 +635,7 @@ def run_crypto_tournament_v2_bounded_paper_probe_review(
     capability_upstreams: Mapping[
         str, Mapping[str, Mapping[str, object]]
     ] = {}
+    capability_support_artifacts: Mapping[str, bytes] = {}
     if packet["classification"] == "blocked_by_operational_evidence":
         (
             capabilities,
@@ -607,6 +644,7 @@ def run_crypto_tournament_v2_bounded_paper_probe_review(
             capability_source_hashes,
             capability_upstreams,
             capability_upstream_hashes,
+            capability_support_artifacts,
         ) = _load_capability_artifacts(capability_path)
         packet = build_crypto_tournament_v2_bounded_paper_probe_review(
             terminal_evidence,
@@ -632,6 +670,7 @@ def run_crypto_tournament_v2_bounded_paper_probe_review(
             capability_evidence=capabilities,
             capability_source_evidence=capability_sources,
             capability_upstream_evidence=capability_upstreams,
+            capability_support_artifacts=capability_support_artifacts,
         )
     return packet
 
@@ -1991,7 +2030,10 @@ def _derive_capability_source_claims(
         metadata = _mapping(
             upstreams.get("orderability_metadata"), "orderability_metadata"
         )
+        _validate_normalized_authority_fields(metadata)
         if (
+            set(metadata) != _VENUE_NORMALIZED_UPSTREAM_KEYS
+            or
             metadata.get("schema_version") != "v5_1_crypto_universe_refresh_v1"
             or metadata.get("asset_class") != "crypto"
             or metadata.get("broker_state_mode") != "alpaca_paper_observed"
@@ -2003,16 +2045,80 @@ def _derive_capability_source_claims(
             raise ValidationError("selected-symbol orderability record is missing.")
         record = matches[0]
         minimum = _loose_decimal(record.get("min_notional"), "min_notional")
+        minimum_size = _loose_decimal(
+            record.get("min_order_size"), "min_order_size"
+        )
+        minimum_trade_increment = _loose_decimal(
+            record.get("min_trade_increment"), "min_trade_increment"
+        )
+        observed_minimum = _loose_decimal(
+            record.get("broker_observed_min_notional"),
+            "broker_observed_min_notional",
+        )
+        observed_minimum_size = _loose_decimal(
+            record.get("broker_observed_min_order_size"),
+            "broker_observed_min_order_size",
+        )
+        observed_minimum_trade_increment = _loose_decimal(
+            record.get("broker_observed_min_trade_increment"),
+            "broker_observed_min_trade_increment",
+        )
+        alternate_minimum = record.get("min_order_notional")
+        price_increment = record.get("price_increment")
+        observed_price_increment = record.get(
+            "broker_observed_price_increment"
+        )
+        qty_increment = record.get("qty_increment")
+        derived_minimum = record.get("derived_min_order_value")
         if (
-            record.get("asset_class") != "crypto"
+            set(record) != _VENUE_NORMALIZED_RECORD_KEYS
+            or record.get("asset_class") != "crypto"
+            or record.get("source_mode") != "paper_read_only"
             or record.get("broker_state_mode") != "alpaca_paper_observed"
             or record.get("metadata_status") != "metadata_observed"
             or record.get("orderability_status") != "notional_orderable"
+            or record.get("orderability_basis")
+            != "broker_notional_and_qty_metadata"
             or record.get("status") != "active"
             or record.get("tradable") is not True
-            or _string_sequence(record.get("metadata_blockers"))
-            or _string_sequence(record.get("orderability_blockers"))
+            or record.get("metadata_blockers") != []
+            or record.get("orderability_blockers") != []
             or not _ZERO < minimum <= _MAX_NOTIONAL
+            or minimum_size <= _ZERO
+            or minimum_trade_increment <= _ZERO
+            or minimum != observed_minimum
+            or minimum_size != observed_minimum_size
+            or minimum_trade_increment != observed_minimum_trade_increment
+            or type(alternate_minimum) is not str
+            or (
+                bool(alternate_minimum)
+                and _loose_decimal(
+                    alternate_minimum, "min_order_notional"
+                )
+                != minimum
+            )
+            or type(price_increment) is not str
+            or type(observed_price_increment) is not str
+            or price_increment != observed_price_increment
+            or (
+                bool(price_increment)
+                and _loose_decimal(price_increment, "price_increment")
+                <= _ZERO
+            )
+            or type(qty_increment) is not str
+            or (
+                bool(qty_increment)
+                and _loose_decimal(qty_increment, "qty_increment") <= _ZERO
+            )
+            or type(derived_minimum) is not str
+            or (
+                bool(derived_minimum)
+                and not _ZERO
+                < _loose_decimal(
+                    derived_minimum, "derived_min_order_value"
+                )
+                <= _MAX_NOTIONAL
+            )
         ):
             raise ValidationError("selected-symbol orderability is not proven.")
         claims = {
@@ -2061,8 +2167,19 @@ def _derive_capability_source_claims(
             record_type="crypto_independent_flat_reconciliation_result",
             subject=expected_subject,
         )
+        mechanics_account_binding = _mapping(
+            mechanics.get("account_binding"),
+            "mechanics.account_binding",
+        )
+        reconciliation_account_binding = _mapping(
+            reconciliation.get("account_binding"),
+            "reconciliation.account_binding",
+        )
+        validate_alpaca_paper_account_binding(mechanics_account_binding)
+        validate_alpaca_paper_account_binding(reconciliation_account_binding)
         if (
-            mechanics.get("mechanics_certified") is not True
+            mechanics_account_binding != reconciliation_account_binding
+            or mechanics.get("mechanics_certified") is not True
             or mechanics.get("paper_only") is not True
             or mechanics.get("live_endpoint_touched") is not False
             or mechanics.get("broker_ambiguity") is not False
@@ -2092,10 +2209,25 @@ def _derive_capability_source_claims(
             "broker_ambiguity": reconciliation.get("broker_ambiguity"),
         }
         _validate_capability_claims(kind, claims)
-        observed = min(
-            _utc_datetime(mechanics.get("as_of"), "mechanics.as_of"),
-            _utc_datetime(reconciliation.get("as_of"), "reconciliation.as_of"),
+        mechanics_observed = _utc_datetime(
+            mechanics.get("as_of"), "mechanics.as_of"
         )
+        last_broker_mutation = _utc_datetime(
+            mechanics.get("last_broker_mutation_at"),
+            "mechanics.last_broker_mutation_at",
+        )
+        reconciliation_observed = _utc_datetime(
+            reconciliation.get("as_of"), "reconciliation.as_of"
+        )
+        if (
+            last_broker_mutation < mechanics_observed
+            or reconciliation_observed < last_broker_mutation
+        ):
+            raise ValidationError(
+                "independent flat reconciliation predates the final broker "
+                "mutation."
+            )
+        observed = min(mechanics_observed, reconciliation_observed)
     elif kind == "durable_kill_loss_control":
         certification = _mapping(
             upstreams.get("durable_kill_loss_certification"),
@@ -2128,8 +2260,33 @@ def _validate_normalized_upstream(
     record_type: str,
     subject: Mapping[str, object],
 ) -> None:
+    expected_keys = _NORMALIZED_UPSTREAM_KEYS_BY_RECORD_TYPE.get(record_type)
+    if expected_keys is None or set(value) != expected_keys:
+        raise ValidationError("normalized capability upstream identity mismatch.")
+    _validate_normalized_authority_fields(value)
+    forbidden_authority_fields = {
+        "network_access_authorized",
+        "broker_read_authorized",
+        "broker_mutation_authorized",
+        "broker_mutation_occurred",
+        "paper_probe_authorized",
+        "paper_mutation_authorized",
+        "paper_mutation_occurred",
+        "paper_submit_authorized",
+        "paper_submit_occurred",
+        "paper_cancel_occurred",
+        "paper_replace_occurred",
+        "paper_close_occurred",
+        "paper_liquidate_occurred",
+        "capital_allocation_authorized",
+        "live_authorized",
+        "live_endpoint_touched_override",
+        "submit_allowed",
+        "paper_mutation_allowed",
+    }
     if (
-        value.get("schema_version") != schema_version
+        forbidden_authority_fields.intersection(value)
+        or value.get("schema_version") != schema_version
         or value.get("record_type") != record_type
         or value.get("subject") != subject
         or value.get("profit_claim") != "none"
@@ -2142,6 +2299,138 @@ def _validate_normalized_upstream(
         }
     ):
         raise ValidationError("normalized capability upstream identity mismatch.")
+
+
+_NORMALIZED_AUTHORITY_PATH_EXPECTATIONS = {
+    ("authority", "paper_submit_authorized"): False,
+    ("authority", "broker_mutation_authorized"): False,
+    ("authority", "capital_allocation_authorized"): False,
+    ("authority", "live_authorized"): False,
+    ("claims", "leverage_allowed"): False,
+    ("claims", "shorting_allowed"): False,
+    ("broker_read_occurred",): True,
+    ("account_read_occurred",): True,
+    ("positions_read_occurred",): True,
+    ("open_orders_read_occurred",): True,
+    ("mutation_occurred",): False,
+    ("live_endpoint_touched",): False,
+}
+_NORMALIZED_AUTHORITY_CONTAINER_PATHS = frozenset({("authority",)})
+_VENUE_NORMALIZED_UPSTREAM_KEYS = frozenset(
+    {
+        "schema_version", "record_type", "as_of", "asset_class",
+        "broker_state_mode", "records", "resolved_source_sha256",
+        "resolved_source_digests",
+    }
+)
+_VENUE_NORMALIZED_RECORD_KEYS = frozenset(
+    {
+        "symbol", "asset_class", "source_mode", "broker_state_mode",
+        "tradable", "status", "min_notional", "min_order_notional",
+        "min_order_size", "min_trade_increment", "price_increment",
+        "qty_increment", "broker_observed_min_notional",
+        "broker_observed_min_order_size",
+        "broker_observed_min_trade_increment",
+        "broker_observed_price_increment", "derived_min_order_value",
+        "orderability_basis", "metadata_status", "metadata_blockers",
+        "orderability_status", "orderability_blockers",
+    }
+)
+_NORMALIZED_UPSTREAM_KEYS_BY_RECORD_TYPE = {
+    "crypto_bounded_order_policy_snapshot": frozenset(
+        {
+            "schema_version", "record_type", "as_of", "subject", "claims",
+            "source_code_sha256", "resolved_source_digests", "authority",
+            "profit_claim",
+        }
+    ),
+    "crypto_lifecycle_mechanics_certification_result": frozenset(
+        {
+            "schema_version", "record_type", "as_of",
+            "last_broker_mutation_at", "subject",
+            "mechanics_certified", "tested_notional_ceiling_usd",
+            "entry_submit_attempts", "exit_submit_attempts",
+            "cancel_attempts_max_per_order", "replacement_attempts",
+            "broker_ambiguity", "account_binding", "paper_only",
+            "live_endpoint_touched", "resolved_source_digests",
+            "provenance_classification", "authority", "profit_claim",
+        }
+    ),
+    "crypto_independent_flat_reconciliation_result": frozenset(
+        {
+            "schema_version", "record_type", "as_of", "subject",
+            "account_binding", "read_only_reconciliation",
+            "broker_read_occurred", "account_read_occurred",
+            "positions_read_occurred", "open_orders_read_occurred", "fresh",
+            "final_position_count", "final_open_order_count",
+            "observed_position_symbols", "observed_open_order_symbols",
+            "broker_ambiguity", "mutation_occurred", "live_endpoint_touched",
+            "resolved_source_sha256", "validator_source_sha256", "authority",
+            "profit_claim",
+        }
+    ),
+    "crypto_durable_kill_loss_certification_result": frozenset(
+        {
+            "schema_version", "record_type", "as_of", "subject", "claims",
+            "offline_test_receipt_sha256", "resolved_source_digests",
+            "authority", "profit_claim",
+        }
+    ),
+}
+
+
+def _validate_normalized_authority_fields(
+    value: Mapping[str, object],
+) -> None:
+    """Reject authority-shaped fields outside the exact normalized contract."""
+
+    def walk(item: object, path: tuple[str, ...]) -> None:
+        if isinstance(item, Mapping):
+            for field_name, child in item.items():
+                if not isinstance(field_name, str):
+                    raise ValidationError(
+                        "normalized capability upstream key is not text."
+                    )
+                child_path = (*path, field_name)
+                lowered = field_name.lower()
+                authority_shaped = (
+                    "authorit" in lowered
+                    or "permit" in lowered
+                    or "credential" in lowered
+                    or lowered.endswith("_allowed")
+                    or lowered.endswith("_occurred")
+                    or lowered.endswith("_performed")
+                    or lowered.endswith("_attempted")
+                    or lowered.endswith("_touched")
+                )
+                if authority_shaped:
+                    expected_path = child_path[-2:] if path else child_path
+                    if child_path in _NORMALIZED_AUTHORITY_CONTAINER_PATHS:
+                        if not isinstance(child, Mapping):
+                            raise ValidationError(
+                                "normalized authority container is invalid."
+                            )
+                    elif expected_path in _NORMALIZED_AUTHORITY_PATH_EXPECTATIONS:
+                        expected = _NORMALIZED_AUTHORITY_PATH_EXPECTATIONS[
+                            expected_path
+                        ]
+                        if type(child) is not bool or child is not expected:
+                            raise ValidationError(
+                                "normalized authority field has unsafe value."
+                            )
+                    else:
+                        raise ValidationError(
+                            "unexpected normalized authority-shaped field."
+                        )
+                walk(child, child_path)
+        elif isinstance(item, Sequence) and not isinstance(
+            item,
+            (str, bytes, bytearray),
+        ):
+            for child in item:
+                walk(child, (*path, "[]"))
+
+    walk(value, ())
 
 
 def _loose_decimal(value: object, field_name: str) -> Decimal:
@@ -2196,13 +2485,205 @@ def _load_capability_artifacts(
     dict[str, str],
     dict[str, dict[str, Mapping[str, object]]],
     dict[str, dict[str, str]],
+    dict[str, bytes],
 ]:
+    from algotrader.orchestration import (
+        crypto_tournament_v2_bounded_paper_probe_capability_producer as capability_producer,
+    )
+
     evidence: dict[str, Mapping[str, object]] = {}
     hashes: dict[str, str] = {}
     sources: dict[str, Mapping[str, object]] = {}
     source_hashes: dict[str, str] = {}
     upstreams: dict[str, dict[str, Mapping[str, object]]] = {}
     upstream_hashes: dict[str, dict[str, str]] = {}
+    support_artifacts: dict[str, bytes] = {}
+    capability_producer._assert_safe_tree_path(
+        root,
+        root,
+        must_exist=root.exists(),
+    )
+    latest_path = root / "latest_manifest.json"
+    flat_layout_candidates = tuple(
+        candidate
+        for kind in _CAPABILITY_KINDS
+        for candidate in (
+            root / f"{kind}.json",
+            root / "sources" / kind,
+        )
+    )
+    flat_layout_present = False
+    for candidate in flat_layout_candidates:
+        if candidate.exists() or candidate.is_symlink():
+            capability_producer._assert_safe_tree_path(
+                root,
+                candidate,
+                must_exist=True,
+            )
+            flat_layout_present = True
+    if latest_path.exists() or latest_path.is_symlink():
+        if flat_layout_present:
+            raise ValidationError(
+                "mixed flat and immutable capability layouts are ambiguous."
+            )
+        capability_producer._assert_safe_tree_path(
+            root,
+            latest_path,
+            must_exist=True,
+        )
+        latest_bytes = capability_producer._read_regular_bytes(
+            latest_path,
+            "capability_production_latest_pointer",
+        )
+        latest = capability_producer._json_mapping(
+            latest_bytes,
+            "capability_production_latest_pointer",
+        )
+        capability_producer._require_canonical_json(
+            latest_bytes,
+            latest,
+            "capability_production_latest_pointer",
+        )
+        pointer = dict(latest)
+        pointer_fingerprint = _required_sha256(
+            pointer.pop("pointer_fingerprint", ""),
+            "capability_pointer_fingerprint",
+        )
+        publication_fingerprint = _required_sha256(
+            latest.get("publication_fingerprint"),
+            "capability_publication_fingerprint",
+        )
+        expected_relative = f"generations/{publication_fingerprint}"
+        if (
+            set(latest) != capability_producer._LATEST_POINTER_KEYS
+            or pointer_fingerprint != _stable_hash(pointer)
+            or latest.get("schema_version")
+            != capability_producer.CRYPTO_TOURNAMENT_V2_CAPABILITY_PRODUCTION_SCHEMA_VERSION
+            or latest.get("record_type")
+            != "crypto_bounded_probe_capability_latest_pointer"
+            or latest.get("generation_relative_path") != expected_relative
+            or latest.get("broker_mutation_authorized") is not False
+            or latest.get("paper_mutation_authorized") is not False
+            or latest.get("capital_allocation_authorized") is not False
+            or latest.get("live_authorized") is not False
+        ):
+            raise ValidationError(
+                "capability production latest pointer binding failed."
+            )
+        loaded = (
+            capability_producer.load_crypto_tournament_v2_bounded_paper_probe_capability_generation(
+                root,
+                expected_publication_fingerprint=publication_fingerprint,
+            )
+        )
+        if (
+            latest.get("status_fingerprint")
+            != loaded.status.get("status_fingerprint")
+            or latest.get("classification")
+            != loaded.status.get("classification")
+            or latest.get("as_of") != loaded.status.get("as_of")
+        ):
+            raise ValidationError(
+                "capability latest pointer status binding failed."
+            )
+        generation_manifest_path = (
+            root
+            / "generations"
+            / publication_fingerprint
+            / "generation_manifest.json"
+        )
+        capability_producer._assert_safe_tree_path(
+            root,
+            generation_manifest_path,
+            must_exist=True,
+        )
+        generation_manifest_bytes = capability_producer._read_regular_bytes(
+            generation_manifest_path,
+            "capability_generation_manifest",
+        )
+        if hashlib.sha256(generation_manifest_bytes).hexdigest() != (
+            latest.get("generation_manifest_sha256")
+        ):
+            raise ValidationError(
+                "capability generation manifest pointer hash mismatch."
+            )
+        support_artifacts["latest_manifest.json"] = latest_bytes
+        support_artifacts[
+            f"{expected_relative}/generation_manifest.json"
+        ] = generation_manifest_bytes
+        for name, payload in loaded.artifacts.items():
+            support_artifacts[f"{expected_relative}/{name}"] = payload
+        if loaded.status.get("capability_bundle_emitted") is not True:
+            return (
+                evidence,
+                hashes,
+                sources,
+                source_hashes,
+                upstreams,
+                upstream_hashes,
+                support_artifacts,
+            )
+        for kind in _CAPABILITY_KINDS:
+            capability_name = f"bundle/{kind}.json"
+            source_name = f"bundle/sources/{kind}/producer_source.json"
+            capability_bytes = loaded.artifacts.get(capability_name)
+            source_bytes = loaded.artifacts.get(source_name)
+            if capability_bytes is None or source_bytes is None:
+                raise ValidationError(
+                    "complete capability generation bundle is incomplete."
+                )
+            capability = capability_producer._json_mapping(
+                capability_bytes,
+                capability_name,
+            )
+            capability_producer._require_canonical_json(
+                capability_bytes,
+                capability,
+                capability_name,
+            )
+            evidence[kind] = capability
+            hashes[kind] = hashlib.sha256(capability_bytes).hexdigest()
+            source = capability_producer._json_mapping(source_bytes, source_name)
+            capability_producer._require_canonical_json(
+                source_bytes,
+                source,
+                source_name,
+            )
+            sources[kind] = source
+            source_hashes[kind] = hashlib.sha256(source_bytes).hexdigest()
+            kind_upstreams: dict[str, Mapping[str, object]] = {}
+            kind_hashes: dict[str, str] = {}
+            for role, _, _ in _CAPABILITY_UPSTREAM_SOURCE_CONTRACTS[kind]:
+                upstream_name = (
+                    f"bundle/sources/{kind}/upstream/{role}.json"
+                )
+                upstream_bytes = loaded.artifacts.get(upstream_name)
+                if upstream_bytes is None:
+                    raise ValidationError(
+                        "complete capability generation upstream is absent."
+                    )
+                upstream = capability_producer._json_mapping(
+                    upstream_bytes,
+                    upstream_name,
+                )
+                capability_producer._require_canonical_json(
+                    upstream_bytes,
+                    upstream,
+                    upstream_name,
+                )
+                kind_upstreams[role] = upstream
+                kind_hashes[role] = hashlib.sha256(upstream_bytes).hexdigest()
+            upstreams[kind] = kind_upstreams
+            upstream_hashes[kind] = kind_hashes
+        return (
+            evidence,
+            hashes,
+            sources,
+            source_hashes,
+            upstreams,
+            upstream_hashes,
+            support_artifacts,
+        )
     for kind in _CAPABILITY_KINDS:
         path = root / f"{kind}.json"
         if not path.is_file():
@@ -2210,28 +2691,35 @@ def _load_capability_artifacts(
         payload = path.read_bytes()
         hashes[kind] = hashlib.sha256(payload).hexdigest()
         try:
-            parsed = json.loads(payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            parsed = capability_producer._json_mapping(payload, str(path))
+            capability_producer._require_canonical_json(
+                payload,
+                parsed,
+                str(path),
+            )
+        except ValidationError:
             evidence[kind] = {"invalid_artifact": True}
             continue
-        evidence[kind] = (
-            dict(parsed) if isinstance(parsed, Mapping) else {"invalid_artifact": True}
-        )
+        evidence[kind] = parsed
         source_path = root / "sources" / kind / "producer_source.json"
         if not source_path.is_file():
             continue
         source_bytes = source_path.read_bytes()
         source_hashes[kind] = hashlib.sha256(source_bytes).hexdigest()
         try:
-            source_parsed = json.loads(source_bytes.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            source_parsed = capability_producer._json_mapping(
+                source_bytes,
+                str(source_path),
+            )
+            capability_producer._require_canonical_json(
+                source_bytes,
+                source_parsed,
+                str(source_path),
+            )
+        except ValidationError:
             sources[kind] = {"invalid_artifact": True}
             continue
-        sources[kind] = (
-            dict(source_parsed)
-            if isinstance(source_parsed, Mapping)
-            else {"invalid_artifact": True}
-        )
+        sources[kind] = source_parsed
         kind_upstreams: dict[str, Mapping[str, object]] = {}
         kind_hashes: dict[str, str] = {}
         for role, _, _ in _CAPABILITY_UPSTREAM_SOURCE_CONTRACTS[kind]:
@@ -2243,15 +2731,19 @@ def _load_capability_artifacts(
             upstream_bytes = upstream_path.read_bytes()
             kind_hashes[role] = hashlib.sha256(upstream_bytes).hexdigest()
             try:
-                upstream_parsed = json.loads(upstream_bytes.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
+                upstream_parsed = capability_producer._json_mapping(
+                    upstream_bytes,
+                    str(upstream_path),
+                )
+                capability_producer._require_canonical_json(
+                    upstream_bytes,
+                    upstream_parsed,
+                    str(upstream_path),
+                )
+            except ValidationError:
                 kind_upstreams[role] = {"invalid_artifact": True}
                 continue
-            kind_upstreams[role] = (
-                dict(upstream_parsed)
-                if isinstance(upstream_parsed, Mapping)
-                else {"invalid_artifact": True}
-            )
+            kind_upstreams[role] = upstream_parsed
         upstreams[kind] = kind_upstreams
         upstream_hashes[kind] = kind_hashes
     return (
@@ -2261,6 +2753,7 @@ def _load_capability_artifacts(
         source_hashes,
         upstreams,
         upstream_hashes,
+        support_artifacts,
     )
 
 
@@ -2391,7 +2884,10 @@ def _utc_datetime(value: datetime | str | object, field_name: str) -> datetime:
         raise ValidationError(f"{field_name} must be a UTC timestamp.")
     if result.tzinfo is None or result.utcoffset() != timedelta(0):
         raise ValidationError(f"{field_name} must include UTC offset.")
-    return result.astimezone(UTC)
+    try:
+        return result.astimezone(UTC)
+    except (OverflowError, ValueError) as exc:
+        raise ValidationError(f"{field_name} is outside the UTC range.") from exc
 
 
 def _local_path(value: Path | str, field_name: str) -> Path:
@@ -2433,8 +2929,15 @@ def _publish_review_artifacts(
     capability_upstream_evidence: Mapping[
         str, Mapping[str, Mapping[str, object]]
     ],
+    capability_support_artifacts: Mapping[str, bytes],
 ) -> dict[str, object]:
+    from algotrader.orchestration import (
+        crypto_tournament_v2_bounded_paper_probe_capability_producer as capability_producer,
+    )
+
+    capability_producer._assert_safe_tree_path(root, root, must_exist=False)
     root.mkdir(parents=True, exist_ok=True)
+    capability_producer._assert_safe_tree_path(root, root, must_exist=True)
     with _exclusive_review_lock(root):
         preregistration_bytes = _json_artifact_bytes(preregistration)
         packet_bytes = _json_artifact_bytes(packet)
@@ -2461,6 +2964,27 @@ def _publish_review_artifacts(
                 artifacts[f"inputs/upstreams/{kind}/{role}.json"] = (
                     _json_artifact_bytes(payload)
                 )
+        for raw_name, payload in capability_support_artifacts.items():
+            name = str(raw_name)
+            parts = name.split("/")
+            if (
+                not name
+                or "\\" in name
+                or name.startswith(("/", "//"))
+                or any(part in {"", ".", ".."} for part in parts)
+                or ":" in parts[0]
+                or not isinstance(payload, bytes)
+                or not payload
+            ):
+                raise ValidationError(
+                    "capability support artifact path or bytes are invalid."
+                )
+            destination = f"inputs/capability_production/{name}"
+            if destination in artifacts:
+                raise ValidationError(
+                    "capability support artifact destination conflicts."
+                )
+            artifacts[destination] = payload
         artifact_manifest = {
             name: hashlib.sha256(payload).hexdigest()
             for name, payload in artifacts.items()
@@ -2468,7 +2992,14 @@ def _publish_review_artifacts(
         publication_fingerprint = _stable_hash(artifact_manifest)
         generation = root / "generations" / publication_fingerprint
         for name, payload in artifacts.items():
-            _write_immutable_bytes(generation / name, payload)
+            safe_name = capability_producer._safe_relative_name(name)
+            destination = generation / safe_name
+            capability_producer._assert_safe_tree_path(
+                root,
+                destination,
+                must_exist=False,
+            )
+            _write_immutable_bytes(destination, payload)
         generation_manifest: dict[str, object] = {
             "schema_version": (
                 CRYPTO_TOURNAMENT_V2_BOUNDED_PAPER_PROBE_REVIEW_SCHEMA_VERSION
@@ -2486,8 +3017,14 @@ def _publish_review_artifacts(
             "capital_allocation_authorized": False,
             "live_authorized": False,
         }
+        generation_manifest_path = generation / "generation_manifest.json"
+        capability_producer._assert_safe_tree_path(
+            root,
+            generation_manifest_path,
+            must_exist=False,
+        )
         _write_immutable_bytes(
-            generation / "generation_manifest.json",
+            generation_manifest_path,
             _json_artifact_bytes(generation_manifest),
         )
         latest_basis: dict[str, object] = {
@@ -2516,11 +3053,24 @@ def _publish_review_artifacts(
             **latest_basis,
             "pointer_fingerprint": _stable_hash(latest_basis),
         }
+        if set(latest) != _REVIEW_LATEST_POINTER_KEYS:
+            raise ValidationError("review latest pointer schema drifted.")
+        capability_producer._assert_safe_tree_path(
+            root,
+            root / "latest_manifest.json",
+            must_exist=False,
+        )
         _write_json_atomic(root / "latest_manifest.json", latest)
         return latest
 
 
 def _write_immutable_bytes(path: Path, payload: bytes) -> None:
+    from algotrader.orchestration import (
+        crypto_tournament_v2_bounded_paper_probe_capability_producer as capability_producer,
+    )
+
+    if capability_producer._is_link_or_reparse(path):
+        raise ValidationError("immutable review artifact uses a link.")
     if path.is_file():
         if path.read_bytes() != payload:
             raise ValidationError(
@@ -2529,6 +3079,9 @@ def _write_immutable_bytes(path: Path, payload: bytes) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
+    if temporary.exists() or temporary.is_symlink():
+        if capability_producer._is_link_or_reparse(temporary):
+            raise ValidationError("review temporary path uses a link.")
     try:
         temporary.write_bytes(payload)
         temporary.replace(path)
@@ -2539,7 +3092,16 @@ def _write_immutable_bytes(path: Path, payload: bytes) -> None:
 
 @contextmanager
 def _exclusive_review_lock(root: Path) -> Iterator[None]:
+    from algotrader.orchestration import (
+        crypto_tournament_v2_bounded_paper_probe_capability_producer as capability_producer,
+    )
+
     lock_path = root / ".bounded_paper_probe_review.lock"
+    capability_producer._assert_safe_tree_path(
+        root,
+        lock_path,
+        must_exist=False,
+    )
     stream = lock_path.open("a+b")
     try:
         stream.seek(0, os.SEEK_END)

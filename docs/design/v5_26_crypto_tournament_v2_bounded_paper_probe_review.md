@@ -90,14 +90,18 @@ not evidence.
 
 When a capability has multiple upstreams, the earliest observation controls
 its expiry. A fresh flat reconciliation therefore cannot extend stale lifecycle
-mechanics. The normalized policy, lifecycle, and kill schemas still need real
-canonical producers that resolve their subordinate code and test receipts;
-positive unit fixtures establish validator behavior, not operational facts.
+mechanics. V5.27 supplies canonical local producers and source-bound replay for
+the policy, lifecycle, flat, and kill schemas. The review independently
+re-derives selected-symbol venue semantics, matching paper-account bindings,
+and flat-at-or-after-final-exit-fill ordering from their normalized upstreams;
+it does not trust those claims by assertion. Positive unit fixtures establish
+validator behavior, not operational facts.
 
 Current repository history does not satisfy all four capabilities for any
-candidate. In particular, independent fresh flat reconciliation and a durable
-crypto kill/loss certification remain absent. Positive unit fixtures prove the
-validator contract only; they are not operational evidence.
+candidate. The durable crypto kill/loss certifier is executable offline, but no
+genuine winner-scoped venue/lifecycle/flat bundle has been emitted. Positive
+unit fixtures prove the validator contract only; they are not operational
+evidence.
 
 ## Deterministic Outcomes
 
@@ -135,8 +139,10 @@ resolved upstream source, and a generation manifest. An atomic
 `latest_manifest.json` pointer is written last. Exact retries deduplicate;
 conflicting immutable bytes fail closed. Consumers must follow and validate
 the pointer and generation manifest rather than infer readiness from file
-existence. Persisted packet validation is structural; an authorization-grade
-generation replay consumer remains a future prerequisite.
+existence. Persisted V5.26 packet validation is structural. V5.27 implements
+the separate source-bound capability producer and pinned generation replay
+consumer; replay remains non-authorizing. See
+`docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`.
 
 ## Safety Classification
 
