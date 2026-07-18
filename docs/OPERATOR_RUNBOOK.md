@@ -1041,22 +1041,31 @@ The one-shot scheduler calculates eligible closed crypto hours, claims jobs atom
   .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode recover_stale
   ```
 
-### Windows Scheduled Task
+#### Timing Semantics and Hour Bounds
+
+*   **Bar Timestamps**: Hourly bar timestamps represent the **opening time** of the bar, not its completion or publication time. For example, a bar covering the interval `20:00:00Z` to `21:00:00Z` is identified by the timestamp `20:00:00Z`.
+*   **Closing Boundary**: An hourly bar is not closed and cannot be fetched until the end of its hour (e.g., `21:00:00Z` for the `20:00:00Z` bar).
+*   **Trigger and Grace Period Offset**: The Windows scheduled task triggers 5 minutes after every UTC hour boundary (e.g., at `HH:05`). The 5-minute offset represents the publication grace period. Thus, a scheduler tick firing at `21:05:00Z` evaluates the eligibility of the prior hour's bar-open timestamp (`20:00:00Z` or `21:05:00Z - 1 hour - 5 minutes` floored).
+*   **Forming Bar Protection**: The scheduler strictly filters out any currently forming bar. At tick time `HH:MM`, the bar for hour `HH:00` is currently forming and will never be requested, queued, or dispatched.
+*   **Dispatcher Status**: The real command dispatcher remains **disabled** in normal configuration and is only enabled dynamically at runtime with explicit authorization switches.
+*   **Task Registration Status**: The Windows scheduled task template is provided for operator review and remains **unregistered** by default.
+
+### Windows Scheduled Task Template
 
 A Windows Task Scheduler XML template is available at `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`. It triggers 5 minutes after every UTC hour boundary, uses least privileges, prevents overlapping executions (`MultipleInstancesPolicy = IgnoreNew`), and has a 15-minute execution limit.
 
 To preview or register/unregister the task, use the registration helper script:
-* **Preview XML Template (Default)**:
-  ```powershell
-  .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1
-  ```
-* **Register Scheduled Task**:
-  ```powershell
-  .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -RegisterTask
-  ```
-* **Unregister Scheduled Task**:
-  ```powershell
-  .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -UnregisterTask
-  ```
+*   **Preview XML Template (Default)**:
+    ```powershell
+    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1
+    ```
+*   **Register Scheduled Task**:
+    ```powershell
+    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -RegisterTask
+    ```
+*   **Unregister Scheduled Task**:
+    ```powershell
+    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -UnregisterTask
+    ```
 
 No real credentials, live endpoints, or trading actions are permitted or stored in the task configuration.

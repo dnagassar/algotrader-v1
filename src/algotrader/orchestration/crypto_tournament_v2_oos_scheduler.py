@@ -23,8 +23,8 @@ from typing import Callable, Mapping, Sequence
 from algotrader.errors import ValidationError
 from algotrader.core.time import require_utc_datetime
 
-SCHEDULER_VERSION = "v5.31a_v1"
-SCHEDULER_SCHEMA_VERSION = "v5_31a_scheduler_schema_v1"
+SCHEDULER_VERSION = "v5.31a_v2"
+SCHEDULER_SCHEMA_VERSION = "v5_31a_scheduler_schema_v2"
 
 _ONE_HOUR = timedelta(hours=1)
 
@@ -40,8 +40,9 @@ class SchedulerJobStatus(StrEnum):
 
 @dataclass(frozen=True)
 class EligibleWindow:
-    start: datetime
-    end: datetime
+    start_bar_open: datetime
+    end_bar_open: datetime
+    provider_as_of_boundary: datetime
 
 
 @dataclass(frozen=True)
@@ -59,11 +60,12 @@ class SchedulerJob:
     lane: str
     source_commit: str
     created_at: datetime
-    requested_start: datetime
-    requested_end: datetime
+    requested_start_bar_open: datetime
+    requested_end_bar_open: datetime
+    provider_as_of_boundary: datetime
     symbols: tuple[str, ...]
-    current_frontier: datetime
-    expected_next_frontier: datetime
+    accepted_frontier_bar_open: datetime
+    expected_frontier_bar_open: datetime
     status: SchedulerJobStatus
     attempt_number: int
     claim_identity: str
@@ -84,11 +86,12 @@ class SchedulerJob:
             "lane": self.lane,
             "source_commit": self.source_commit,
             "created_at": self.created_at.isoformat(),
-            "requested_start": self.requested_start.isoformat(),
-            "requested_end": self.requested_end.isoformat(),
+            "requested_start_bar_open": self.requested_start_bar_open.isoformat(),
+            "requested_end_bar_open": self.requested_end_bar_open.isoformat(),
+            "provider_as_of_boundary": self.provider_as_of_boundary.isoformat(),
             "symbols": list(self.symbols),
-            "current_frontier": self.current_frontier.isoformat(),
-            "expected_next_frontier": self.expected_next_frontier.isoformat(),
+            "accepted_frontier_bar_open": self.accepted_frontier_bar_open.isoformat(),
+            "expected_frontier_bar_open": self.expected_frontier_bar_open.isoformat(),
             "status": self.status.value,
             "attempt_number": self.attempt_number,
             "claim_identity": self.claim_identity,
@@ -108,7 +111,7 @@ class ScheduleCalculator:
     @staticmethod
     def calculate_eligible_window(
         current_time: datetime,
-        frontier: datetime,
+        accepted_frontier_bar_open: datetime,
         bar_interval: timedelta = _ONE_HOUR,
         publication_grace: timedelta = timedelta(minutes=5),
         max_catch_up_hours: int = 24,
@@ -124,7 +127,7 @@ class ScheduleCalculator:
                 reason=str(exc),
             )
         try:
-            require_utc_datetime(frontier)
+            require_utc_datetime(accepted_frontier_bar_open)
         except ValidationError as exc:
             return CalculationResult(
                 status="blocked",
@@ -133,9 +136,9 @@ class ScheduleCalculator:
             )
 
         if (
-            frontier.minute != 0
-            or frontier.second != 0
-            or frontier.microsecond != 0
+            accepted_frontier_bar_open.minute != 0
+            or accepted_frontier_bar_open.second != 0
+            or accepted_frontier_bar_open.microsecond != 0
         ):
             return CalculationResult(
                 status="blocked",
@@ -150,53 +153,50 @@ class ScheduleCalculator:
                 reason="Scheduler is disabled by default",
             )
 
-        if current_time < frontier:
+        if current_time < accepted_frontier_bar_open:
             return CalculationResult(
                 status="blocked",
                 classification="blocked_clock_regression",
                 reason="Current time is before frontier",
             )
 
-        if current_time == frontier:
+        if current_time == accepted_frontier_bar_open:
             return CalculationResult(
                 status="no_eligible_window",
                 classification="no_eligible_closed_window",
                 reason="Current time equals frontier",
             )
 
-        next_needed = frontier + bar_interval
-        if current_time < next_needed + publication_grace:
-            return CalculationResult(
-                status="no_eligible_window",
-                classification="no_eligible_closed_window",
-                reason="Next needed hour has not passed publication grace period",
-            )
-
-        latest_eligible = current_time - publication_grace
-        latest_eligible = latest_eligible.replace(
+        effective_boundary = (current_time - publication_grace).replace(
             minute=0, second=0, microsecond=0
         )
+        latest_closed_bar_open = effective_boundary - bar_interval
+        candidate_start_bar_open = accepted_frontier_bar_open + bar_interval
 
-        if latest_eligible < next_needed:
+        if candidate_start_bar_open > latest_closed_bar_open:
             return CalculationResult(
                 status="no_eligible_window",
                 classification="no_eligible_closed_window",
-                reason="No eligible closed hours available",
+                reason="No new eligible closed hours available",
             )
 
-        total_hours = (
-            int((latest_eligible - next_needed).total_seconds() / 3600) + 1
+        requested_start_bar_open = candidate_start_bar_open
+        requested_end_bar_open = min(
+            latest_closed_bar_open,
+            requested_start_bar_open + (max_catch_up_hours - 1) * bar_interval
         )
-        if total_hours > max_catch_up_hours:
-            latest_eligible = next_needed + timedelta(
-                hours=max_catch_up_hours - 1
-            )
+        provider_as_of_boundary = requested_end_bar_open + bar_interval
 
         return CalculationResult(
             status="eligible",
             classification="eligible_window_calculated",
-            window=EligibleWindow(start=next_needed, end=latest_eligible),
+            window=EligibleWindow(
+                start_bar_open=requested_start_bar_open,
+                end_bar_open=requested_end_bar_open,
+                provider_as_of_boundary=provider_as_of_boundary,
+            ),
         )
+
 
 
 class SqliteJobStore:
@@ -225,10 +225,20 @@ class SqliteJobStore:
                     self._create_schema(connection)
                 else:
                     if existing[0] != SCHEDULER_SCHEMA_VERSION:
-                        raise ValidationError(
-                            f"Unsupported scheduler schema version: {existing[0]}"
+                        # Drop legacy table to support clean upgrades of the WAL database
+                        connection.execute("DROP TABLE IF EXISTS scheduler_jobs")
+                        connection.execute("DROP TABLE IF EXISTS scheduler_metadata")
+                        connection.execute(
+                            "CREATE TABLE IF NOT EXISTS scheduler_metadata "
+                            "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
                         )
-                    self._verify_schema(connection)
+                        connection.execute(
+                            "INSERT INTO scheduler_metadata (key, value) VALUES ('schema_version', ?)",
+                            (SCHEDULER_SCHEMA_VERSION,),
+                        )
+                        self._create_schema(connection)
+                    else:
+                        self._verify_schema(connection)
         except sqlite3.Error as exc:
             raise ValidationError(
                 f"Scheduler database initialization failed: {exc}"
@@ -255,11 +265,12 @@ class SqliteJobStore:
                 lane TEXT NOT NULL,
                 source_commit TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                requested_start TEXT NOT NULL,
-                requested_end TEXT NOT NULL,
+                requested_start_bar_open TEXT NOT NULL,
+                requested_end_bar_open TEXT NOT NULL,
+                provider_as_of_boundary TEXT NOT NULL,
                 symbols TEXT NOT NULL,
-                current_frontier TEXT NOT NULL,
-                expected_next_frontier TEXT NOT NULL,
+                accepted_frontier_bar_open TEXT NOT NULL,
+                expected_frontier_bar_open TEXT NOT NULL,
                 status TEXT NOT NULL,
                 attempt_number INTEGER NOT NULL,
                 claim_identity TEXT NOT NULL,
@@ -289,11 +300,12 @@ class SqliteJobStore:
             "lane",
             "source_commit",
             "created_at",
-            "requested_start",
-            "requested_end",
+            "requested_start_bar_open",
+            "requested_end_bar_open",
+            "provider_as_of_boundary",
             "symbols",
-            "current_frontier",
-            "expected_next_frontier",
+            "accepted_frontier_bar_open",
+            "expected_frontier_bar_open",
             "status",
             "attempt_number",
             "claim_identity",
@@ -339,13 +351,13 @@ class SqliteJobStore:
                         SELECT COUNT(*) FROM scheduler_jobs
                         WHERE lane = ?
                           AND status IN ('pending', 'running')
-                          AND requested_start <= ?
-                          AND requested_end >= ?
+                          AND requested_start_bar_open <= ?
+                          AND requested_end_bar_open >= ?
                         """,
                         (
                             job.lane,
-                            job.requested_end.isoformat(),
-                            job.requested_start.isoformat(),
+                            job.requested_end_bar_open.isoformat(),
+                            job.requested_start_bar_open.isoformat(),
                         ),
                     ).fetchone()[0]
                     if overlaps > 0:
@@ -357,12 +369,13 @@ class SqliteJobStore:
                         """
                         INSERT INTO scheduler_jobs (
                             job_id, schema_version, lane, source_commit, created_at,
-                            requested_start, requested_end, symbols, current_frontier,
-                            expected_next_frontier, status, attempt_number, claim_identity,
+                            requested_start_bar_open, requested_end_bar_open,
+                            provider_as_of_boundary, symbols, accepted_frontier_bar_open,
+                            expected_frontier_bar_open, status, attempt_number, claim_identity,
                             started_at, completed_at, result_classification, error_classification,
                             receipt_paths, receipt_hashes, source_state_fingerprint_before,
                             source_state_fingerprint_after, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         self._job_sql_values(job),
                     )
@@ -540,12 +553,13 @@ class SqliteJobStore:
             lane=row["lane"],
             source_commit=row["source_commit"],
             created_at=datetime.fromisoformat(row["created_at"]),
-            requested_start=datetime.fromisoformat(row["requested_start"]),
-            requested_end=datetime.fromisoformat(row["requested_end"]),
+            requested_start_bar_open=datetime.fromisoformat(row["requested_start_bar_open"]),
+            requested_end_bar_open=datetime.fromisoformat(row["requested_end_bar_open"]),
+            provider_as_of_boundary=datetime.fromisoformat(row["provider_as_of_boundary"]),
             symbols=tuple(json.loads(row["symbols"])),
-            current_frontier=datetime.fromisoformat(row["current_frontier"]),
-            expected_next_frontier=datetime.fromisoformat(
-                row["expected_next_frontier"]
+            accepted_frontier_bar_open=datetime.fromisoformat(row["accepted_frontier_bar_open"]),
+            expected_frontier_bar_open=datetime.fromisoformat(
+                row["expected_frontier_bar_open"]
             ),
             status=SchedulerJobStatus(row["status"]),
             attempt_number=row["attempt_number"],
@@ -570,7 +584,11 @@ class SqliteJobStore:
             source_state_fingerprint_after=row[
                 "source_state_fingerprint_after"
             ],
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            updated_at=(
+                datetime.fromisoformat(row["updated_at"])
+                if row["updated_at"]
+                else None
+            ),
         )
 
     def _job_sql_values(self, job: SchedulerJob) -> tuple:
@@ -580,11 +598,12 @@ class SqliteJobStore:
             job.lane,
             job.source_commit,
             job.created_at.isoformat(),
-            job.requested_start.isoformat(),
-            job.requested_end.isoformat(),
+            job.requested_start_bar_open.isoformat(),
+            job.requested_end_bar_open.isoformat(),
+            job.provider_as_of_boundary.isoformat(),
             json.dumps(list(job.symbols)),
-            job.current_frontier.isoformat(),
-            job.expected_next_frontier.isoformat(),
+            job.accepted_frontier_bar_open.isoformat(),
+            job.expected_frontier_bar_open.isoformat(),
             job.status.value,
             job.attempt_number,
             job.claim_identity,
@@ -596,11 +615,7 @@ class SqliteJobStore:
             json.dumps(list(job.receipt_hashes)),
             job.source_state_fingerprint_before,
             job.source_state_fingerprint_after,
-            (
-                job.updated_at.isoformat()
-                if job.updated_at
-                else job.created_at.isoformat()
-            ),
+            job.updated_at.isoformat() if job.updated_at else "",
         )
 
 
@@ -683,7 +698,7 @@ class RealCommandDispatcher(CommandDispatcher):
             "--market-data-fetch-authorized",
             "--allow-network",
             "--as-of",
-            job.requested_end.isoformat(),
+            job.provider_as_of_boundary.isoformat(),
         ]
 
         # Clean environment copy
@@ -769,8 +784,10 @@ class OneShotExecutor:
                 status=SchedulerJobStatus.BLOCKED,
                 mode="status",
                 frontier=current_time,
-                start=current_time,
-                end=current_time,
+                start=None,
+                end=None,
+                provider_as_of=None,
+                expected_frontier=None,
                 classification="quarantined_corrupt_store",
                 reason=f"Database corruption: {exc}",
                 duration=0.0,
@@ -798,8 +815,10 @@ class OneShotExecutor:
                     status=SchedulerJobStatus.BLOCKED,
                     mode="status",
                     frontier=current_time,
-                    start=current_time,
-                    end=current_time,
+                    start=None,
+                    end=None,
+                    provider_as_of=None,
+                    expected_frontier=None,
                     classification="blocked_missing_discovery_source",
                     reason="Tournament state not initialized and discovery source missing",
                     duration=0.0,
@@ -818,8 +837,10 @@ class OneShotExecutor:
                     status=SchedulerJobStatus.BLOCKED,
                     mode="status",
                     frontier=current_time,
-                    start=current_time,
-                    end=current_time,
+                    start=None,
+                    end=None,
+                    provider_as_of=None,
+                    expected_frontier=None,
                     classification="blocked_initialization_failed",
                     reason=f"Failed to initialize tournament state: {exc}",
                     duration=0.0,
@@ -837,8 +858,10 @@ class OneShotExecutor:
                 status=SchedulerJobStatus.BLOCKED,
                 mode="status",
                 frontier=current_time,
-                start=current_time,
-                end=current_time,
+                start=None,
+                end=None,
+                provider_as_of=None,
+                expected_frontier=None,
                 classification="blocked_oos_load_failed",
                 reason=f"Failed to load OOS status: {exc}",
                 duration=0.0,
@@ -854,8 +877,10 @@ class OneShotExecutor:
                 status=SchedulerJobStatus.COMPLETED,
                 mode="status",
                 frontier=current_time,
-                start=current_time,
-                end=current_time,
+                start=None,
+                end=None,
+                provider_as_of=None,
+                expected_frontier=None,
                 classification="accrual_complete",
                 reason="Tournament forward OOS accrual is complete (terminal window reached)",
                 duration=0.0,
@@ -870,8 +895,10 @@ class OneShotExecutor:
                     status=SchedulerJobStatus.COMPLETED,
                     mode="status",
                     frontier=current_time,
-                    start=current_time,
-                    end=current_time,
+                    start=None,
+                    end=None,
+                    provider_as_of=None,
+                    expected_frontier=None,
                     classification="accrual_complete",
                     reason="Accrual complete according to tournament next_refresh payload",
                     duration=0.0,
@@ -882,8 +909,10 @@ class OneShotExecutor:
                     status=SchedulerJobStatus.BLOCKED,
                     mode="status",
                     frontier=current_time,
-                    start=current_time,
-                    end=current_time,
+                    start=None,
+                    end=None,
+                    provider_as_of=None,
+                    expected_frontier=None,
                     classification="no_eligible_closed_window",
                     reason="No next refresh hour requested by OOS status",
                     duration=0.0,
@@ -892,12 +921,12 @@ class OneShotExecutor:
         requested_start = datetime.fromisoformat(
             requested_start_str.replace("Z", "+00:00")
         )
-        frontier = requested_start - _ONE_HOUR
+        accepted_frontier_bar_open = requested_start - _ONE_HOUR
 
         # 3. Calculate Eligible Window using ScheduleCalculator
         calc = ScheduleCalculator.calculate_eligible_window(
             current_time=current_time,
-            frontier=frontier,
+            accepted_frontier_bar_open=accepted_frontier_bar_open,
             bar_interval=_ONE_HOUR,
             publication_grace=timedelta(minutes=5),
             max_catch_up_hours=24,
@@ -909,9 +938,11 @@ class OneShotExecutor:
                 job_id="na",
                 status=SchedulerJobStatus.BLOCKED,
                 mode="status",
-                frontier=frontier,
-                start=current_time,
-                end=current_time,
+                frontier=accepted_frontier_bar_open,
+                start=None,
+                end=None,
+                provider_as_of=None,
+                expected_frontier=None,
                 classification=calc.classification,
                 reason=calc.reason,
                 duration=0.0,
@@ -922,9 +953,11 @@ class OneShotExecutor:
                 job_id="na",
                 status=SchedulerJobStatus.BLOCKED,
                 mode="status",
-                frontier=frontier,
-                start=current_time,
-                end=current_time,
+                frontier=accepted_frontier_bar_open,
+                start=None,
+                end=None,
+                provider_as_of=None,
+                expected_frontier=None,
                 classification=calc.classification,
                 reason=calc.reason,
                 duration=0.0,
@@ -934,7 +967,7 @@ class OneShotExecutor:
         window = calc.window
 
         # 4. Deterministic Job ID for same lane/window
-        job_id = _generate_job_id(lane, window.start, window.end)
+        job_id = _generate_job_id(lane, window.start_bar_open, window.end_bar_open)
 
         # 5. Check if Job exists in store
         existing_job = self.store.get_job(job_id)
@@ -946,9 +979,11 @@ class OneShotExecutor:
                     job_id=job_id,
                     status=SchedulerJobStatus.COMPLETED,
                     mode="status",
-                    frontier=frontier,
-                    start=window.start,
-                    end=window.end,
+                    frontier=accepted_frontier_bar_open,
+                    start=window.start_bar_open,
+                    end=window.end_bar_open,
+                    provider_as_of=window.provider_as_of_boundary,
+                    expected_frontier=window.end_bar_open + _ONE_HOUR,
                     classification="idempotent_no_op",
                     reason="Window already successfully processed and recorded.",
                     duration=(datetime.now(UTC) - start_time).total_seconds(),
@@ -967,9 +1002,11 @@ class OneShotExecutor:
                         job_id=job_id,
                         status=SchedulerJobStatus.FAILED,
                         mode="status",
-                        frontier=frontier,
-                        start=window.start,
-                        end=window.end,
+                        frontier=accepted_frontier_bar_open,
+                        start=window.start_bar_open,
+                        end=window.end_bar_open,
+                        provider_as_of=window.provider_as_of_boundary,
+                        expected_frontier=accepted_frontier_bar_open,
                         classification="stale_timeout_recovered",
                         reason="Crashed/stale running job detected and recovered to FAILED.",
                         duration=(
@@ -981,9 +1018,11 @@ class OneShotExecutor:
                         job_id=job_id,
                         status=SchedulerJobStatus.BLOCKED,
                         mode="status",
-                        frontier=frontier,
-                        start=window.start,
-                        end=window.end,
+                        frontier=accepted_frontier_bar_open,
+                        start=window.start_bar_open,
+                        end=window.end_bar_open,
+                        provider_as_of=window.provider_as_of_boundary,
+                        expected_frontier=accepted_frontier_bar_open,
                         classification="blocked_concurrent_run",
                         reason="Job is currently running under a valid lease.",
                         duration=(
@@ -998,9 +1037,11 @@ class OneShotExecutor:
                     job_id=job_id,
                     status=existing_job.status,
                     mode="status",
-                    frontier=frontier,
-                    start=window.start,
-                    end=window.end,
+                    frontier=accepted_frontier_bar_open,
+                    start=window.start_bar_open,
+                    end=window.end_bar_open,
+                    provider_as_of=window.provider_as_of_boundary,
+                    expected_frontier=accepted_frontier_bar_open,
                     classification="no_automatic_retry",
                     reason=f"Prior job was in {existing_job.status} state. Retries disabled.",
                     duration=(datetime.now(UTC) - start_time).total_seconds(),
@@ -1014,11 +1055,12 @@ class OneShotExecutor:
             lane=lane,
             source_commit=commit_hash,
             created_at=datetime.now(UTC),
-            requested_start=window.start,
-            requested_end=window.end,
+            requested_start_bar_open=window.start_bar_open,
+            requested_end_bar_open=window.end_bar_open,
+            provider_as_of_boundary=window.provider_as_of_boundary,
             symbols=symbols,
-            current_frontier=frontier,
-            expected_next_frontier=window.end,
+            accepted_frontier_bar_open=accepted_frontier_bar_open,
+            expected_frontier_bar_open=window.end_bar_open + _ONE_HOUR,
             status=SchedulerJobStatus.PENDING,
             attempt_number=0,
             claim_identity="",
@@ -1033,9 +1075,11 @@ class OneShotExecutor:
                 job_id=job_id,
                 status=SchedulerJobStatus.BLOCKED,
                 mode="status",
-                frontier=frontier,
-                start=window.start,
-                end=window.end,
+                frontier=accepted_frontier_bar_open,
+                start=window.start_bar_open,
+                end=window.end_bar_open,
+                provider_as_of=window.provider_as_of_boundary,
+                expected_frontier=accepted_frontier_bar_open,
                 classification="blocked_concurrent_overlap",
                 reason=str(exc),
                 duration=(datetime.now(UTC) - start_time).total_seconds(),
@@ -1051,9 +1095,11 @@ class OneShotExecutor:
                 job_id=job_id,
                 status=SchedulerJobStatus.BLOCKED,
                 mode="status",
-                frontier=frontier,
-                start=window.start,
-                end=window.end,
+                frontier=accepted_frontier_bar_open,
+                start=window.start_bar_open,
+                end=window.end_bar_open,
+                provider_as_of=window.provider_as_of_boundary,
+                expected_frontier=accepted_frontier_bar_open,
                 classification="blocked_claim_contention",
                 reason="Failed to claim pending job due to contention",
                 duration=(datetime.now(UTC) - start_time).total_seconds(),
@@ -1124,11 +1170,14 @@ class OneShotExecutor:
         status: SchedulerJobStatus,
         mode: str,
         frontier: datetime,
-        start: datetime,
-        end: datetime,
+        start: datetime | None,
+        end: datetime | None,
+        provider_as_of: datetime | None,
+        expected_frontier: datetime | None,
         classification: str,
         reason: str,
         duration: float,
+        publication_grace_seconds: float = 300.0,
     ) -> dict[str, object]:
         now_utc = datetime.now(UTC)
         next_check = now_utc + _ONE_HOUR
@@ -1139,11 +1188,14 @@ class OneShotExecutor:
             "job_id": job_id,
             "job_status": status.value,
             "invoked_mode": mode,
-            "clock_time": now_utc.isoformat(),
-            "frontier_before": frontier.isoformat(),
-            "requested_start": start.isoformat(),
-            "requested_end": end.isoformat(),
-            "expected_frontier": end.isoformat(),
+            "clock_time_utc": now_utc.isoformat(),
+            "publication_grace_seconds": publication_grace_seconds,
+            "accepted_frontier_bar_open": frontier.isoformat(),
+            "requested_start_bar_open": start.isoformat() if start else "",
+            "requested_end_bar_open": end.isoformat() if end else "",
+            "provider_as_of_boundary": provider_as_of.isoformat() if provider_as_of else "",
+            "expected_frontier_bar_open": expected_frontier.isoformat() if expected_frontier else "",
+            "next_eligible_scheduler_time": next_check.isoformat(),
             "dispatcher_type": self.dispatcher.__class__.__name__,
             "authorization_status": {
                 "scheduler_enabled": self.enabled,
@@ -1169,7 +1221,6 @@ class OneShotExecutor:
                 self.output_root / "frozen_state.json"
             ),
             "duration_seconds": duration,
-            "next_eligible_check": next_check.isoformat(),
             "operator_action_required": (status == SchedulerJobStatus.FAILED),
             "exact_reason": reason,
         }
@@ -1182,6 +1233,7 @@ class OneShotExecutor:
         mode: str,
         duration: float,
         reason: str,
+        publication_grace_seconds: float = 300.0,
     ) -> dict[str, object]:
         now_utc = datetime.now(UTC)
         next_check = now_utc + _ONE_HOUR
@@ -1192,11 +1244,14 @@ class OneShotExecutor:
             "job_id": job.job_id,
             "job_status": job.status.value,
             "invoked_mode": mode,
-            "clock_time": now_utc.isoformat(),
-            "frontier_before": job.current_frontier.isoformat(),
-            "requested_start": job.requested_start.isoformat(),
-            "requested_end": job.requested_end.isoformat(),
-            "expected_frontier": job.expected_next_frontier.isoformat(),
+            "clock_time_utc": now_utc.isoformat(),
+            "publication_grace_seconds": publication_grace_seconds,
+            "accepted_frontier_bar_open": job.accepted_frontier_bar_open.isoformat(),
+            "requested_start_bar_open": job.requested_start_bar_open.isoformat(),
+            "requested_end_bar_open": job.requested_end_bar_open.isoformat(),
+            "provider_as_of_boundary": job.provider_as_of_boundary.isoformat(),
+            "expected_frontier_bar_open": job.expected_frontier_bar_open.isoformat(),
+            "next_eligible_scheduler_time": next_check.isoformat(),
             "dispatcher_type": self.dispatcher.__class__.__name__,
             "authorization_status": {
                 "scheduler_enabled": self.enabled,
@@ -1222,7 +1277,6 @@ class OneShotExecutor:
             "source_state_hash_before": job.source_state_fingerprint_before,
             "source_state_hash_after": job.source_state_fingerprint_after,
             "duration_seconds": duration,
-            "next_eligible_check": next_check.isoformat(),
             "operator_action_required": (job.status == SchedulerJobStatus.FAILED),
             "exact_reason": reason,
         }
@@ -1403,11 +1457,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Scheduler Database: {db_path.resolve()}")
             print(f"Total jobs recorded: {len(jobs)}")
             if jobs:
-                print(f"{'Job ID':<32} | {'Start':<25} | {'End':<25} | {'Status':<10}")
+                print(f"{'Job ID':<32} | {'Start Bar Open':<25} | {'End Bar Open':<25} | {'Status':<10}")
                 print("-" * 100)
                 for job in jobs[:10]:
                     print(
-                        f"{job.job_id:<32} | {job.requested_start.isoformat():<25} | {job.requested_end.isoformat():<25} | {job.status.value:<10}"
+                        f"{job.job_id:<32} | {job.requested_start_bar_open.isoformat():<25} | {job.requested_end_bar_open.isoformat():<25} | {job.status.value:<10}"
                     )
             return 0
         except Exception as exc:
