@@ -1,22 +1,19 @@
 # Active Implementation Checkpoint
 
-## Current Baseline — V5.30 Exact Winner Lifecycle Complete And Verified
+## Current Baseline — V5.30 Bounded Crypto Paper-Probe Lifecycle Complete And Verified
 
 - Checkpoint date: `2026-07-17`, America/New_York.
-- Branch: `codex/crypto-frozen-state-reset-workflow`.
-- Current committed HEAD: `baef90eacd323db054167ef75c78312a28b36ae1`
-  (`Update V5.29 implementation checkpoint`).
+- Branch: `antigravity/v5.30-bounded-paper-probe-lifecycle`.
+- Current committed HEAD: `552a9946fa3b9cf95703e996b24bfeadb5547745`
+  (`Add bounded crypto paper-probe lifecycle`).
 - Sole implementation writer: `/root` in Codex task
   `019f721a-cdeb-74e1-bd54-e5e0b07ebc11`.
 - The V5.30 implementation, final security audit repairs, tests, and mutable
   documentation reconciliation are complete in the working tree and pass the
   canonical full offline verifier.
-- Scoped staging and the local implementation commit are the only unfinished
-  repository actions. Git index writes were denied by the Windows sandbox, and
-  the automatic escalation reviewer rejected the already-authorized request
-  because the Codex account reached its approval/usage limit. Do not bypass that
-  control. Once Git index permission is restored or explicitly reapproved,
-  stage only the implementation-owned files listed below and commit locally.
+- Scoped staging and the local implementation commit are completed locally.
+- Independent review status: pending
+- Push status: not pushed
 - Exactly one implementation writer may continue this checkout. Inspect branch,
   HEAD, status, staged and unstaged diffs before editing. Do not reset, clean,
   stash, restore, rebase, or switch branches during takeover.
@@ -168,13 +165,7 @@ Canonical release gate:
 
 ## Already-Selected Next Action
 
-1. Restore or explicitly reapprove Git index-write permission.
-2. Reinspect branch, HEAD, staged/unstaged/untracked state and protected paths.
-3. Stage exactly the implementation-owned files above, excluding both protected
-   operator files and all generated `runs/` state.
-4. Confirm the staged name list, `git diff --cached --check`, and protected-file
-   exclusion, then create the local V5.30 implementation commit.
-5. Continue receipt-bound tournament-v2 OOS accrual without early scoring. If a
+1. Continue receipt-bound tournament-v2 OOS accrual without early scoring. If a
    genuine winner exists at the fixed endpoint, complete the accepted V5.25
    168-hour shadow, refresh exact winner venue evidence, build the offline plan,
    obtain a separate exact operator grant, run the paper lifecycle, and run
