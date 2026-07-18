@@ -29,6 +29,8 @@ def test_run_daily_paper_lab_cycle_script_contract() -> None:
         "exit $DailyExitCode",
         "[switch]$AutoRefreshAdjustedData",
         "[string]$DataRefreshMode = \"dry_run\"",
+        "[int]$DataRefreshRevisionLookbackDays = 10",
+        "\"-RevisionLookbackDays\", $DataRefreshRevisionLookbackDays",
         "[switch]$LiveMarketDataFetchAuthorized",
         "refresh_spy_adjusted_data.ps1",
         "\"-Mode\", $DataRefreshMode",
@@ -259,6 +261,7 @@ def test_run_daily_paper_lab_cycle_live_refresh_success_reruns_daily_cycle(
     assert "--mode live_market_data_fetch" in refresh_lines[0]
     assert "--live-market-data-fetch-authorized" in refresh_lines[0]
     assert "--raw-response-path" in refresh_lines[0]
+    assert "--revision-lookback-days 10" in refresh_lines[0]
 
 
 def _fake_python_env(

@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
 import urllib.parse
 
+import pytest
+
 from algotrader.execution.crypto_history_refresh_adapter import (
     CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH,
     CryptoHistoryRefreshConfig,
+    CryptoHistoryRefreshError,
     run_crypto_history_refresh,
 )
 from algotrader.research.crypto_strategy_evidence_battery import (
@@ -187,6 +191,7 @@ def test_market_data_fetch_rejects_live_endpoint_before_opener(
     assert packet["endpoint_safety_status"] == "rejected_live_endpoint_risk"
     assert packet["market_data_fetch_occurred"] is False
     assert packet["network_access_attempted"] is False
+    assert packet["live_endpoint_indicator"] is True
     assert packet["live_endpoint_touched"] is False
     assert called is False
 
@@ -303,6 +308,175 @@ def test_authorized_market_data_fetch_uses_read_only_urls_and_coverage_gate(
     assert SENSITIVE_KEY not in json.dumps(packet, sort_keys=True)
     assert SENSITIVE_SECRET not in json.dumps(packet, sort_keys=True)
     assert output_path.is_file()
+    assert output_path.read_text(encoding="utf-8").splitlines()[0] == (
+        "timestamp,symbol,open,high,low,close,volume"
+    )
+    assert not output_path.with_name(f".{output_path.name}.tmp").exists()
+    assert packet["timeframe"] == "1Hour"
+    assert packet["loc"] == "us"
+    assert packet["output_sha256"] == hashlib.sha256(output_path.read_bytes()).hexdigest()
+    assert packet["raw_response_sha256"] == hashlib.sha256(
+        (tmp_path / "raw.json").read_bytes()
+    ).hexdigest()
+
+
+def test_data_intake_only_accepts_one_hour_and_skips_strategy_battery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_start = AS_OF - timedelta(hours=1)
+    requests: list[object] = []
+
+    def fail_if_evaluated(*args: object, **kwargs: object) -> object:
+        raise AssertionError("strategy battery must not run during intake")
+
+    monkeypatch.setattr(
+        "algotrader.execution.crypto_history_refresh_adapter."
+        "build_crypto_strategy_real_data_evidence_packet",
+        fail_if_evaluated,
+    )
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        requests.append(request)
+        assert timeout == 30
+        query = urllib.parse.parse_qs(
+            urllib.parse.urlparse(request.full_url).query
+        )
+        api_symbol = query["symbols"][0]
+        return FakeResponse(
+            {
+                "bars": {
+                    api_symbol: [
+                        {
+                            "t": requested_start.isoformat().replace(
+                                "+00:00", "Z"
+                            ),
+                            "o": "100",
+                            "h": "101",
+                            "l": "99",
+                            "c": "100",
+                            "v": "1",
+                        }
+                    ]
+                }
+            }
+        )
+
+    symbols = ("BTCUSD", "ETHUSD", "SOLUSD")
+    packet = run_crypto_history_refresh(
+        CryptoHistoryRefreshConfig(
+            mode="market_data_fetch",
+            symbols=symbols,
+            output_path=tmp_path / "delta.csv",
+            raw_response_path=tmp_path / "raw.json",
+            packet_path=None,
+            as_of=AS_OF,
+            start=requested_start,
+            end=requested_start,
+            allow_network=True,
+            market_data_fetch_authorized=True,
+            data_intake_only=True,
+        ),
+        env=VALID_ENV,
+        opener=opener,
+    )
+
+    assert len(requests) == 3
+    assert packet["classification"] == "market_data_refresh_ready"
+    assert packet["data_intake_only"] is True
+    assert packet["strategy_evidence_evaluation_performed"] is False
+    assert packet["coverage_gate_classification"] == (
+        "not_evaluated_data_intake_only"
+    )
+    assert packet["rows_per_symbol"] == {symbol: 1 for symbol in symbols}
+    assert packet["fetched_symbols"] == list(symbols)
+    assert packet["paper_planning_promotion_allowed"] is False
+    assert "-DataIntakeOnly" in packet["generated_command_text"]
+    assert packet["paper_cancel_occurred"] is False
+    assert packet["paper_replace_occurred"] is False
+    assert packet["paper_close_occurred"] is False
+    assert packet["paper_liquidate_occurred"] is False
+
+
+def test_authorized_market_data_fetch_follows_page_tokens_per_symbol(
+    tmp_path: Path,
+) -> None:
+    requests: list[tuple[str, str]] = []
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        assert timeout == 30
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+        api_symbol = query["symbols"][0]
+        page_token = query.get("page_token", [""])[0]
+        requests.append((api_symbol, page_token))
+        bars = _api_bars(api_symbol)
+        if not page_token:
+            return FakeResponse(
+                {
+                    "bars": {api_symbol: bars[:40]},
+                    "next_page_token": f"next-{api_symbol.replace('/', '-')}",
+                }
+            )
+        return FakeResponse({"bars": {api_symbol: bars[40:]}})
+
+    packet = run_crypto_history_refresh(
+        CryptoHistoryRefreshConfig(
+            mode="market_data_fetch",
+            output_path=tmp_path / "history.csv",
+            raw_response_path=tmp_path / "raw.json",
+            packet_path=None,
+            as_of=AS_OF,
+            allow_network=True,
+            market_data_fetch_authorized=True,
+        ),
+        env=VALID_ENV,
+        opener=opener,
+    )
+
+    assert len(requests) == 8
+    for symbol in ("BTC/USD", "ETH/USD", "SOL/USD", "ADA/USD"):
+        symbol_requests = [token for requested, token in requests if requested == symbol]
+        assert symbol_requests == ["", f"next-{symbol.replace('/', '-')}"]
+    assert packet["rows_per_symbol_after_normalization"] == {
+        symbol: 80 for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
+    }
+
+
+def test_repeated_page_token_fails_before_replacing_existing_outputs(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "history.csv"
+    raw_path = tmp_path / "raw.json"
+    output_path.write_text("protected-history\n", encoding="utf-8")
+    raw_path.write_text("protected-raw\n", encoding="utf-8")
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+        api_symbol = query["symbols"][0]
+        return FakeResponse(
+            {
+                "bars": {api_symbol: _api_bars(api_symbol)[:1]},
+                "next_page_token": "repeated-token",
+            }
+        )
+
+    with pytest.raises(CryptoHistoryRefreshError, match="repeated a token"):
+        run_crypto_history_refresh(
+            CryptoHistoryRefreshConfig(
+                mode="market_data_fetch",
+                output_path=output_path,
+                raw_response_path=raw_path,
+                packet_path=None,
+                as_of=AS_OF,
+                allow_network=True,
+                market_data_fetch_authorized=True,
+            ),
+            env=VALID_ENV,
+            opener=opener,
+        )
+
+    assert output_path.read_text(encoding="utf-8") == "protected-history\n"
+    assert raw_path.read_text(encoding="utf-8") == "protected-raw\n"
 
 
 def test_default_output_path_remains_coverage_gate_compatible() -> None:

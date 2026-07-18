@@ -16,11 +16,20 @@ param(
     [string]$BarsCsv = "runs\operator_input\crypto_paper_bars.csv",
     [string]$CryptoVisibilityStatus = "runs\crypto_paper_visibility\latest\latest_status.json",
     [string]$PaperVisibilityOutputRoot = "runs\crypto_paper_visibility\latest",
+    [string]$TargetSymbol,
     [string]$AsOfTimestamp,
     [ValidateSet("text", "json")]
     [string]$Format = "text",
     [switch]$PaperReadOnlyAuthorized
 )
+$AllowedTargetSymbols = @("BTCUSD", "ETHUSD", "SOLUSD")
+if (-not [string]::IsNullOrEmpty($TargetSymbol) -and $TargetSymbol -cnotin $AllowedTargetSymbols) {
+    throw "TargetSymbol must be exactly BTCUSD, ETHUSD, SOLUSD, or omitted."
+}
+if (-not [string]::IsNullOrEmpty($TargetSymbol) -and $Mode -ne "paper_read_only") {
+    throw "TargetSymbol is valid only when Mode is paper_read_only."
+}
+
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $DefaultPaperBaseUrl = "https://paper-api.alpaca.markets"
@@ -87,6 +96,7 @@ foreach ($EndpointName in @("ALPACA_BASE_URL", "ALPACA_PAPER_BASE_URL", "APCA_AP
 Write-Host "crypto_universe_refresh_command=run_crypto_universe_refresh"
 Write-Host "crypto_universe_refresh_mode=$Mode"
 Write-Host "crypto_universe_refresh_no_submit_enforced=true"
+Write-Host "crypto_universe_refresh_target_symbol=$TargetSymbol"
 Write-Host "preflight_APP_PROFILE_is_paper=$(Format-Bool $AppProfileIsPaper)"
 Write-Host "preflight_APP_PROFILE_is_live=$(Format-Bool $AppProfileIsLive)"
 Write-Host "preflight_credential_variables_loaded=$(Format-Bool $CredentialVariablesLoaded)"
@@ -113,10 +123,15 @@ if ($Mode -ne "paper_read_only") {
         Write-Host "crypto_universe_refresh_status=blocked_paper_read_only_preflight"
         exit 2
     }
-    & (Join-Path $PSScriptRoot "run_crypto_paper_visibility_cycle.ps1") `
-        -OutputRoot $PaperVisibilityOutputRoot `
-        -BarsCsv $BarsCsv `
-        -Format "json"
+    $VisibilityArgs = @{
+        OutputRoot = $PaperVisibilityOutputRoot
+        BarsCsv = $BarsCsv
+        Format = "json"
+    }
+    if (-not [string]::IsNullOrEmpty($TargetSymbol)) {
+        $VisibilityArgs["TargetSymbol"] = $TargetSymbol
+    }
+    & (Join-Path $PSScriptRoot "run_crypto_paper_visibility_cycle.ps1") @VisibilityArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "crypto_universe_refresh_status=blocked_paper_visibility_cycle_failed"
         exit $LASTEXITCODE

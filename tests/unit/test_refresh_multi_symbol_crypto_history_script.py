@@ -22,6 +22,8 @@ def test_refresh_multi_symbol_crypto_history_script_contract() -> None:
         '[string]$Symbols = "BTCUSD,ETHUSD,SOLUSD,ADAUSD"',
         '[string]$OutputPath = "runs\\operator_input\\crypto_paper_bars.csv"',
         "crypto_history_refresh_read_only_market_data=true",
+        "[switch]$DataIntakeOnly",
+        "crypto_history_refresh_data_intake_only=",
         "crypto_history_refresh_no_submit_enforced=true",
         "APP_PROFILE_is_paper",
         "ALPACA_API_KEY_loaded",
@@ -118,6 +120,7 @@ def test_refresh_multi_symbol_crypto_history_adds_fetch_flags_only_when_authoriz
             "-Mode",
             "market_data_fetch",
             "-MarketDataFetchAuthorized",
+            "-DataIntakeOnly",
             "-Format",
             "json",
         ],
@@ -135,11 +138,13 @@ def test_refresh_multi_symbol_crypto_history_adds_fetch_flags_only_when_authoriz
     assert "APCA_API_KEY_ID_loaded=true" in result.stdout
     assert "APCA_API_BASE_URL_is_live=false" in result.stdout
     assert "APCA_API_BASE_URL_is_paper=true" in result.stdout
+    assert "crypto_history_refresh_data_intake_only=true" in result.stdout
     assert SENSITIVE_KEY not in combined
     assert SENSITIVE_SECRET not in combined
     args = capture_path.read_text(encoding="utf-8")
     assert "--mode market_data_fetch" in args
     assert "--allow-network --market-data-fetch-authorized" in args
+    assert "--data-intake-only" in args
     assert "--submit" not in args
 
 

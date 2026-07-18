@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+import pytest
 
 from algotrader.config import AlpacaPaperConfig, DEFAULT_ALPACA_PAPER_BASE_URL
+from algotrader.errors import ValidationError
 from algotrader.execution.crypto_paper_visibility_operator import (
     crypto_visibility_environment_preflight,
     render_crypto_visibility_text,
@@ -47,6 +49,24 @@ class FakeReadOnlyCryptoAssetsClient:
         ]
 
 
+class FakeSolReadOnlyCryptoAssetsClient(FakeReadOnlyCryptoAssetsClient):
+    def get_all_assets(self) -> list[dict[str, object]]:
+        return [
+            *super().get_all_assets(),
+            {
+                "symbol": "SOL/USD",
+                "asset_class": "crypto",
+                "tradable": True,
+                "marginable": False,
+                "fractionable": True,
+                "status": "active",
+                "min_order_size": "0.01",
+                "min_trade_increment": "0.000001",
+                "min_notional": "1.00",
+            },
+        ]
+
+
 def test_visibility_operator_uses_apca_aliases_for_read_only_observed_assets(
     tmp_path: Path,
 ) -> None:
@@ -82,6 +102,8 @@ def test_visibility_operator_uses_apca_aliases_for_read_only_observed_assets(
     assert record["broker_state_mode"] == "alpaca_paper_observed"
     assert record["capability_source"] == "observed"
     assert record["crypto_trading_supported"] is True
+    assert record["target_symbol"] == ""
+    assert record["target_scoped"] is False
     assert record["eligible_crypto_symbols"] == ["ETHUSD", "BTCUSD"]
     assert record["selected_symbol"] == "BTCUSD"
     assert record["selected_symbol_tradable"] is True
@@ -94,7 +116,98 @@ def test_visibility_operator_uses_apca_aliases_for_read_only_observed_assets(
     assert record["broker_mutation_performed"] is False
     assert record["live_mutation_performed"] is False
     assert "paper-key-value" not in rendered
+    assert "target_scoped=false" in rendered
     assert "paper-secret-value" not in rendered
+
+def test_visibility_operator_target_symbol_is_the_sole_preference(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_crypto_bars(tmp_path, symbol="SOLUSD", posture="risk_on")
+    fake_client = FakeSolReadOnlyCryptoAssetsClient()
+    env = {
+        "APP_PROFILE": "paper",
+        "APCA_API_KEY_ID": SENSITIVE_KEY,
+        "APCA_API_SECRET_KEY": SENSITIVE_SECRET,
+        "ALPACA_PAPER_BASE_URL": DEFAULT_ALPACA_PAPER_BASE_URL,
+    }
+
+    record = run_crypto_paper_visibility_cycle(
+        output_root=tmp_path / "out",
+        bars_csv=bars_csv,
+        timestamp=GENERATED_AT,
+        target_symbol="SOLUSD",
+        env=env,
+        sdk_client_factory=lambda _: fake_client,
+        write_artifacts=False,
+    )
+    rendered = render_crypto_visibility_text(record)
+
+    assert fake_client.calls == ["get_all_assets"]
+    assert record["target_symbol"] == "SOLUSD"
+    assert record["target_scoped"] is True
+    assert record["eligible_crypto_symbols"] == ["ETHUSD", "BTCUSD", "SOLUSD"]
+    assert record["selected_symbol"] == "SOLUSD"
+    assert record["selected_symbol_tradable"] is True
+    assert record["min_order_size"] == "0.01"
+    assert "target_symbol=SOLUSD" in rendered
+
+
+def test_visibility_operator_target_symbol_has_no_fallback(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_crypto_bars(tmp_path, symbol="BTCUSD", posture="risk_on")
+    fake_client = FakeReadOnlyCryptoAssetsClient()
+
+    record = run_crypto_paper_visibility_cycle(
+        output_root=tmp_path / "out",
+        bars_csv=bars_csv,
+        timestamp=GENERATED_AT,
+        target_symbol="SOLUSD",
+        env={
+            "APP_PROFILE": "paper",
+            "APCA_API_KEY_ID": SENSITIVE_KEY,
+            "APCA_API_SECRET_KEY": SENSITIVE_SECRET,
+            "ALPACA_PAPER_BASE_URL": DEFAULT_ALPACA_PAPER_BASE_URL,
+        },
+        sdk_client_factory=lambda _: fake_client,
+        write_artifacts=False,
+    )
+
+    assert fake_client.calls == ["get_all_assets"]
+    assert record["target_symbol"] == "SOLUSD"
+    assert record["target_scoped"] is True
+    assert record["selected_symbol"] == ""
+    assert record["crypto_trading_supported"] is False
+    assert "no_eligible_crypto_symbols_observed" in record["blockers"]
+
+
+@pytest.mark.parametrize(
+    "target_symbol",
+    ("btcusd", "DOGEUSD", "BTC/USD", " BTCUSD", "BTCUSD "),
+)
+def test_visibility_operator_rejects_invalid_target_before_sdk_factory(
+    tmp_path: Path,
+    target_symbol: str,
+) -> None:
+    factory_called = False
+
+    def factory(config: AlpacaPaperConfig) -> FakeReadOnlyCryptoAssetsClient:
+        nonlocal factory_called
+        factory_called = True
+        return FakeReadOnlyCryptoAssetsClient()
+
+    with pytest.raises(ValidationError, match="target_symbol must be exactly"):
+        run_crypto_paper_visibility_cycle(
+            output_root=tmp_path / "out",
+            bars_csv=tmp_path / "unused.csv",
+            target_symbol=target_symbol,
+            env={"APP_PROFILE": "paper"},
+            sdk_client_factory=factory,
+            write_artifacts=False,
+        )
+
+    assert factory_called is False
+
 
 
 def test_visibility_operator_without_paper_shell_reports_not_observed(

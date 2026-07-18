@@ -13,6 +13,14 @@ from typing import Any
 from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_client import AlpacaOrderRequest, AlpacaRecentOrderQuery
 from algotrader.execution.alpaca_mapper import broker_order_result_receipt_metadata
+from algotrader.execution.durable_submit import (
+    DurableBrokerObservation,
+    DurableSubmitCoordinator,
+    DurableSubmitEvidence,
+    DurableSubmitIdentity,
+    DurableSubmitLease,
+)
+from algotrader.execution.order_journal import SqliteOrderJournal
 from algotrader.execution.paper_lab_snapshot import (
     account_observation_payload,
     order_observation_payloads,
@@ -29,6 +37,7 @@ M370_DEFAULT_SOURCE_M369_ARTIFACT_PATH = (
     "runs/paper_lab/m369_tiny_spy_paper_submit_operator_review.jsonl"
 )
 M370_DEFAULT_OUTPUT_PATH = "runs/paper_lab/m370_tiny_spy_paper_submit.jsonl"
+M370_EXECUTION_PLAN_ID = "m370_tiny_spy_paper_submit_plan_v1"
 M370_COMMAND = "etf-sma-m370-paper-submit"
 M370_LABELS = (
     "paper_lab_only",
@@ -52,6 +61,8 @@ _PROFIT_CLAIM = "none"
 _MARKET_SESSION_MAX_AGE = timedelta(minutes=15)
 _PRE_SUBMIT_SNAPSHOT_MAX_AGE = timedelta(minutes=5)
 _FUTURE_TOLERANCE = timedelta(seconds=60)
+_LEASE_NAME = "m370-paper-submit"
+_LEASE_TTL_SECONDS = 300
 _SNAPSHOT_OBSERVED_AT_UNSET = object()
 
 
@@ -141,6 +152,7 @@ def run_m370_tiny_spy_paper_submit(
         if output_artifact_path is None
         else _path(output_artifact_path, "output_artifact_path")
     )
+    journal_path = _m370_order_journal_path(output_path=output_path)
     checked_run_id = _required_string(run_id, "run_id")
     checked_session = _session_status(equity_session_status)
     checked_market_session_max_age = _nonnegative_timedelta(
@@ -185,6 +197,7 @@ def run_m370_tiny_spy_paper_submit(
         source_path=source_path,
         source_record=source_record,
         output_path=output_path,
+        order_journal_path=journal_path,
         operator_approval_present=operator_approval_present,
         equity_session_status=checked_session,
         gates=initial_gates,
@@ -248,11 +261,55 @@ def run_m370_tiny_spy_paper_submit(
     if fresh_blockers:
         return _finalize_blocked_payload(payload, fresh_blockers)
 
-    submit_payload = _submit_once(
-        broker,
-        payload,
-        redactor=sanitize,
+    if evaluation_clock is None or journal_path is None:
+        blockers = ("durable_submit_journal_unavailable",)
+        return _finalize_blocked_payload(
+            {
+                **payload,
+                "blockers": list(blockers),
+                "order_journal_error": "journal_path_or_evaluation_clock_missing",
+            },
+            blockers,
+        )
+
+    coordinator, lease, claim_status, claim_blockers = _prepare_durable_submit(
+        journal_path=journal_path,
+        run_id=checked_run_id,
+        occurred_at=evaluation_clock,
     )
+    payload = {**payload, **claim_status, "blockers": list(claim_blockers)}
+    if claim_blockers or coordinator is None or lease is None:
+        return _finalize_blocked_payload(payload, claim_blockers)
+
+    identity = _m370_submit_identity(checked_run_id)
+    submit_evidence = DurableSubmitEvidence(
+        canonical_risk_allowed=(
+            operator_approval_present
+            and all(gate.passed for gate in initial_gates)
+            and not blockers
+        ),
+        snapshot_fresh=(not fresh_blockers),
+    )
+    try:
+        submit_payload = _submit_once(
+            broker,
+            payload,
+            redactor=sanitize,
+            coordinator=coordinator,
+            identity=identity,
+            lease=lease,
+            evidence=submit_evidence,
+            occurred_at=evaluation_clock,
+        )
+    finally:
+        try:
+            lease_released = coordinator.release_lease(lease)
+        except Exception:
+            lease_released = False
+    submit_payload = {
+        **submit_payload,
+        "order_journal_lease_released": lease_released,
+    }
     if submit_payload.get("submit_call_count") == 1:
         submit_payload = {
             **submit_payload,
@@ -346,6 +403,7 @@ def _base_payload(
     source_path: Path,
     source_record: Mapping[str, object] | None,
     output_path: Path | None,
+    order_journal_path: Path | None,
     operator_approval_present: bool,
     equity_session_status: M370EquitySessionStatus,
     gates: Sequence[M370Gate],
@@ -355,6 +413,7 @@ def _base_payload(
     return {
         "accepted": None,
         "blockers": list(blockers),
+        "broker_action_performed": False,
         "broker_error": False,
         "broker_order_id": "",
         "broker_status": "",
@@ -373,6 +432,15 @@ def _base_payload(
         "mutated": False,
         "not_live_authorized": True,
         "operator_approval_present": operator_approval_present,
+        "order_journal_claimed": False,
+        "order_journal_error": "",
+        "order_journal_lease_acquired": False,
+        "order_journal_lease_released": False,
+        "order_journal_path": (
+            "" if order_journal_path is None else str(order_journal_path)
+        ),
+        "order_journal_reservation_status": "not_attempted",
+        "order_journal_state": "",
         "order_intent": order_intent,
         "paper_lab_only": True,
         "paper_only": True,
@@ -813,6 +881,11 @@ def _submit_once(
     payload: Mapping[str, object],
     *,
     redactor: Callable[[str], str],
+    coordinator: DurableSubmitCoordinator,
+    identity: DurableSubmitIdentity,
+    lease: DurableSubmitLease,
+    evidence: DurableSubmitEvidence,
+    occurred_at: datetime,
 ) -> dict[str, object]:
     request = AlpacaOrderRequest(
         client_order_id=M370_CLIENT_ORDER_ID,
@@ -823,48 +896,87 @@ def _submit_once(
         order_type=_ORDER_TYPE,
         time_in_force=_TIME_IN_FORCE,
     )
-    try:
-        result = broker.submit_order_request(
+    outcome = coordinator.execute(
+        identity=identity,
+        lease=lease,
+        evidence=evidence,
+        occurred_at=occurred_at,
+        submit=lambda: broker.submit_order_request(
             request,
             risk_verdict=RiskVerdict(
                 allowed=True,
                 reason="explicit_m370_tiny_spy_paper_submit",
                 detail="paper_lab_plumbing_test_not_profit_evidence",
             ),
-        )
-    except Exception as exc:
-        message = redactor(str(exc))
+        ),
+        observe=_m370_broker_observation,
+        sanitize_exception=lambda exc: redactor(str(exc)),
+    )
+    journal_state = "" if outcome.record is None else outcome.record.state.value
+    if not outcome.broker_called:
+        return {
+            **payload,
+            "accepted": None,
+            "blockers": [outcome.blocker],
+            "broker_action_performed": False,
+            "broker_error": False,
+            "error": outcome.blocker,
+            "mutated": False,
+            "order_journal_claimed": False,
+            "order_journal_error": outcome.error_type,
+            "order_journal_state": journal_state,
+            "submitted": False,
+            "submit_call_count": 0,
+        }
+
+    if outcome.response is None:
         return {
             **payload,
             "accepted": None,
             "blockers": [],
+            "broker_action_performed": True,
             "broker_error": True,
             "error": "m370_submit_ambiguous_after_single_call",
-            "error_type": exc.__class__.__name__,
-            "message": message,
+            "error_type": outcome.error_type,
+            "message": outcome.safe_error_message,
             "mutated": True,
-            "redacted_exception_message": message,
+            "order_journal_claimed": True,
+            "order_journal_error": outcome.journal_error_type,
+            "order_journal_state": journal_state,
+            "redacted_exception_message": outcome.safe_error_message,
             "state": "ambiguous_after_single_submit_stop_no_retry",
             "submitted": True,
             "submit_call_count": 1,
         }
 
+    result = outcome.response
     metadata = broker_order_result_receipt_metadata(result)
-    accepted = bool(result.accepted)
+    accepted = bool(result.accepted) and outcome.observed
+    journal_error = outcome.error_type if outcome.ambiguous else ""
     return {
         **payload,
         "accepted": accepted,
         "blockers": [],
+        "broker_action_performed": True,
         "broker_error": False,
         "broker_order_id": metadata["order_id"],
         "broker_status": metadata["normalized_status"],
         "client_order_id": metadata["client_order_id"] or M370_CLIENT_ORDER_ID,
-        "error": "" if accepted else "m370_submit_rejected_no_retry",
+        "error": (
+            "m370_journal_observation_failed"
+            if journal_error
+            else ""
+            if accepted
+            else "m370_submit_rejected_no_retry"
+        ),
         "filled": result.filled,
         "filled_average_price": metadata["filled_average_price"],
         "filled_quantity": metadata["filled_quantity"],
         "message": str(result.reason) if not accepted else "",
         "mutated": True,
+        "order_journal_claimed": True,
+        "order_journal_error": journal_error or outcome.journal_error_type,
+        "order_journal_state": journal_state,
         "raw_reason": metadata["raw_reason"],
         "raw_status": metadata["raw_status"],
         "state": (
@@ -875,6 +987,102 @@ def _submit_once(
         "submitted": True,
         "submit_call_count": 1,
     }
+
+
+def _m370_order_journal_path(
+    *,
+    output_path: Path | None,
+) -> Path | None:
+    if output_path is None:
+        return None
+    return output_path.with_name(f"{output_path.stem}_order_journal.sqlite3")
+
+
+def _m370_submit_identity(run_id: str) -> DurableSubmitIdentity:
+    return DurableSubmitIdentity(
+        client_order_id=M370_CLIENT_ORDER_ID,
+        execution_plan_id=M370_EXECUTION_PLAN_ID,
+        reservation_run_id=run_id,
+        symbol=_SYMBOL,
+        side=_SIDE,
+        quantity=None,
+        notional=_MAX_NOTIONAL,
+    )
+
+
+def _m370_broker_observation(result: object) -> DurableBrokerObservation:
+    metadata = broker_order_result_receipt_metadata(result)
+    accepted = bool(getattr(result, "accepted", False))
+    return DurableBrokerObservation(
+        broker_order_id=metadata["order_id"],
+        broker_status=(
+            metadata["normalized_status"]
+            or ("accepted" if accepted else "rejected")
+        ),
+        filled_quantity=metadata["filled_quantity"] or None,
+        filled_average_price=metadata["filled_average_price"] or None,
+    )
+
+
+def _prepare_durable_submit(
+    *,
+    journal_path: Path,
+    run_id: str,
+    occurred_at: datetime,
+) -> tuple[
+    DurableSubmitCoordinator | None,
+    DurableSubmitLease | None,
+    dict[str, object],
+    tuple[str, ...],
+]:
+    status: dict[str, object] = {
+        "order_journal_claimed": False,
+        "order_journal_error": "",
+        "order_journal_lease_acquired": False,
+        "order_journal_lease_released": False,
+        "order_journal_reservation_status": "not_attempted",
+        "order_journal_state": "",
+    }
+    try:
+        coordinator = DurableSubmitCoordinator(SqliteOrderJournal(journal_path))
+        lease = coordinator.acquire_lease(
+            lease_name=_LEASE_NAME,
+            owner_run_id=run_id,
+            occurred_at=occurred_at,
+            ttl_seconds=_LEASE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        status["order_journal_error"] = exc.__class__.__name__
+        return None, None, status, ("durable_submit_journal_unavailable",)
+
+    status["order_journal_lease_acquired"] = lease.acquired
+    if not lease.acquired:
+        return coordinator, lease, status, ("durable_submit_lease_unavailable",)
+
+    try:
+        reservation = coordinator.reserve(
+            _m370_submit_identity(run_id),
+            occurred_at,
+        )
+        status["order_journal_reservation_status"] = reservation.status
+        status["order_journal_state"] = reservation.record.state.value
+        if not reservation.acquired:
+            blocker = (
+                "durable_submit_identity_conflict"
+                if reservation.status == "client_order_id_conflict"
+                else "durable_submit_already_reserved"
+            )
+            status["order_journal_lease_released"] = coordinator.release_lease(lease)
+            return coordinator, lease, status, (blocker,)
+    except Exception as exc:
+        status["order_journal_error"] = exc.__class__.__name__
+        try:
+            status["order_journal_lease_released"] = coordinator.release_lease(lease)
+        except Exception:
+            pass
+        return coordinator, lease, status, ("durable_submit_reservation_failed",)
+
+    return coordinator, lease, status, ()
 
 
 def _attach_matching_post_submit_order(
@@ -1429,6 +1637,7 @@ __all__ = [
     "M370_DEFAULT_OUTPUT_PATH",
     "M370_DEFAULT_RUN_ID",
     "M370_DEFAULT_SOURCE_M369_ARTIFACT_PATH",
+    "M370_EXECUTION_PLAN_ID",
     "M370EquitySessionStatus",
     "render_m370_paper_submit_json",
     "render_m370_paper_submit_text",

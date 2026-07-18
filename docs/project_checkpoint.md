@@ -15042,6 +15042,16 @@ Safe next tasks include:
   does not authorize paper action, import broker SDKs, load credentials, access
   the network, submit, cancel, replace, close, delete, retry, liquidate, or
   touch live trading paths.
+- V5.20.3 adds an explicit audit-preserving invalidation workflow for an
+  unrecoverable crypto repair frozen-candidate state. The command requires an
+  operator invalidation switch, reason, recovery source, and sibling archive
+  path; preflights the replacement before moving state; rejects unchanged
+  hashes, collisions, state-contained sources, refresh modes, and network
+  authorization; archives rather than deletes the prior state; and writes the
+  reset record into both the archive and replacement state. Reinitialization
+  reuses the existing manifest-first immutable snapshot path and preserves
+  `profit_claim=none` plus false paper-submit, broker-mutation, market-data,
+  network, credential-exposure, and live-authority fields.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

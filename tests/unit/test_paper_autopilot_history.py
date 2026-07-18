@@ -82,7 +82,7 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     _assert_history_artifacts(rollup)
 
 
-def test_healthy_paper_action_with_confirmed_reconciliation(
+def test_healthy_paper_action_with_terminal_reconciliation(
     tmp_path: Path,
 ) -> None:
     status = _base_status()
@@ -93,7 +93,7 @@ def test_healthy_paper_action_with_confirmed_reconciliation(
             "paper_submit_authorized": True,
             "paper_submit_performed": True,
             "broker_mutation_performed": True,
-            "reconciliation_status": "reconciled_submit_observed",
+            "reconciliation_status": "reconciled_terminal_filled",
             "next_operator_action": "review_latest_status_and_next_reconciliation_cycle",
         }
     )
@@ -102,7 +102,7 @@ def test_healthy_paper_action_with_confirmed_reconciliation(
     )
     status["reconciliation"] = {
         "reconciliation_required": False,
-        "reconciliation_status": "reconciled_submit_observed",
+        "reconciliation_status": "reconciled_terminal_filled",
     }
 
     rollup = _update_history(tmp_path, status)

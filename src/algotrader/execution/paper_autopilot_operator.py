@@ -108,6 +108,9 @@ class PaperAutopilotOperatorConfig:
     max_notional: str = "25.00"
     no_submit: bool = False
     readiness_packet_path: Path | str | None = None
+    order_journal_path: Path | str | None = None
+    operator_paused: bool = False
+    runtime_lease_seconds: int = 900
 
     def __post_init__(self) -> None:
         loop_config = self.to_loop_config()
@@ -131,6 +134,9 @@ class PaperAutopilotOperatorConfig:
             max_notional=self.max_notional,
             no_submit=self.no_submit,
             readiness_packet_path=self.readiness_packet_path,
+            order_journal_path=self.order_journal_path,
+            operator_paused=self.operator_paused,
+            runtime_lease_seconds=self.runtime_lease_seconds,
         )
 
 
@@ -143,6 +149,9 @@ def run_paper_autopilot_operator(
     timestamp: str | None = None,
     loop_runner: LoopRunner | None = None,
     history_updater: HistoryUpdater | None = None,
+    lease_token: str | None = None,
+    fencing_generation: int | None = None,
+    lease_owner_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the loop, update durable history once, and return operator status."""
 
@@ -165,6 +174,9 @@ def run_paper_autopilot_operator(
             daily_lab_runner=daily_lab_runner,
             timestamp=timestamp,
             update_history=False,
+            lease_token=lease_token,
+            fencing_generation=fencing_generation,
+            lease_owner_run_id=lease_owner_run_id,
         )
         loop_exit_code = paper_autopilot_loop_exit_status(loop_record)
     except Exception as exc:

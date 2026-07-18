@@ -22,7 +22,11 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert "tests/unit/test_strategy_challenger_factory.py" in script
     assert "tests/unit/test_preview_candidate_review.py" in script
     assert "python\" (@(\"-m\", \"pytest\") + $GuardTestPaths)" in script
-    assert "\"python\" @(\"-m\", \"pytest\")" in script
+    assert (
+        '"python" @("scripts/run_full_pytest_sharded.py")'
+        in script
+    )
+    assert '"python" @("-m", "pytest")' not in script
     assert "git\" @(\"diff\", \"--check\")" in script
     assert "git\" @(\"ls-files\", \"runs\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily\")" in script
@@ -56,6 +60,7 @@ def test_verify_offline_default_mode_runs_targeted_checks_without_credentials() 
     assert "RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled: False" in result.stdout
     assert "targeted offline safety guard tests" in result.stdout
     assert "Skipped. Re-run with -Full" in result.stdout
+    assert "bounded exact-node full suite" in result.stdout
     assert "PASS" in result.stdout
 
 

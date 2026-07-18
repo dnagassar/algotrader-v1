@@ -8,9 +8,12 @@ from pathlib import Path
 
 import pytest
 
+from algotrader.errors import ValidationError
 from algotrader.execution.crypto_history_refresh_adapter import CryptoHistoryRefreshConfig
 from algotrader.orchestration.crypto_repair_forward_oos_accrual import (
     CRYPTO_REPAIR_FORWARD_OOS_REQUIRED_MIN_ROWS,
+    build_crypto_repair_forward_oos_refresh_readiness,
+    invalidate_crypto_repair_frozen_candidate_state,
     run_crypto_repair_forward_oos_accrual,
 )
 from algotrader.research.crypto_strategy_evidence_battery import (
@@ -20,6 +23,12 @@ from algotrader.research.crypto_strategy_evidence_battery import (
 
 CUTOFF = datetime(2026, 7, 9, 16, 0, tzinfo=UTC)
 AS_OF = datetime(2026, 7, 11, 0, 0, tzinfo=UTC)
+READINESS_ENV = {
+    "APP_PROFILE": "paper",
+    "APCA_API_KEY_ID": "readiness-key-not-for-output",
+    "APCA_API_SECRET_KEY": "readiness-secret-not-for-output",
+    "APCA_API_BASE_URL": "https://paper-api.alpaca.markets",
+}
 
 
 def test_zero_oos_rows_freezes_candidate_and_awaits_fresh_data(tmp_path: Path) -> None:
@@ -63,6 +72,19 @@ def test_cutoff_boundary_row_is_not_accrued_as_oos(tmp_path: Path) -> None:
     assert packet["oos_row_count"] == 25
     assert packet["rows_still_required"] == 1
     assert packet["oos_range"]["start"] == (CUTOFF + timedelta(hours=1)).isoformat()
+
+
+def test_post_as_of_row_is_rejected_as_lookahead(tmp_path: Path) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, (*_discovery_rows(), _row("ADAUSD", AS_OF, "101")))
+
+    packet = _run(tmp_path, history)
+
+    assert packet["classification"] == "blocked_integrity"
+    assert packet["blocker_rejection_reasons"] == [
+        "attempted_post_as_of_lookahead"
+    ]
+    assert not (tmp_path / "runs" / "accrued_oos_bars.csv").exists()
 
 
 def test_exactly_26_rows_runs_existing_evidence_gate(tmp_path: Path) -> None:
@@ -375,6 +397,48 @@ def test_eight_post_cutoff_delta_rows_are_accrued_and_remain_ineligible(
     assert captured[0].end == AS_OF
 
 
+def test_refresh_overlap_is_rejected_without_rewriting_accrued_state(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    refresh_output = tmp_path / "refresh.csv"
+    _write_rows(history, (*_discovery_rows(), *_future_rows("ADAUSD", 8)))
+    first = _run(tmp_path, history)
+    accrued_path = Path(first["artifact_paths"]["accrued_oos"])
+    accrued_before = accrued_path.read_bytes()
+    _write_rows(refresh_output, _future_rows("ADAUSD", 9))
+    config = CryptoHistoryRefreshConfig(
+        mode="market_data_fetch",
+        output_path=refresh_output,
+        packet_path=None,
+        raw_response_path=None,
+        as_of=AS_OF,
+        start=CUTOFF + timedelta(hours=9),
+        end=AS_OF,
+        market_data_fetch_authorized=True,
+        allow_network=True,
+    )
+
+    packet = _run(
+        tmp_path,
+        history,
+        refresh_config=config,
+        refresh_runner=lambda _: {
+            "classification": "insufficient_real_crypto_history",
+            "mode": "market_data_fetch",
+            "output_path": str(refresh_output),
+            "market_data_fetch_occurred": True,
+            "network_access_attempted": True,
+        },
+    )
+
+    assert packet["classification"] == "blocked_integrity"
+    assert packet["blocker_rejection_reasons"] == [
+        "overlapping_accrued_oos_bar"
+    ]
+    assert accrued_path.read_bytes() == accrued_before
+
+
 def test_existing_manifest_snapshot_recovery_requires_exact_hash(
     tmp_path: Path,
 ) -> None:
@@ -437,6 +501,271 @@ def test_write_artifacts_false_is_side_effect_free_with_26_rows(
     assert not output_root.exists()
 
 
+def test_explicit_invalidation_archives_prior_state_and_reinitializes(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "latest"
+    original_history = tmp_path / "original.csv"
+    replacement_history = tmp_path / "replacement.csv"
+    archive = tmp_path / "invalidated_original"
+    _write_rows(original_history, _discovery_rows())
+    original = run_crypto_repair_forward_oos_accrual(
+        output_root=state,
+        discovery_history_path=original_history,
+        as_of=AS_OF,
+    )
+    original_manifest = (state / "frozen_candidate.json").read_bytes()
+    rewritten = list(_discovery_rows())
+    rewritten[0] = {**rewritten[0], "close": "999", "high": "999"}
+    _write_rows(
+        replacement_history,
+        (*rewritten, *_future_rows("ADAUSD", 8)),
+    )
+
+    packet = invalidate_crypto_repair_frozen_candidate_state(
+        output_root=state,
+        discovery_history_path=replacement_history,
+        archive_path=archive,
+        invalidation_reason="operator accepted rewritten discovery baseline",
+        invalidated_at=AS_OF,
+    )
+
+    assert (archive / "frozen_candidate.json").read_bytes() == original_manifest
+    assert (state / "frozen_candidate.json").is_file()
+    assert packet["classification"] == "awaiting_fresh_oos"
+    assert packet["oos_row_count"] == 8
+    reset = packet["state_invalidation"]
+    assert (
+        reset["prior_discovery_hash"]
+        == original["discovery_snapshot"]["fingerprint"]
+    )
+    assert reset["replacement_discovery_hash"] != reset["prior_discovery_hash"]
+    assert reset["archive_preserved"] is True
+    assert reset["deleted_prior_state"] is False
+    assert reset["network_access_attempted"] is False
+    assert reset["broker_mutation_occurred"] is False
+    assert json.loads(
+        (archive / "frozen_candidate_invalidation.json").read_text(encoding="utf-8")
+    ) == reset
+    assert json.loads(
+        (state / "frozen_candidate_invalidation.json").read_text(encoding="utf-8")
+    ) == reset
+
+
+def test_invalidation_preflight_failure_preserves_current_state(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "latest"
+    original_history = tmp_path / "original.csv"
+    invalid_history = tmp_path / "invalid.csv"
+    archive = tmp_path / "invalidated_original"
+    _write_rows(original_history, _discovery_rows())
+    run_crypto_repair_forward_oos_accrual(
+        output_root=state,
+        discovery_history_path=original_history,
+        as_of=AS_OF,
+    )
+    manifest_before = (state / "frozen_candidate.json").read_bytes()
+    _write_rows(invalid_history, (*_discovery_rows(), _discovery_rows()[0]))
+
+    with pytest.raises(ValidationError, match="replacement discovery preflight failed"):
+        invalidate_crypto_repair_frozen_candidate_state(
+            output_root=state,
+            discovery_history_path=invalid_history,
+            archive_path=archive,
+            invalidation_reason="operator reset",
+            invalidated_at=AS_OF,
+        )
+
+    assert (state / "frozen_candidate.json").read_bytes() == manifest_before
+    assert not archive.exists()
+
+
+def test_invalidation_rejects_unchanged_hash_and_archive_collision(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "latest"
+    history = tmp_path / "history.csv"
+    archive = tmp_path / "invalidated_original"
+    _write_rows(history, _discovery_rows())
+    run_crypto_repair_forward_oos_accrual(
+        output_root=state,
+        discovery_history_path=history,
+        as_of=AS_OF,
+    )
+
+    with pytest.raises(ValidationError, match="matches the existing candidate"):
+        invalidate_crypto_repair_frozen_candidate_state(
+            output_root=state,
+            discovery_history_path=history,
+            archive_path=archive,
+            invalidation_reason="unnecessary reset",
+            invalidated_at=AS_OF,
+        )
+
+    archive.mkdir()
+    with pytest.raises(ValidationError, match="archive path already exists"):
+        invalidate_crypto_repair_frozen_candidate_state(
+            output_root=state,
+            discovery_history_path=history,
+            archive_path=archive,
+            invalidation_reason="collision",
+            invalidated_at=AS_OF,
+        )
+
+
+def test_invalidation_rejects_recovery_source_inside_state(tmp_path: Path) -> None:
+    state = tmp_path / "latest"
+    history = tmp_path / "history.csv"
+    archive = tmp_path / "invalidated_original"
+    _write_rows(history, _discovery_rows())
+    run_crypto_repair_forward_oos_accrual(
+        output_root=state,
+        discovery_history_path=history,
+        as_of=AS_OF,
+    )
+
+    with pytest.raises(ValidationError, match="must be outside output_root"):
+        invalidate_crypto_repair_frozen_candidate_state(
+            output_root=state,
+            discovery_history_path=state / "frozen_discovery_history.csv",
+            archive_path=archive,
+            invalidation_reason="unsafe source",
+            invalidated_at=AS_OF,
+        )
+
+    assert state.is_dir()
+    assert not archive.exists()
+
+
+def test_refresh_readiness_reports_missing_prerequisites_without_network(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, (*_discovery_rows(), *_future_rows("ADAUSD", 8)))
+    _run(tmp_path, history)
+
+    packet = build_crypto_repair_forward_oos_refresh_readiness(
+        output_root=tmp_path / "runs",
+        as_of=AS_OF,
+        env={},
+    )
+
+    assert packet["classification"] == "blocked_market_data_refresh_prerequisites"
+    assert packet["readiness_blockers"] == [
+        "app_profile_paper_required",
+        "paper_credentials_required",
+        "apca_paper_base_url_required",
+    ]
+    assert packet["oos_row_count"] == 8
+    assert packet["rows_still_required"] == 18
+    assert packet["recommended_refresh_window"]["start"] == (
+        CUTOFF + timedelta(hours=9)
+    ).isoformat()
+    next_by_symbol = packet["recommended_refresh_window"][
+        "next_required_timestamp_by_symbol"
+    ]
+    assert next_by_symbol["ADAUSD"] == (CUTOFF + timedelta(hours=9)).isoformat()
+    assert next_by_symbol["BTCUSD"] == (CUTOFF + timedelta(hours=1)).isoformat()
+    assert packet["market_data_fetch_occurred"] is False
+    assert packet["network_access_attempted"] is False
+    assert packet["broker_mutation_occurred"] is False
+
+
+def test_refresh_readiness_can_be_ready_but_never_authorizes_fetch(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, (*_discovery_rows(), *_future_rows("ADAUSD", 8)))
+    _run(tmp_path, history)
+
+    packet = build_crypto_repair_forward_oos_refresh_readiness(
+        output_root=tmp_path / "runs",
+        as_of=AS_OF,
+        env=READINESS_ENV,
+    )
+
+    assert packet["classification"] == (
+        "ready_for_explicit_read_only_market_data_fetch"
+    )
+    assert packet["readiness_blockers"] == []
+    assert packet["operator_preflight"]["paper_credentials_present"] is True
+    assert packet["operator_preflight"]["APCA_API_BASE_URL_is_paper"] is True
+    assert packet["operator_authorization_required"] is True
+    assert packet["market_data_fetch_authorized"] is False
+    assert packet["paper_submit_authorized"] is False
+    assert packet["live_authorized"] is False
+
+
+def test_refresh_readiness_detects_snapshot_rewrite(tmp_path: Path) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, _discovery_rows())
+    first = _run(tmp_path, history)
+    snapshot = Path(first["artifact_paths"]["frozen_discovery_history"])
+    rewritten = snapshot.read_text(encoding="utf-8").replace(
+        ",100,100,100,100,",
+        ",999,999,999,999,",
+        1,
+    )
+    snapshot.write_text(rewritten, encoding="utf-8", newline="\n")
+
+    packet = build_crypto_repair_forward_oos_refresh_readiness(
+        output_root=tmp_path / "runs",
+        as_of=AS_OF,
+        env=READINESS_ENV,
+    )
+
+    assert packet["classification"] == "blocked_market_data_refresh_prerequisites"
+    assert "rewritten_discovery_period_data" in packet["readiness_blockers"]
+    assert packet["network_access_attempted"] is False
+
+
+def test_refresh_readiness_detects_frozen_manifest_drift(tmp_path: Path) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, _discovery_rows())
+    first = _run(tmp_path, history)
+    manifest_path = Path(first["artifact_paths"]["frozen_candidate"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["frozen_candidate_fingerprint"] = "0" * 64
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    packet = build_crypto_repair_forward_oos_refresh_readiness(
+        output_root=tmp_path / "runs",
+        as_of=AS_OF,
+        env=READINESS_ENV,
+    )
+
+    assert packet["classification"] == "blocked_market_data_refresh_prerequisites"
+    assert "frozen_candidate_manifest_drift" in packet["readiness_blockers"]
+
+
+def test_refresh_readiness_writes_redacted_isolated_artifact(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    output_path = tmp_path / "runs" / "refresh" / "readiness.json"
+    _write_rows(history, _discovery_rows())
+    _run(tmp_path, history)
+
+    packet = build_crypto_repair_forward_oos_refresh_readiness(
+        output_root=tmp_path / "runs",
+        as_of=AS_OF,
+        env=READINESS_ENV,
+        output_path=output_path,
+        write_artifact=True,
+    )
+
+    written = output_path.read_text(encoding="utf-8")
+    assert json.loads(written) == packet
+    assert READINESS_ENV["APCA_API_KEY_ID"] not in written
+    assert READINESS_ENV["APCA_API_SECRET_KEY"] not in written
+    assert packet["credential_values_exposed"] is False
+
+
 def test_powershell_runner_exposes_isolated_paths_and_refresh_window() -> None:
     script = Path("scripts/run_crypto_repair_forward_oos_accrual.ps1").read_text(
         encoding="utf-8"
@@ -449,6 +778,13 @@ def test_powershell_runner_exposes_isolated_paths_and_refresh_window() -> None:
     assert "refresh\\refresh_packet.json" in script
     assert "refresh\\raw_crypto_bars.json" in script
     assert '[string]$RefreshOutputPath = "runs\\operator_input' not in script
+    assert "InvalidateFrozenCandidateState" in script
+    assert "InvalidationReason" in script
+    assert "InvalidationArchivePath" in script
+    assert '"--invalidate-frozen-candidate-state"' in script
+    assert "RefreshReadinessOnly" in script
+    assert "RefreshReadinessOutputPath" in script
+    assert '"--refresh-readiness-only"' in script
 
 
 def test_identical_rerun_is_idempotent(tmp_path: Path) -> None:

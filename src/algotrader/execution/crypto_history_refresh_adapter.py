@@ -13,6 +13,7 @@ import csv
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import hashlib
 import http.client
 import json
 import os
@@ -26,7 +27,7 @@ from algotrader.research.crypto_strategy_evidence_battery import (
 )
 
 CRYPTO_HISTORY_REFRESH_ADAPTER_SCHEMA_VERSION = (
-    "v5_19_4_crypto_history_refresh_adapter_v1"
+    "v5_22_crypto_history_refresh_adapter_receipt_v2"
 )
 CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH = Path(
     "runs/operator_input/crypto_paper_bars.csv"
@@ -89,9 +90,17 @@ _PUBLIC_ENDPOINT_NAMES = (
     "APCA_API_BASE_URL",
 )
 _SAFETY_FALSE_FIELDS = (
-    "paper_submit_occurred",
-    "broker_mutation_occurred",
     "broker_read_occurred",
+    "broker_mutation_authorized",
+    "broker_mutation_occurred",
+    "paper_submit_authorized",
+    "paper_submit_occurred",
+    "paper_cancel_occurred",
+    "paper_replace_occurred",
+    "paper_close_occurred",
+    "paper_liquidate_occurred",
+    "live_authorized",
+    "live_endpoint_indicator",
     "live_endpoint_touched",
     "credential_values_exposed",
 )
@@ -178,6 +187,7 @@ class CryptoHistoryRefreshConfig:
     loc: str = _DEFAULT_LOC
     market_data_fetch_authorized: bool = False
     allow_network: bool = False
+    data_intake_only: bool = False
     write_packet: bool = True
 
     def __post_init__(self) -> None:
@@ -219,6 +229,7 @@ class CryptoHistoryRefreshConfig:
         for field_name in (
             "market_data_fetch_authorized",
             "allow_network",
+            "data_intake_only",
             "write_packet",
         ):
             if type(getattr(self, field_name)) is not bool:
@@ -362,8 +373,8 @@ def fetch_crypto_history_from_alpaca_market_data(
     checked_symbols = _symbol_tuple(symbols)
     checked_start = _aware_utc_datetime(start, "start")
     checked_end = _aware_utc_datetime(end, "end")
-    if checked_start >= checked_end:
-        raise CryptoHistoryRefreshError("start must be before end.")
+    if checked_start > checked_end:
+        raise CryptoHistoryRefreshError("start must not be after end.")
 
     urlopen = _open_read_only_https_request if opener is None else opener
     bars_by_api_symbol: dict[str, list[object]] = {}
@@ -570,6 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--loc", default=_DEFAULT_LOC)
     parser.add_argument("--allow-network", action="store_true")
     parser.add_argument("--market-data-fetch-authorized", action="store_true")
+    parser.add_argument("--data-intake-only", action="store_true")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     return parser
 
@@ -593,6 +605,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 loc=args.loc,
                 allow_network=args.allow_network,
                 market_data_fetch_authorized=args.market_data_fetch_authorized,
+                data_intake_only=args.data_intake_only,
             )
         )
     except (CryptoHistoryRefreshError, ValidationError) as exc:
@@ -625,6 +638,7 @@ def _run_offline_fixture_mode(
         _copy_file(config.fixture_input_path, config.output_path)
         input_path = config.output_path
 
+    packet["strategy_evidence_evaluation_performed"] = True
     coverage = build_crypto_strategy_real_data_evidence_packet(
         input_path,
         as_of=as_of,
@@ -698,6 +712,7 @@ def _run_market_data_fetch_mode(
     )
     if config.raw_response_path is not None:
         _write_json(config.raw_response_path, raw_payload)
+        packet["raw_response_sha256"] = _file_sha256(config.raw_response_path)
 
     rows = _history_rows_from_raw_payload(raw_payload)
     _write_history_csv(
@@ -705,26 +720,44 @@ def _run_market_data_fetch_mode(
         rows,
         source="alpaca_market_data_crypto_bars_v1beta3",
     )
-    coverage = build_crypto_strategy_real_data_evidence_packet(
-        config.output_path,
-        as_of=as_of,
-        data_source="alpaca_market_data_crypto_bars_v1beta3",
-        data_freshness="operator_refreshed_market_data_snapshot",
-        normalized_output_path=config.output_path,
-    )
-    packet = _overlay_coverage(packet, coverage)
+    if config.data_intake_only:
+        packet = _overlay_data_intake(
+            packet,
+            rows,
+            requested_symbols=config.symbols,
+        )
+        classification = "market_data_refresh_ready"
+        next_action = (
+            "Accrue this receipt-bound OHLCV delta under its preregistered "
+            "research contract. No strategy evidence was evaluated here."
+        )
+    else:
+        packet["strategy_evidence_evaluation_performed"] = True
+        coverage = build_crypto_strategy_real_data_evidence_packet(
+            config.output_path,
+            as_of=as_of,
+            data_source="alpaca_market_data_crypto_bars_v1beta3",
+            data_freshness="operator_refreshed_market_data_snapshot",
+            normalized_output_path=config.output_path,
+        )
+        packet = _overlay_coverage(packet, coverage)
+        classification = str(
+            packet.get(
+                "coverage_gate_classification",
+                "insufficient_real_crypto_history",
+            )
+        )
+        next_action = _coverage_next_action(classification)
+    packet["output_sha256"] = _file_sha256(config.output_path)
     packet["market_data_fetch_occurred"] = True
     packet["network_access_attempted"] = True
-    coverage_classification = str(
-        packet.get("coverage_gate_classification", "insufficient_real_crypto_history")
-    )
     return _finish_packet(
         packet,
-        classification=coverage_classification,
+        classification=classification,
         authorization_status="authorized",
         endpoint_safety_status="passed_non_live_endpoint_check",
         data_source="alpaca_market_data_crypto_bars_v1beta3",
-        next_safe_operator_action=_coverage_next_action(coverage_classification),
+        next_safe_operator_action=next_action,
     )
 
 
@@ -748,7 +781,13 @@ def _base_packet(
         if config.raw_response_path is None
         else str(config.raw_response_path),
         "write_packet": config.write_packet,
+        "data_intake_only": config.data_intake_only,
+        "strategy_evidence_evaluation_performed": False,
         "data_source": "none",
+        "timeframe": config.timeframe,
+        "loc": config.loc,
+        "output_sha256": "",
+        "raw_response_sha256": "",
         "as_of": as_of.isoformat(),
         "requested_start": (
             "" if config.start is None else _datetime_arg(config.start)
@@ -794,7 +833,7 @@ def _base_packet(
         "profit_claim": "none",
     }
     for field_name in _SAFETY_FALSE_FIELDS:
-        packet[field_name] = False
+        packet.setdefault(field_name, False)
     return packet
 
 
@@ -868,6 +907,99 @@ def _overlay_coverage(
     packet["paper_planning_promotion_allowed"] = (
         packet["paper_planning_eligibility"] == "eligible"
     )
+    return packet
+
+
+def _overlay_data_intake(
+    packet: dict[str, object],
+    rows: Sequence[Mapping[str, str]],
+    *,
+    requested_symbols: Sequence[str],
+) -> dict[str, object]:
+    requested = _symbol_tuple(requested_symbols)
+    requested_set = set(requested)
+    counts = {symbol: 0 for symbol in requested}
+    ranges: dict[str, list[datetime]] = {
+        symbol: [] for symbol in requested
+    }
+    seen: set[tuple[str, datetime]] = set()
+    previous: dict[str, datetime] = {}
+    for row in rows:
+        symbol = _symbol(row.get("symbol", ""))
+        if symbol not in requested_set:
+            raise CryptoHistoryRefreshError(
+                "market-data response included an unrequested symbol."
+            )
+        timestamp = _datetime_value(row.get("timestamp", ""), "timestamp")
+        if timestamp.minute or timestamp.second or timestamp.microsecond:
+            raise CryptoHistoryRefreshError(
+                "market-data response must align to completed UTC hours."
+            )
+        key = (symbol, timestamp)
+        if key in seen:
+            raise CryptoHistoryRefreshError(
+                "market-data response contains duplicate symbol/timestamps."
+            )
+        if symbol in previous and timestamp <= previous[symbol]:
+            raise CryptoHistoryRefreshError(
+                "market-data response must be chronological per symbol."
+            )
+        seen.add(key)
+        previous[symbol] = timestamp
+
+        open_price = _decimal(row.get("open", ""), "open")
+        high = _decimal(row.get("high", ""), "high")
+        low = _decimal(row.get("low", ""), "low")
+        close = _decimal(row.get("close", ""), "close")
+        _decimal(row.get("volume", "0"), "volume")
+        if (
+            min(open_price, high, low, close) <= Decimal("0")
+            or low > min(open_price, close)
+            or high < max(open_price, close)
+            or low > high
+        ):
+            raise CryptoHistoryRefreshError(
+                "market-data response contains invalid OHLC values."
+            )
+        counts[symbol] += 1
+        ranges[symbol].append(timestamp)
+
+    fetched = [symbol for symbol in requested if counts[symbol]]
+    packet["fetched_symbols"] = fetched
+    packet["rows_per_symbol"] = dict(counts)
+    packet["rows_per_symbol_before_normalization"] = dict(counts)
+    packet["rows_per_symbol_after_normalization"] = dict(counts)
+    packet["date_range_per_symbol"] = {
+        symbol: {
+            "start": min(values).isoformat(),
+            "end": max(values).isoformat(),
+            "span_hours": str(
+                int((max(values) - min(values)).total_seconds() // 3600)
+            ),
+        }
+        for symbol, values in ranges.items()
+        if values
+    }
+    packet["missing_symbols"] = [
+        symbol for symbol in requested if not counts[symbol]
+    ]
+    packet["schema_validation_status"] = "passed"
+    packet["duplicate_timestamp_status"] = "passed"
+    packet["duplicate_timestamp_status_after_normalization"] = "passed"
+    packet["duplicate_rows_removed_per_symbol"] = {
+        symbol: 0 for symbol in requested
+    }
+    packet["coverage_gate_classification"] = (
+        "not_evaluated_data_intake_only"
+    )
+    packet["coverage_gate_blocking_reasons"] = []
+    packet["coverage_gate_reason"] = (
+        "Strategy evidence is intentionally deferred to the preregistered "
+        "terminal evaluator."
+    )
+    packet["paper_planning_eligibility"] = "not_evaluated"
+    packet["paper_planning_promotion_allowed"] = False
+    packet["strategy_evidence_evaluation_performed"] = False
     return packet
 
 
@@ -958,24 +1090,32 @@ def _write_history_csv(
 ) -> None:
     if output_path.parent != Path("."):
         output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=_CSV_COLUMNS, lineterminator="\n")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(
-                {
-                    "timestamp": row["timestamp"],
-                    "symbol": _symbol(row["symbol"]),
-                    "asset_class": "crypto",
-                    "open": _decimal_text(_decimal(row["open"], "open")),
-                    "high": _decimal_text(_decimal(row["high"], "high")),
-                    "low": _decimal_text(_decimal(row["low"], "low")),
-                    "close": _decimal_text(_decimal(row["close"], "close")),
-                    "volume": _decimal_text(_decimal(row.get("volume", "0"), "volume")),
-                    "basis": "alpaca_crypto_bars_v1beta3_ohlcv",
-                    "source": source,
-                }
-            )
+    temporary = output_path.with_name(f".{output_path.name}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=_CSV_COLUMNS, lineterminator="\n")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(
+                    {
+                        "timestamp": row["timestamp"],
+                        "symbol": _symbol(row["symbol"]),
+                        "asset_class": "crypto",
+                        "open": _decimal_text(_decimal(row["open"], "open")),
+                        "high": _decimal_text(_decimal(row["high"], "high")),
+                        "low": _decimal_text(_decimal(row["low"], "low")),
+                        "close": _decimal_text(_decimal(row["close"], "close")),
+                        "volume": _decimal_text(
+                            _decimal(row.get("volume", "0"), "volume")
+                        ),
+                        "basis": "alpaca_crypto_bars_v1beta3_ohlcv",
+                        "source": source,
+                    }
+                )
+        temporary.replace(output_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def _generated_market_data_command(config: CryptoHistoryRefreshConfig) -> str:
@@ -997,6 +1137,8 @@ def _generated_market_data_command(config: CryptoHistoryRefreshConfig) -> str:
         parts.extend(("-End", _datetime_arg(config.end)))
     if config.hours != _DEFAULT_HOURS:
         parts.extend(("-Hours", str(config.hours)))
+    if config.data_intake_only:
+        parts.append("-DataIntakeOnly")
     return " ".join(_powershell_quote(part) for part in parts)
 
 
@@ -1048,6 +1190,14 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _copy_file(source: Path, destination: Path) -> None:

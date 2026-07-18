@@ -174,6 +174,21 @@ class AlpacaSdkClient(AlpacaClient):
             self._sdk_client.get_orders(resolved_query),
         )
 
+    def get_order_by_id(self, broker_order_id: str) -> AlpacaOrderResponse:
+        normalized_order_id = str(broker_order_id).strip()
+        if not normalized_order_id:
+            raise ValueError("broker_order_id is required.")
+        try:
+            return cast(
+                AlpacaOrderResponse,
+                self._sdk_client.get_order_by_id(normalized_order_id),
+            )
+        except Exception as exc:
+            raise AlpacaSdkClientReadError(
+                "get_order_by_id_failed",
+                exc,
+            ) from exc
+
     def submit_order(
         self, request: AlpacaOrderRequest
     ) -> AlpacaOrderSubmissionResponse:

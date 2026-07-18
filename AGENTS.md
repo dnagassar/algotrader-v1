@@ -66,6 +66,33 @@ Never run broker, network, paper, or live commands unless the operator explicitl
 
 Implementation reports must include preflight, files changed, contract and safety summaries, test results, credential state without values, network/broker access, broker mutation status, `git diff --check`, `git status --short`, `git diff --name-only HEAD -- src`, `git ls-files --others --exclude-standard src tests`, and the recommended next milestone.
 
+## Implementation Agent Takeover and Yield
+
+Exactly one implementation writer may work in a working tree at a time. The
+checkout and current Git state outrank narrative reports. A replacement agent
+starts by inspecting branch, HEAD, status, staged and unstaged diffs, then
+verifies inherited capability claims before changing code. Do not reset, clean,
+stash, rebase, restore, or switch branches during a takeover.
+
+Coherent, safely isolated slices should be locally committed. Before yielding,
+an implementation agent must leave syntactically valid code, run focused tests,
+record the exact dirty-file owner and next implementation action in
+`docs/agent_context/active_implementation.md`, and locally commit when safe.
+That one file is the only mutable implementation handoff; overwrite it in place
+and do not create historical handoff copies. It must never contain secrets,
+credential values, account identifiers, broker data, or generated payloads.
+
+`runs/` artifacts remain generated and untracked. The hard operator gates,
+offline defaults, credential protections, and no-submit policy remain unchanged
+during takeover and yield.
+
+For the same local checkout, staged, unstaged, and untracked work can be
+inherited directly after inspection. Across different checkouts or remote
+sandboxes, uncommitted work is not transferable: only coherent feature-branch
+commits followed by an authorized push, or an explicit patch transfer, are
+reliable. No agent may assume access to another tool's private artifact
+directory.
+
 ## Stop Conditions
 
 Stop before continuing, staging, or committing if:

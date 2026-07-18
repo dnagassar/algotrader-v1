@@ -19,6 +19,10 @@ param(
     [int]$SmaFastWindow = 50,
     [int]$SmaSlowWindow = 200,
     [string]$MaxNotional = "25.00",
+    [string]$ReadinessPacketPath,
+    [string]$OrderJournalPath = "runs\paper_autopilot\state\order_journal.sqlite3",
+    [switch]$NoSubmit,
+    [switch]$OperatorPaused,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
 )
@@ -73,8 +77,21 @@ $CliArgs = @(
     "--sma-fast-window", $SmaFastWindow.ToString(),
     "--sma-slow-window", $SmaSlowWindow.ToString(),
     "--max-notional", $MaxNotional,
+    "--order-journal-path", $OrderJournalPath,
     "--format", $Format
 )
+
+if (-not [string]::IsNullOrEmpty($ReadinessPacketPath)) {
+    $CliArgs += @("--readiness-packet", $ReadinessPacketPath)
+}
+
+if ($NoSubmit.IsPresent) {
+    $CliArgs += @("--no-submit")
+}
+
+if ($OperatorPaused.IsPresent) {
+    $CliArgs += @("--operator-paused")
+}
 
 if (-not [string]::IsNullOrEmpty($AsOfDate)) {
     $CliArgs += @("--as-of-date", $AsOfDate)

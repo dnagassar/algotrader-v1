@@ -17,6 +17,7 @@ from algotrader.execution.alpaca_client import (
 from algotrader.execution.crypto_paper_submit_cancel_certification import (
     OUTCOME_BLOCKED_BEFORE_SUBMIT,
     OUTCOME_CANCEL_AMBIGUOUS,
+    OUTCOME_RECONCILIATION_AMBIGUOUS,
     OUTCOME_SUBMIT_AMBIGUOUS,
     OUTCOME_SUBMIT_REJECTED,
     OUTCOME_SUBMITTED_ALREADY_FILLED,
@@ -28,6 +29,10 @@ from algotrader.execution.crypto_paper_submit_cancel_certification import (
     V58_PRE_BROKER_ORDER_ID,
     deterministic_v58_client_order_id,
     run_crypto_paper_submit_cancel_certification,
+)
+from algotrader.execution.order_journal import (
+    CancelJournalState,
+    SqliteOrderJournal,
 )
 
 
@@ -60,6 +65,7 @@ class FakeV58PaperClient:
         cancel_status: str = "canceled",
         submit_raises: bool = False,
         cancel_raises: bool = False,
+        hide_current_order_from_reads: bool = False,
     ) -> None:
         self.account = account or {
             "id": EXPECTED_ACCOUNT_ID,
@@ -77,6 +83,7 @@ class FakeV58PaperClient:
         self.cancel_status = cancel_status
         self.submit_raises = submit_raises
         self.cancel_raises = cancel_raises
+        self.hide_current_order_from_reads = hide_current_order_from_reads
         self.calls: list[str] = []
         self.submitted_requests: list[object] = []
         self.cancelled_order_ids: list[str] = []
@@ -103,7 +110,7 @@ class FakeV58PaperClient:
         orders = list(self.all_orders)
         if query.status_filter == "open":
             orders.extend(self.open_orders)
-        if self.current_order is not None:
+        if self.current_order is not None and not self.hide_current_order_from_reads:
             orders.append(dict(self.current_order))
         if query.symbol_filter:
             wanted = query.symbol_filter.upper()
@@ -128,6 +135,7 @@ class FakeV58PaperClient:
                 return dict(order)
         if (
             self.current_order is not None
+            and not self.hide_current_order_from_reads
             and self.current_order.get("client_order_id") == client_order_id
         ):
             return dict(self.current_order)
@@ -209,6 +217,17 @@ def test_exact_authorization_and_submit_cancel_certification(tmp_path: Path) -> 
     estimated = Decimal(str(request.limit_price)) * Decimal(str(request.qty))
     assert estimated <= V58_APPROVED_MAX_NOTIONAL
     assert fake_client.cancelled_order_ids == ["v58-paper-order-1"]
+    cancel_result = result["cancel_result"]
+    assert cancel_result["durable_cancel_reservation_status"] == "reserved"
+    assert cancel_result["durable_cancel_status"] == "observed"
+    assert cancel_result["durable_cancel_record"]["state"] == "canceled"
+    assert cancel_result["durable_cancel_record"]["safe_to_recancel"] is False
+    assert cancel_result["durable_cancel_lease_acquired"] is True
+    assert cancel_result["durable_cancel_lease_released"] is True
+    journal = SqliteOrderJournal(result["durable_cancel_journal"]["path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.CANCELED
 
 
 def test_v58_alpaca_order_request_namespace_is_allowlisted() -> None:
@@ -384,6 +403,69 @@ def test_cancel_ambiguity_does_not_resubmit(tmp_path: Path) -> None:
     assert result["cancel_attempt_count"] == 1
     assert fake_client.calls.count("submit_order") == 1
     assert fake_client.cancelled_order_ids == ["v58-paper-order-1"]
+    journal = SqliteOrderJournal(result["durable_cancel_journal"]["path"])
+    record = journal.cancel_intents()[0]
+    assert record.state is CancelJournalState.UNKNOWN
+    assert record.safe_to_recancel is False
+
+
+def test_cancel_ambiguity_restart_cannot_submit_or_cancel_again(
+    tmp_path: Path,
+) -> None:
+    fake_client = FakeV58PaperClient(cancel_raises=True)
+
+    first = _run_certification(tmp_path, fake_client)
+    second = _run_certification(tmp_path, fake_client)
+
+    assert first["outcome_classification"] == OUTCOME_CANCEL_AMBIGUOUS
+    assert second["outcome_classification"] == OUTCOME_BLOCKED_BEFORE_SUBMIT
+    assert "existing_v5_8_client_order_id_order_exists" in second["blockers"]
+    assert fake_client.calls.count("submit_order") == 1
+    assert fake_client.calls.count("cancel_order_by_id:v58-paper-order-1") == 1
+    journal = SqliteOrderJournal(first["durable_cancel_journal"]["path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.UNKNOWN
+    assert records[0].safe_to_recancel is False
+
+
+def test_cancel_requires_fresh_same_order_snapshot(tmp_path: Path) -> None:
+    fake_client = FakeV58PaperClient(hide_current_order_from_reads=True)
+
+    result = _run_certification(tmp_path, fake_client)
+
+    assert result["outcome_classification"] == OUTCOME_RECONCILIATION_AMBIGUOUS
+    assert result["blockers"] == ["required_snapshot_not_fresh"]
+    assert result["submit_attempt_count"] == 1
+    assert result["cancel_attempt_count"] == 0
+    assert fake_client.cancelled_order_ids == []
+    journal = SqliteOrderJournal(result["durable_cancel_journal"]["path"])
+    record = journal.cancel_intents()[0]
+    assert record.state is CancelJournalState.RESERVED
+    assert record.safe_to_recancel is False
+
+
+def test_unavailable_cancel_journal_blocks_before_submit(tmp_path: Path) -> None:
+    fake_client = FakeV58PaperClient()
+    blocked_output_root = tmp_path / "blocked-output-root"
+    blocked_output_root.write_text("not a directory", encoding="utf-8")
+
+    result = _run_certification(
+        tmp_path,
+        fake_client,
+        output_root=blocked_output_root,
+        write_artifacts=False,
+    )
+
+    assert result["outcome_classification"] == OUTCOME_BLOCKED_BEFORE_SUBMIT
+    assert result["blockers"] == [
+        "durable_cancel_journal_unavailable_before_submit"
+    ]
+    assert result["durable_cancel_journal"]["initialized"] is False
+    assert result["submit_attempt_count"] == 0
+    assert result["cancel_attempt_count"] == 0
+    assert fake_client.submitted_requests == []
+    assert fake_client.cancelled_order_ids == []
 
 
 def test_filled_before_cancel_does_not_close_or_liquidate(tmp_path: Path) -> None:
@@ -599,6 +681,7 @@ def _run_certification(
     env: dict[str, str] | None = None,
     authorized: bool = True,
     output_root: Path | None = None,
+    write_artifacts: bool = True,
 ) -> dict[str, object]:
     paths = _write_sources(
         tmp_path,
@@ -617,6 +700,7 @@ def _run_certification(
         expected_paper_account_id=EXPECTED_ACCOUNT_ID,
         reconciliation_poll_attempts=1,
         reconciliation_poll_interval_seconds=0,
+        write_artifacts=write_artifacts,
     )
 
 
@@ -627,7 +711,7 @@ def _write_sources(
     dry_run_updates: dict[str, object] | None = None,
 ) -> dict[str, Path]:
     root = tmp_path / "runs" / "sources"
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     approval_path = root / "paper_submit_approval_packet.json"
     dry_run_path = root / "paper_oms_dry_run.json"
     dry_run = _dry_run()

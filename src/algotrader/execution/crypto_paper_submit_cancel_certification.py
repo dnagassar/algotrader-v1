@@ -27,6 +27,13 @@ from algotrader.execution.alpaca_client import (
     V58_CRYPTO_PAPER_CERTIFICATION_CLIENT_ORDER_ID_PREFIX,
 )
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
+from algotrader.execution.durable_cancel import (
+    DurableCancelCoordinator,
+    DurableCancelEvidence,
+    DurableCancelIdentity,
+    DurableCancelObservation,
+)
+from algotrader.execution.order_journal import SqliteOrderJournal
 
 
 CRYPTO_PAPER_SUBMIT_CANCEL_CERTIFICATION_SCHEMA_VERSION = (
@@ -44,6 +51,9 @@ CRYPTO_PAPER_SUBMIT_CANCEL_CERTIFICATION_DEFAULT_DRY_RUN = Path(
 )
 CRYPTO_PAPER_SUBMIT_CANCEL_CERTIFICATION_DEFAULT_OUTPUT_ROOT = Path(
     "runs/crypto_paper_submit_cancel_certification/latest"
+)
+CRYPTO_PAPER_SUBMIT_CANCEL_CERTIFICATION_CANCEL_JOURNAL = (
+    "durable_cancel_journal.sqlite3"
 )
 
 V58_DRY_RUN_ID = "dryrun_19bfe1c5645e29869a393564"
@@ -70,6 +80,9 @@ SIDE_BUY = "buy"
 TIME_IN_FORCE_GTC = "gtc"
 LIMIT_DISCOUNT = Decimal("0.50")
 PRICE_QUANTUM = Decimal("0.01")
+_DURABLE_CANCEL_LEASE_NAME = "v5_8_crypto_paper_submit_cancel_certification"
+_DURABLE_CANCEL_LEASE_TTL_SECONDS = 300
+_DURABLE_CANCEL_REASON = "operator_authorized_v5_8_same_order_cleanup"
 
 OUTCOME_SUBMITTED_CANCEL_CONFIRMED = "submitted_cancel_confirmed"
 OUTCOME_SUBMITTED_ALREADY_FILLED = "submitted_already_filled_before_cancel"
@@ -345,6 +358,30 @@ def run_crypto_paper_submit_cancel_certification(
             write_artifacts=write_artifacts,
         )
 
+    cancel_journal_path = (
+        root / CRYPTO_PAPER_SUBMIT_CANCEL_CERTIFICATION_CANCEL_JOURNAL
+    )
+    cancel_coordinator = DurableCancelCoordinator(
+        SqliteOrderJournal(cancel_journal_path)
+    )
+    try:
+        cancel_coordinator.journal.initialize()
+    except Exception as exc:  # noqa: BLE001 - fail closed before broker mutation.
+        return _finalize_result(
+            {
+                **observed,
+                "durable_cancel_journal": {
+                    "path": str(cancel_journal_path),
+                    "initialized": False,
+                    "error_type": exc.__class__.__name__,
+                },
+            },
+            outcome_classification=OUTCOME_BLOCKED_BEFORE_SUBMIT,
+            blockers=("durable_cancel_journal_unavailable_before_submit",),
+            next_operator_action="repair_durable_cancel_journal_before_v5_8_submit",
+            write_artifacts=write_artifacts,
+        )
+
     request = AlpacaOrderRequest(
         client_order_id=client_order_id,
         symbol=V58_SYMBOL,
@@ -358,6 +395,9 @@ def run_crypto_paper_submit_cancel_certification(
     lifecycle = _submit_cancel_reconcile(
         client=client,
         request=request,
+        cancel_coordinator=cancel_coordinator,
+        cancel_allowed=paper_submit_authorized,
+        occurred_at=generated_at,
         poll_attempts=reconciliation_poll_attempts,
         poll_interval_seconds=reconciliation_poll_interval_seconds,
     )
@@ -370,6 +410,10 @@ def run_crypto_paper_submit_cancel_certification(
         {
             **observed,
             "submitted_request": _request_fields(request),
+            "durable_cancel_journal": {
+                "path": str(cancel_journal_path),
+                "initialized": True,
+            },
             "submit_result": _mapping(lifecycle.get("submit_result")),
             "cancel_result": _mapping(lifecycle.get("cancel_result")),
             "reconciliation": {
@@ -955,6 +999,9 @@ def _submit_cancel_reconcile(
     *,
     client: Any,
     request: AlpacaOrderRequest,
+    cancel_coordinator: DurableCancelCoordinator,
+    cancel_allowed: bool,
+    occurred_at: datetime,
     poll_attempts: int,
     poll_interval_seconds: float,
 ) -> dict[str, Any]:
@@ -998,11 +1045,12 @@ def _submit_cancel_reconcile(
             next_action="operator_reconcile_ambiguous_submit_before_any_future_order",
         )
 
-    latest = _lookup_by_client_order_id(
+    latest_snapshot = _lookup_by_client_order_id(
         client,
         client_order_id=request.client_order_id,
         symbol=request.symbol,
-    ) or _mapping(submit_result.get("submitted_order"))
+    )
+    latest = latest_snapshot or _mapping(submit_result.get("submitted_order"))
     status = _order_status(latest)
     if not latest:
         return _lifecycle_result(
@@ -1061,26 +1109,99 @@ def _submit_cancel_reconcile(
             next_action="operator_reconcile_unresolved_v5_8_order_before_any_future_order",
         )
 
-    cancel_ambiguous = False
+    identity = DurableCancelIdentity(
+        cancel_intent_id=_durable_cancel_intent_id(
+            client_order_id=request.client_order_id,
+            broker_order_id=order_id,
+        ),
+        client_order_id=request.client_order_id,
+        broker_order_id=order_id,
+        reservation_run_id=f"v5_8_cancel_{request.client_order_id}",
+        reason=_DURABLE_CANCEL_REASON,
+    )
     try:
-        cancel_response = _request_order_cancellation(client, order_id)
-        cancel_response_payload = _generic_payload(cancel_response)
-        cancel_status = _normalized_enum_text(cancel_response_payload.get("status"))
-    except Exception as exc:  # noqa: BLE001 - cancel may be ambiguous.
-        cancel_ambiguous = True
-        cancel_response_payload = {
-            "cancel_error": _safe_exception_message(exc),
-            "cancel_error_type": exc.__class__.__name__,
+        reservation = cancel_coordinator.reserve(identity, occurred_at)
+        lease = cancel_coordinator.acquire_lease(
+            lease_name=_DURABLE_CANCEL_LEASE_NAME,
+            owner_run_id=identity.reservation_run_id,
+            occurred_at=occurred_at,
+            ttl_seconds=_DURABLE_CANCEL_LEASE_TTL_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 - never cancel without durable state.
+        cancel_result = {
+            **cancel_result,
+            "cancel_status": "blocked",
+            "cancel_target_order_id": order_id,
+            "cancel_target_client_order_id": request.client_order_id,
+            "durable_cancel_intent_id": identity.cancel_intent_id,
+            "durable_cancel_status": "blocked",
+            "durable_cancel_blocker": "durable_cancel_preparation_failed",
+            "durable_cancel_error_type": exc.__class__.__name__,
         }
+        return _lifecycle_result(
+            submit_result=submit_result,
+            cancel_result=cancel_result,
+            final_order=latest,
+            outcome=OUTCOME_RECONCILIATION_AMBIGUOUS,
+            blocker="durable_cancel_preparation_failed",
+            next_action="operator_reconcile_unresolved_v5_8_order_before_any_future_order",
+        )
+
+    lease_released = False
+    lease_release_error_type = ""
+    try:
+        cancel_outcome = cancel_coordinator.execute(
+            identity=identity,
+            lease=lease,
+            evidence=DurableCancelEvidence(
+                cancel_allowed=cancel_allowed,
+                snapshot_fresh=bool(latest_snapshot),
+            ),
+            occurred_at=occurred_at,
+            cancel=lambda: _request_order_cancellation(client, order_id),
+            observe=_durable_cancel_observation,
+            sanitize_exception=_safe_exception_message,
+        )
+    finally:
+        try:
+            lease_released = cancel_coordinator.release_lease(lease)
+        except Exception as exc:  # noqa: BLE001 - preserve the broker outcome.
+            lease_release_error_type = exc.__class__.__name__
+
+    cancel_ambiguous = cancel_outcome.ambiguous
+    cancel_response_payload = _generic_payload(cancel_outcome.response)
+    if cancel_outcome.safe_error_message:
+        cancel_response_payload = {
+            **cancel_response_payload,
+            "cancel_error": cancel_outcome.safe_error_message,
+            "cancel_error_type": cancel_outcome.error_type,
+        }
+    cancel_status = _normalized_enum_text(cancel_response_payload.get("status"))
+    if cancel_ambiguous:
         cancel_status = "ambiguous"
+    elif not cancel_outcome.broker_called:
+        cancel_status = "blocked"
     cancel_result = {
-        "cancel_attempted": True,
+        "cancel_attempted": cancel_outcome.broker_called,
         "cancel_confirmed": False,
         "cancel_status": cancel_status or ("ambiguous" if cancel_ambiguous else "requested"),
         "cancel_ambiguous": cancel_ambiguous,
         "cancel_response": cancel_response_payload,
         "cancel_target_order_id": order_id,
         "cancel_target_client_order_id": request.client_order_id,
+        "durable_cancel_intent_id": identity.cancel_intent_id,
+        "durable_cancel_reservation_status": reservation.status,
+        "durable_cancel_status": cancel_outcome.status,
+        "durable_cancel_blocker": cancel_outcome.blocker,
+        "durable_cancel_record": (
+            cancel_outcome.record.to_dict()
+            if cancel_outcome.record is not None
+            else {}
+        ),
+        "durable_cancel_lease_acquired": lease.acquired,
+        "durable_cancel_lease_released": lease_released,
+        "durable_cancel_lease_release_error_type": lease_release_error_type,
+        "durable_cancel_journal_error_type": cancel_outcome.journal_error_type,
     }
     final_order = _poll_lookup_by_client_order_id(
         client,
@@ -1089,6 +1210,15 @@ def _submit_cancel_reconcile(
         attempts=poll_attempts,
         interval_seconds=poll_interval_seconds,
     ) or latest
+    if cancel_outcome.status == "blocked":
+        return _lifecycle_result(
+            submit_result=submit_result,
+            cancel_result=cancel_result,
+            final_order=final_order,
+            outcome=OUTCOME_RECONCILIATION_AMBIGUOUS,
+            blocker=cancel_outcome.blocker or "durable_cancel_blocked",
+            next_action="operator_reconcile_unresolved_v5_8_order_before_any_future_order",
+        )
     if cancel_ambiguous:
         return _lifecycle_result(
             submit_result=submit_result,
@@ -1117,6 +1247,21 @@ def _submit_cancel_reconcile(
             else "operator_reconcile_unresolved_v5_8_order_before_any_future_order"
         ),
     )
+
+
+def _durable_cancel_intent_id(
+    *,
+    client_order_id: str,
+    broker_order_id: str,
+) -> str:
+    basis = f"{client_order_id.strip()}:{broker_order_id.strip()}".encode("utf-8")
+    return f"v5_8_cancel_{hashlib.sha256(basis).hexdigest()[:24]}"
+
+
+def _durable_cancel_observation(response: Any) -> DurableCancelObservation:
+    payload = _generic_payload(response)
+    status = _normalized_enum_text(payload.get("status")) or "pending_cancel"
+    return DurableCancelObservation(status)
 
 
 def _lifecycle_result(

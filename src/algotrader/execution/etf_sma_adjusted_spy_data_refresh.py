@@ -15,7 +15,7 @@ import argparse
 import csv
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
 import io
@@ -26,6 +26,10 @@ import sys
 from typing import Any
 
 from algotrader.errors import ValidationError
+from algotrader.execution.etf_sma_market_data_soak import (
+    record_adjusted_market_data_soak,
+)
+
 
 __all__ = [
     "APPROVED_ADJUSTED_ETF_SYMBOLS",
@@ -52,16 +56,13 @@ _LIVE_MARKET_DATA_FETCH = "live_market_data_fetch"
 _MODES = (_OFFLINE_FIXTURE, _DRY_RUN, _LIVE_MARKET_DATA_FETCH)
 _TOKEN_ENV_VAR = "TIINGO_API_KEY"
 _TIINGO_URL_PREFIX = "https://api.tiingo.com/tiingo/daily"
+_TIINGO_HTTPS_ORIGIN = "https://api.tiingo.com"
+_TIINGO_DESTINATION_HOST = "api.tiingo.com"
 _AUTO_START_DATE = "auto"
 _DEFAULT_START_DATE = "1993-01-29"
+_DEFAULT_REVISION_LOOKBACK_DAYS = 10
+_MAX_REVISION_LOOKBACK_DAYS = 31
 _HTTP_TIMEOUT_SECONDS = 20.0
-_BROKER_CREDENTIAL_ENV_VARS = (
-    "ALPACA_API_KEY",
-    "ALPACA_API_SECRET_KEY",
-    "ALPACA_SECRET_KEY",
-    "APCA_API_KEY_ID",
-    "APCA_API_SECRET_KEY",
-)
 _CANONICAL_COLUMNS = (
     "symbol",
     "date",
@@ -120,8 +121,11 @@ _VALIDATION_CONTRACT = (
     "missing_adjusted_close_rejected",
     "nonpositive_adjusted_close_rejected",
     "missing_required_ohlcv_rejected",
-    "latest_date_must_be_newer_than_existing_canonical",
+    "latest_date_must_not_precede_existing_canonical",
     "expected_latest_bar_date_must_match_when_supplied",
+    "bounded_trailing_revision_window_refetched",
+    "exact_tiingo_https_get_destination_only",
+    "tiingo_api_key_only",
     "token_value_never_printed_or_written",
     "broker_access_forbidden",
 )
@@ -153,9 +157,13 @@ class ETFAdjustedDataRefreshConfig:
     fixture_input_path: Path | str | None = None
     live_fetch_authorized: bool = False
     raw_response_path: Path | str | None = None
-    start_date: date | str = _DEFAULT_START_DATE
+    start_date: date | str = _AUTO_START_DATE
+    revision_lookback_days: int = _DEFAULT_REVISION_LOOKBACK_DAYS
     token_env_var: str = _TOKEN_ENV_VAR
     run_id: str = "v178_automatic_adjusted_spy_data_refresh"
+    soak_ledger: Path | str | None = None
+    soak_report: Path | str | None = None
+    soak_required_sessions: int = 5
 
     def __post_init__(self) -> None:
         provider = _required_string(self.provider, "provider").lower()
@@ -206,12 +214,51 @@ class ETFAdjustedDataRefreshConfig:
             "raw_response_path",
             _required_path(raw_response_path, "raw_response_path"),
         )
-        object.__setattr__(
-            self,
-            "token_env_var",
-            _required_string(self.token_env_var, "token_env_var"),
-        )
+        token_env_var = _required_string(self.token_env_var, "token_env_var")
+        if token_env_var != _TOKEN_ENV_VAR:
+            raise ValidationError("token_env_var must be TIINGO_API_KEY.")
+        object.__setattr__(self, "token_env_var", token_env_var)
+        revision_lookback_days = self.revision_lookback_days
+        if (
+            isinstance(revision_lookback_days, bool)
+            or not isinstance(revision_lookback_days, int)
+            or not 1 <= revision_lookback_days <= _MAX_REVISION_LOOKBACK_DAYS
+        ):
+            raise ValidationError(
+                "revision_lookback_days must be an integer from 1 to 31."
+            )
+        object.__setattr__(self, "revision_lookback_days", revision_lookback_days)
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
+
+        soak_ledger = self.soak_ledger
+        soak_report = self.soak_report
+        if (soak_ledger is None) != (soak_report is None):
+            raise ValidationError(
+                "soak_ledger and soak_report must be supplied together."
+            )
+        required_sessions = self.soak_required_sessions
+        if (
+            isinstance(required_sessions, bool)
+            or not isinstance(required_sessions, int)
+            or not 1 <= required_sessions <= 20
+        ):
+            raise ValidationError(
+                "soak_required_sessions must be an integer from 1 to 20."
+            )
+        object.__setattr__(self, "soak_required_sessions", required_sessions)
+        if soak_ledger is not None and soak_report is not None:
+            if self.mode != _LIVE_MARKET_DATA_FETCH or not self.live_fetch_authorized:
+                raise ValidationError(
+                    "soak outputs require an authorized live market-data fetch."
+                )
+            ledger_path = _required_path(soak_ledger, "soak_ledger")
+            report_path = _required_path(soak_report, "soak_report")
+            if not _runtime_output_path(ledger_path):
+                raise ValidationError("soak_ledger must be a runtime output path.")
+            if not _runtime_output_path(report_path):
+                raise ValidationError("soak_report must be a runtime output path.")
+            object.__setattr__(self, "soak_ledger", ledger_path)
+            object.__setattr__(self, "soak_report", report_path)
 
 
 SPYAdjustedDataRefreshConfig = ETFAdjustedDataRefreshConfig
@@ -250,6 +297,18 @@ def run_spy_adjusted_data_refresh(
         http_get=http_get,
     )
     write_spy_adjusted_data_refresh_jsonl(payload, config.run_log)
+    if config.soak_ledger is not None and config.soak_report is not None:
+        soak_report = record_adjusted_market_data_soak(
+            payload,
+            ledger_path=config.soak_ledger,
+            report_path=config.soak_report,
+            required_sessions=config.soak_required_sessions,
+        )
+        payload = dict(payload)
+        payload["soak_evidence"] = soak_report
+        payload["soak_ledger_path"] = str(config.soak_ledger)
+        payload["soak_report_path"] = str(config.soak_report)
+        write_spy_adjusted_data_refresh_jsonl(payload, config.run_log)
     return payload
 
 
@@ -276,12 +335,17 @@ def build_tiingo_adjusted_etf_request(
     return {
         "method": "GET",
         "url": f"{_tiingo_url(symbol)}?{query}",
+        "scheme": "https",
+        "destination_host": _TIINGO_DESTINATION_HOST,
+        "destination_path": f"/tiingo/daily/{symbol}/prices",
+        "destination_allowlist_match": True,
         "headers": {"Authorization": "Token <redacted>"},
         "token_env_var": checked_config.token_env_var,
         "symbol": symbol,
         "provider_adjusted_close_field": "adjClose",
         "request_start_date": request_start_date,
         "request_end_date": request_end_date,
+        "revision_lookback_days": checked_config.revision_lookback_days,
     }
 
 
@@ -301,15 +365,9 @@ def write_spy_adjusted_data_refresh_jsonl(
     payload: Mapping[str, object],
     output_path: Path | str,
 ) -> None:
-    """Write exactly one refresh manifest record."""
-    path = Path(output_path)
-    if path.parent != Path("."):
-        path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        render_spy_adjusted_data_refresh_json(payload) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    """Atomically write exactly one refresh manifest record."""
+    line = (render_spy_adjusted_data_refresh_json(payload) + "\n").encode("utf-8")
+    _write_bytes_atomic(output_path, line)
 
 
 def render_spy_adjusted_data_refresh_json(payload: Mapping[str, object]) -> str:
@@ -430,23 +488,19 @@ def _build_refresh_payload(
                 refresh_authorized=True,
                 previous_canonical_preserved_on_failure=bool(current_canonical_sha256),
             )
-        if _canonical_already_current(
+        if _canonical_ahead_of_expected(
             current_latest,
             expected_latest_bar_date=config.expected_latest_bar_date,
         ):
             return _manifest(
                 config,
-                refresh_state="skipped_current_canonical_already_current",
-                refresh_blockers=[],
+                refresh_state="blocked_expected_latest_bar_date_precedes_canonical",
+                refresh_blockers=["expected_latest_bar_date_precedes_canonical"],
                 provider_request=request,
                 current_canonical_latest_bar_date=current_latest,
-                latest_provider_bar_date=current_latest,
-                source_latest_bar_date=current_latest,
-                accepted_row_count=_canonical_row_count(config.canonical_csv),
-                canonical_csv_sha256=current_canonical_sha256,
                 current_canonical_sha256=current_canonical_sha256,
                 refresh_authorized=True,
-                http_outcome_category="not_attempted_current_canonical_already_current",
+                previous_canonical_preserved_on_failure=bool(current_canonical_sha256),
             )
         if not _runtime_output_path(config.raw_response_path):
             return _manifest(
@@ -617,11 +671,11 @@ def _run_normalized_refresh(
 
     if current_canonical_latest_bar_date:
         current_date = date.fromisoformat(current_canonical_latest_bar_date)
-        if latest_provider_date <= current_date:
+        if latest_provider_date < current_date:
             return _manifest(
                 config,
-                refresh_state="blocked_latest_bar_date_not_newer_than_canonical",
-                refresh_blockers=["latest_bar_date_not_newer_than_canonical"],
+                refresh_state="blocked_latest_bar_date_precedes_canonical",
+                refresh_blockers=["latest_bar_date_precedes_canonical"],
                 provider_request=provider_request,
                 current_canonical_latest_bar_date=current_canonical_latest_bar_date,
                 current_canonical_sha256=current_canonical_sha256,
@@ -642,6 +696,11 @@ def _run_normalized_refresh(
             )
 
     try:
+        revision_metrics = _compare_revision_window(
+            config.canonical_csv,
+            source_rows,
+            symbol=config.symbol,
+        )
         rows = _candidate_rows_with_existing_canonical(
             config.canonical_csv,
             source_rows,
@@ -675,6 +734,11 @@ def _run_normalized_refresh(
     output_path = Path(config.output_csv)
     _write_bytes_atomic(output_path, output_csv_bytes)
     output_sha256 = hashlib.sha256(output_csv_bytes).hexdigest()
+    canonical_changed = output_sha256 != current_canonical_sha256
+    revision_outcome = _revision_outcome(
+        revision_metrics,
+        canonical_changed=canonical_changed,
+    )
 
     from .etf_sma_adjusted_spy_bars_refresh_intake import (
         EtfSmaAdjustedSpyBarsRefreshIntakeConfig,
@@ -717,6 +781,9 @@ def _run_normalized_refresh(
             refresh_authorized=refresh_authorized,
             http_outcome_category=http_outcome_category,
             previous_canonical_preserved_on_failure=bool(current_canonical_sha256),
+            revision_metrics=revision_metrics,
+            revision_outcome=revision_outcome,
+            canonical_changed=canonical_changed,
             canonical_intake_performed=True,
         )
 
@@ -745,6 +812,9 @@ def _run_normalized_refresh(
         token_available=token_available,
         refresh_authorized=refresh_authorized,
         http_outcome_category=http_outcome_category,
+        revision_metrics=revision_metrics,
+        revision_outcome=revision_outcome,
+        canonical_changed=canonical_changed,
         canonical_intake_performed=True,
     )
 
@@ -769,6 +839,9 @@ def _manifest(
     normalized_output_sha256: str = "",
     canonical_csv_sha256: str = "",
     intake_manifest: Mapping[str, object] | None = None,
+    revision_metrics: Mapping[str, object] | None = None,
+    revision_outcome: str = "",
+    canonical_changed: bool = False,
     dry_run_only: bool = False,
     network_access_attempted: bool = False,
     market_data_token_access_attempted: bool = False,
@@ -780,6 +853,7 @@ def _manifest(
     canonical_intake_performed: bool = False,
     daily_cycle_rerun_performed: bool = False,
 ) -> dict[str, object]:
+    metrics = dict(revision_metrics or {})
     request_start_date = str(provider_request.get("request_start_date", config.start_date))
     request_end_date = str(
         provider_request.get("request_end_date", config.expected_latest_bar_date)
@@ -805,6 +879,25 @@ def _manifest(
         "start_date": config.start_date,
         "request_start_date": request_start_date,
         "request_end_date": request_end_date,
+        "revision_lookback_days": config.revision_lookback_days,
+        "revision_window_start_date": request_start_date,
+        "revision_window_end_date": request_end_date,
+        "revision_window_applied": (
+            config.start_date == _AUTO_START_DATE
+            and bool(current_canonical_latest_bar_date)
+        ),
+        "revision_check_performed": bool(metrics),
+        "revision_outcome": revision_outcome or "not_checked",
+        "canonical_changed": canonical_changed,
+        "overlap_row_count": int(metrics.get("overlap_row_count", 0)),
+        "revised_row_count": int(metrics.get("revised_row_count", 0)),
+        "revised_dates": _string_sequence(metrics.get("revised_dates")),
+        "new_row_count": int(metrics.get("new_row_count", 0)),
+        "unchanged_overlap_row_count": int(
+            metrics.get("unchanged_overlap_row_count", 0)
+        ),
+        "removed_overlap_row_count": int(metrics.get("removed_overlap_row_count", 0)),
+        "removed_overlap_dates": _string_sequence(metrics.get("removed_overlap_dates")),
         "current_canonical_latest_bar_date": current_canonical_latest_bar_date,
         "current_canonical_sha256": current_canonical_sha256,
         "latest_provider_bar_date": latest_provider_bar_date,
@@ -822,6 +915,13 @@ def _manifest(
         "run_log_path": str(config.run_log),
         "raw_provider_response_path": str(config.raw_response_path),
         "provider_request": dict(provider_request),
+        "network_destination_allowlist": [
+            "https://api.tiingo.com/tiingo/daily/{approved_symbol}/prices"
+        ],
+        "network_destination_allowlist_enforced": True,
+        "network_method_allowlist": ["GET"],
+        "market_data_token_env_allowlist": [_TOKEN_ENV_VAR],
+        "broker_credential_lookup_attempted": False,
         "provider_column_mapping": {
             "symbol": (
                 f"constant {config.symbol} unless provider symbol/ticker is present"
@@ -1018,12 +1118,17 @@ def load_tiingo_api_key_from_dotenv(
 def _tiingo_http_get(url: str, headers: Mapping[str, str]) -> bytes:
     import http.client
 
-    expected_prefix = "https://api.tiingo.com"
-    if not url.startswith(expected_prefix):
-        raise MarketDataFetchError("provider_url_scope_violation")
-    request_target = url[len(expected_prefix) :]
+    request_target = _validated_tiingo_request_target(url)
+    authorization = headers.get("Authorization")
+    if (
+        set(headers) != {"Authorization"}
+        or not isinstance(authorization, str)
+        or not authorization.startswith("Token ")
+        or not authorization[len("Token ") :].strip()
+    ):
+        raise MarketDataFetchError("provider_header_scope_violation")
     connection = http.client.HTTPSConnection(
-        "api.tiingo.com",
+        _TIINGO_DESTINATION_HOST,
         timeout=_HTTP_TIMEOUT_SECONDS,
     )
     try:
@@ -1060,6 +1165,43 @@ def _query_string(params: Mapping[str, str]) -> str:
     return "&".join(f"{key}={value}" for key, value in params.items())
 
 
+def _validated_tiingo_request_target(url: str) -> str:
+    prefix = f"{_TIINGO_HTTPS_ORIGIN}/"
+    if not isinstance(url, str) or not url.startswith(prefix):
+        raise MarketDataFetchError("provider_url_scope_violation")
+    request_target = url[len(_TIINGO_HTTPS_ORIGIN) :]
+    path, separator, query = request_target.partition("?")
+    segments = path.split("/")
+    if (
+        not separator
+        or len(segments) != 5
+        or segments[0] != ""
+        or segments[1:3] != ["tiingo", "daily"]
+        or segments[4] != "prices"
+    ):
+        raise MarketDataFetchError("provider_url_scope_violation")
+    try:
+        _approved_symbol(segments[3])
+    except ValidationError as exc:
+        raise MarketDataFetchError("provider_url_scope_violation") from exc
+    params: dict[str, str] = {}
+    for pair in query.split("&"):
+        key, marker, value = pair.partition("=")
+        if not marker or key in params:
+            raise MarketDataFetchError("provider_url_scope_violation")
+        params[key] = value
+    if set(params) != {"startDate", "endDate", "format"} or params["format"] != "json":
+        raise MarketDataFetchError("provider_url_scope_violation")
+    try:
+        start_date = date.fromisoformat(params["startDate"])
+        end_date = date.fromisoformat(params["endDate"])
+    except (KeyError, ValueError) as exc:
+        raise MarketDataFetchError("provider_url_scope_violation") from exc
+    if start_date > end_date:
+        raise MarketDataFetchError("provider_url_scope_violation")
+    return request_target
+
+
 def _request_start_date(
     config: SPYAdjustedDataRefreshConfig,
     *,
@@ -1069,7 +1211,11 @@ def _request_start_date(
         return config.start_date
     if current_canonical_latest_bar_date:
         current_latest = date.fromisoformat(current_canonical_latest_bar_date)
-        return (current_latest + timedelta(days=1)).isoformat()
+        revision_start = max(
+            date.fromisoformat(_DEFAULT_START_DATE),
+            current_latest - timedelta(days=config.revision_lookback_days),
+        )
+        return revision_start.isoformat()
     return _DEFAULT_START_DATE
 
 
@@ -1086,12 +1232,90 @@ def _candidate_rows_with_existing_canonical(
         return list(source_rows)
     current_rows = _read_canonical_rows(canonical_path, symbol=symbol)
     first_source_date = source_rows[0].date
-    merged = [row for row in current_rows if row.date < first_source_date]
+    last_source_date = source_rows[-1].date
+    merged = [
+        row
+        for row in current_rows
+        if row.date < first_source_date or row.date > last_source_date
+    ]
     merged.extend(source_rows)
     dates = [row.date for row in merged]
     if len(set(dates)) != len(dates):
         raise ValidationError("duplicate_dates")
     return sorted(merged, key=lambda row: row.date)
+
+
+def _compare_revision_window(
+    canonical_csv: Path | str,
+    source_rows: Sequence[_NormalizedRow],
+    *,
+    symbol: str,
+) -> dict[str, object]:
+    canonical_path = Path(canonical_csv)
+    if not canonical_path.exists():
+        return {
+            "overlap_row_count": 0,
+            "revised_row_count": 0,
+            "revised_dates": [],
+            "new_row_count": len(source_rows),
+            "unchanged_overlap_row_count": 0,
+            "removed_overlap_row_count": 0,
+            "removed_overlap_dates": [],
+        }
+    current_rows = _read_canonical_rows(canonical_path, symbol=symbol)
+    current_by_date = {row.date: row for row in current_rows}
+    source_by_date = {row.date: row for row in source_rows}
+    overlap_dates = sorted(current_by_date.keys() & source_by_date.keys())
+    revised_dates = [
+        value
+        for value in overlap_dates
+        if current_by_date[value] != source_by_date[value]
+    ]
+    unchanged_dates = [
+        value
+        for value in overlap_dates
+        if current_by_date[value] == source_by_date[value]
+    ]
+    new_dates = sorted(source_by_date.keys() - current_by_date.keys())
+    first_source_date = source_rows[0].date
+    last_source_date = source_rows[-1].date
+    removed_dates = sorted(
+        row.date
+        for row in current_rows
+        if first_source_date <= row.date <= last_source_date
+        and row.date not in source_by_date
+    )
+    return {
+        "overlap_row_count": len(overlap_dates),
+        "revised_row_count": len(revised_dates),
+        "revised_dates": [value.isoformat() for value in revised_dates],
+        "new_row_count": len(new_dates),
+        "unchanged_overlap_row_count": len(unchanged_dates),
+        "removed_overlap_row_count": len(removed_dates),
+        "removed_overlap_dates": [value.isoformat() for value in removed_dates],
+    }
+
+
+def _revision_outcome(
+    metrics: Mapping[str, object],
+    *,
+    canonical_changed: bool,
+) -> str:
+    revised = int(metrics.get("revised_row_count", 0))
+    removed = int(metrics.get("removed_overlap_row_count", 0))
+    new = int(metrics.get("new_row_count", 0))
+    overlap = int(metrics.get("overlap_row_count", 0))
+    if revised or removed:
+        if new:
+            return "revisions_and_new_rows_applied"
+        return "revisions_applied"
+    if new:
+        if not overlap:
+            return "initial_history_loaded"
+        return "new_rows_appended_revision_window_unchanged"
+    if canonical_changed:
+        return "canonical_rewritten_without_row_delta"
+    return "revision_window_checked_no_change"
 
 
 def _read_canonical_rows(path: Path | str, *, symbol: str) -> list[_NormalizedRow]:
@@ -1116,8 +1340,14 @@ def _write_bytes_atomic(path: Path | str, data: bytes) -> None:
     if output_path.parent != Path("."):
         output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_name(f"{output_path.name}.tmp")
-    temp_path.write_bytes(data)
-    temp_path.replace(output_path)
+    try:
+        temp_path.write_bytes(data)
+        temp_path.replace(output_path)
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _sha256_file_if_present(path: Path | str) -> str:
@@ -1127,26 +1357,14 @@ def _sha256_file_if_present(path: Path | str) -> str:
     return _sha256_file(candidate)
 
 
-def _canonical_row_count(path: Path | str) -> int:
-    candidate = Path(path)
-    if not candidate.exists() or not candidate.is_file():
-        return 0
-    try:
-        text = candidate.read_text(encoding="utf-8-sig")
-        reader = csv.DictReader(text.splitlines())
-        return sum(1 for _ in reader)
-    except OSError:
-        return 0
-
-
-def _canonical_already_current(
+def _canonical_ahead_of_expected(
     current_latest_bar_date: str,
     *,
     expected_latest_bar_date: str,
 ) -> bool:
     if not current_latest_bar_date:
         return False
-    return date.fromisoformat(current_latest_bar_date) >= date.fromisoformat(
+    return date.fromisoformat(current_latest_bar_date) > date.fromisoformat(
         expected_latest_bar_date
     )
 
@@ -1159,26 +1377,20 @@ def _live_market_data_fetch_preflight_blockers(
         blockers.append("provider_not_tiingo")
     if config.mode != _LIVE_MARKET_DATA_FETCH:
         blockers.append("live_market_data_fetch_mode_not_selected")
-    if os.environ.get("APP_PROFILE") == "paper":
-        blockers.append("APP_PROFILE_is_paper")
-    loaded_broker_credentials = [
-        name for name in _BROKER_CREDENTIAL_ENV_VARS if name in os.environ
-    ]
-    if loaded_broker_credentials:
-        blockers.append(
-            "broker_credential_variables_loaded:"
-            + ",".join(loaded_broker_credentials)
-        )
+    if os.environ.get("APP_PROFILE") == "live":
+        blockers.append("APP_PROFILE_is_live")
     return blockers
 
 
-def _default_expected_latest_bar_date() -> str:
-    from .etf_sma_daily_paper_lab import _latest_completed_regular_session_date
+def _default_expected_latest_bar_date(observed_at: datetime | None = None) -> str:
+    from .exchange_session import NyseExchangeSessionCalendar
 
-    latest = _latest_completed_regular_session_date(date.today())
+    observed = observed_at or datetime.now(UTC)
+    calendar = NyseExchangeSessionCalendar()
+    latest = calendar.latest_completed_session_on_or_before(observed)
     if latest is None:
         raise ValidationError("expected_latest_bar_date could not be determined.")
-    return latest.isoformat()
+    return latest.session_date.isoformat()
 
 
 def _valid_env_name(name: str) -> bool:
@@ -1422,6 +1634,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--canonical-csv", required=True)
     parser.add_argument("--run-log", required=True)
     parser.add_argument("--symbol", choices=APPROVED_ADJUSTED_ETF_SYMBOLS, default=_SYMBOL)
+    parser.add_argument("--soak-ledger", default=None)
+    parser.add_argument("--soak-report", default=None)
+    parser.add_argument(
+        "--soak-required-sessions",
+        type=int,
+        default=5,
+    )
     parser.add_argument("--mode", choices=_MODES, default=_DRY_RUN)
     parser.add_argument("--fixture-input-path", default=None)
     parser.add_argument("--raw-response-path", default=None)
@@ -1431,7 +1650,11 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="live_fetch_authorized",
     )
     parser.add_argument("--start-date", default=_AUTO_START_DATE)
-    parser.add_argument("--token-env-var", default=_TOKEN_ENV_VAR)
+    parser.add_argument(
+        "--revision-lookback-days",
+        type=int,
+        default=_DEFAULT_REVISION_LOOKBACK_DAYS,
+    )
     parser.add_argument("--dotenv-path", default=".env")
     parser.add_argument(
         "--format",
@@ -1444,11 +1667,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _payload_exit_code(payload: Mapping[str, object]) -> int:
     state = str(payload.get("refresh_state", ""))
-    if (
-        state.startswith("accepted")
-        or state == "dry_run_refresh_plan_built"
-        or state == "skipped_current_canonical_already_current"
-    ):
+    if state.startswith("accepted") or state == "dry_run_refresh_plan_built":
         return 0
     return 2
 
@@ -1481,7 +1700,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 live_fetch_authorized=args.live_fetch_authorized,
                 raw_response_path=args.raw_response_path,
                 start_date=args.start_date,
-                token_env_var=args.token_env_var,
+                revision_lookback_days=args.revision_lookback_days,
+                soak_ledger=args.soak_ledger,
+                soak_report=args.soak_report,
+                soak_required_sessions=args.soak_required_sessions,
             ),
             token_lookup=token_lookup,
             http_get=http_get,

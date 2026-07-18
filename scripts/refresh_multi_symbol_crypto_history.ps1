@@ -27,6 +27,7 @@ param(
     [string]$Timeframe = "1Hour",
     [string]$Loc = "us",
     [switch]$MarketDataFetchAuthorized,
+    [switch]$DataIntakeOnly,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
 )
@@ -87,6 +88,7 @@ foreach ($EndpointName in @("ALPACA_BASE_URL", "ALPACA_PAPER_BASE_URL", "APCA_AP
 Write-Host "crypto_history_refresh_command=refresh_multi_symbol_crypto_history"
 Write-Host "crypto_history_refresh_mode=$Mode"
 Write-Host "crypto_history_refresh_read_only_market_data=true"
+Write-Host "crypto_history_refresh_data_intake_only=$(Format-Bool $DataIntakeOnly.IsPresent)"
 Write-Host "crypto_history_refresh_no_submit_enforced=true"
 Write-Host "APP_PROFILE_is_paper=$(Format-Bool $AppProfileIsPaper)"
 Write-Host "ALPACA_API_KEY_loaded=$(Format-Bool (Test-EnvLoaded -Name "ALPACA_API_KEY"))"
@@ -130,6 +132,9 @@ if (-not [string]::IsNullOrWhiteSpace($Start)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($End)) {
     $Args += @("--end", $End)
+}
+if ($DataIntakeOnly.IsPresent) {
+    $Args += "--data-intake-only"
 }
 if ($Mode -eq "market_data_fetch" -and $MarketDataFetchAuthorized.IsPresent) {
     $Args += @("--allow-network", "--market-data-fetch-authorized")

@@ -21,12 +21,17 @@ from algotrader.execution.crypto_paper_mutation_drill import (
     OUTCOME_SUBMITTED_CANCELLED,
     OUTCOME_SUBMITTED_PARTIAL_CANCELLED,
     OUTCOME_SUBMITTED_REJECTED,
+    OUTCOME_UNRESOLVED,
     deterministic_crypto_paper_drill_client_order_id,
     render_crypto_paper_mutation_drill_text,
     run_crypto_paper_mutation_drill,
 )
 from algotrader.execution.crypto_paper_visibility_operator import (
     run_crypto_paper_visibility_cycle,
+)
+from algotrader.execution.order_journal import (
+    CancelJournalState,
+    SqliteOrderJournal,
 )
 
 
@@ -51,6 +56,8 @@ class FakeCryptoPaperClient:
         filled_qty: str = "0",
         cancel_status: str = "canceled",
         submit_raises: bool = False,
+        cancel_raises: bool = False,
+        hide_current_order_from_reads: bool = False,
     ) -> None:
         self.assets = list(assets if assets is not None else (_btc_asset(),))
         self.account = account or {
@@ -67,6 +74,8 @@ class FakeCryptoPaperClient:
         self.filled_qty = filled_qty
         self.cancel_status = cancel_status
         self.submit_raises = submit_raises
+        self.cancel_raises = cancel_raises
+        self.hide_current_order_from_reads = hide_current_order_from_reads
         self.calls: list[str] = []
         self.submitted_requests: list[object] = []
         self.cancelled_order_ids: list[str] = []
@@ -93,7 +102,7 @@ class FakeCryptoPaperClient:
         orders = list(self.all_orders)
         if query.status_filter == "open":
             orders.extend(self.open_orders)
-        if self.current_order is not None:
+        if self.current_order is not None and not self.hide_current_order_from_reads:
             orders.append(dict(self.current_order))
         if query.symbol_filter:
             wanted = query.symbol_filter.upper()
@@ -118,6 +127,7 @@ class FakeCryptoPaperClient:
                 return dict(order)
         if (
             self.current_order is not None
+            and not self.hide_current_order_from_reads
             and self.current_order.get("client_order_id") == client_order_id
         ):
             return dict(self.current_order)
@@ -153,6 +163,10 @@ class FakeCryptoPaperClient:
     def cancel_order_by_id(self, order_id: str) -> dict[str, object]:
         self.calls.append(f"cancel_order_by_id:{order_id}")
         self.cancelled_order_ids.append(order_id)
+        if self.cancel_raises:
+            raise RuntimeError(
+                f"cancel failed token={SENSITIVE_SECRET} at https://paper.example.test"
+            )
         if self.current_order is not None:
             self.current_order = {
                 **self.current_order,
@@ -692,6 +706,95 @@ def test_submit_then_cancel_submits_exactly_one_bounded_limit_order(
     assert estimated >= Decimal("10.00")
     assert estimated <= Decimal("11.00")
     assert fake_client.cancelled_order_ids == ["crypto-paper-order-1"]
+    cancel_result = packet["cancel_result"]
+    assert cancel_result["durable_cancel_reservation_status"] == "reserved"
+    assert cancel_result["durable_cancel_status"] == "observed"
+    assert cancel_result["durable_cancel_record"]["state"] == "canceled"
+    assert cancel_result["durable_cancel_record"]["safe_to_recancel"] is False
+    assert cancel_result["durable_cancel_lease_acquired"] is True
+    assert cancel_result["durable_cancel_lease_released"] is True
+    journal = SqliteOrderJournal(packet["durable_cancel_journal"]["path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.CANCELED
+
+
+def test_cancel_ambiguity_is_durable_unknown_and_redacted(tmp_path: Path) -> None:
+    fake_client = FakeCryptoPaperClient(cancel_raises=True)
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_UNRESOLVED
+    assert packet["cancel_attempted"] is True
+    assert packet["cancel_ambiguous"] is True
+    assert fake_client.calls.count("submit_order") == 1
+    assert fake_client.calls.count("cancel_order_by_id:crypto-paper-order-1") == 1
+    cancel_result = packet["cancel_result"]
+    assert cancel_result["durable_cancel_status"] == "ambiguous"
+    assert cancel_result["durable_cancel_record"]["state"] == "unknown"
+    serialized = json.dumps(packet, sort_keys=True)
+    assert SENSITIVE_SECRET not in serialized
+    assert "https://paper.example.test" not in serialized
+    journal = SqliteOrderJournal(packet["durable_cancel_journal"]["path"])
+    record = journal.cancel_intents()[0]
+    assert record.state is CancelJournalState.UNKNOWN
+    assert record.safe_to_recancel is False
+
+
+def test_cancel_ambiguity_rerun_cannot_submit_or_cancel_again(
+    tmp_path: Path,
+) -> None:
+    fake_client = FakeCryptoPaperClient(cancel_raises=True)
+
+    first = _run_drill(tmp_path, fake_client)
+    second = _run_drill(tmp_path, fake_client)
+
+    assert first["outcome_classification"] == OUTCOME_UNRESOLVED
+    assert second["outcome_classification"] == OUTCOME_IDEMPOTENT_EXISTING_ORDER
+    assert fake_client.calls.count("submit_order") == 1
+    assert fake_client.calls.count("cancel_order_by_id:crypto-paper-order-1") == 1
+    journal = SqliteOrderJournal(first["durable_cancel_journal"]["path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.UNKNOWN
+    assert records[0].safe_to_recancel is False
+
+
+def test_cancel_requires_fresh_same_order_snapshot(tmp_path: Path) -> None:
+    fake_client = FakeCryptoPaperClient(hide_current_order_from_reads=True)
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_UNRESOLVED
+    assert packet["blocker"] == "required_snapshot_not_fresh"
+    assert packet["submit_call_count"] == 1
+    assert packet["cancel_attempted"] is False
+    assert fake_client.cancelled_order_ids == []
+    cancel_result = packet["cancel_result"]
+    assert cancel_result["durable_cancel_status"] == "blocked"
+    assert cancel_result["durable_cancel_blocker"] == "required_snapshot_not_fresh"
+    assert cancel_result["durable_cancel_record"]["state"] == "reserved"
+
+
+def test_unavailable_cancel_journal_blocks_before_broker_access(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_paper_mutation_drill" / "latest"
+    state_root = output_root / ".state"
+    state_root.mkdir(parents=True)
+    (state_root / "durable_cancel_journal.sqlite3").write_bytes(
+        b"not-a-sqlite-database"
+    )
+    fake_client = FakeCryptoPaperClient()
+
+    packet = _run_drill(tmp_path, fake_client, output_root=output_root)
+
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert packet["blocker"] == "durable_cancel_journal_unavailable_before_submit"
+    assert packet["durable_cancel_journal"]["initialized"] is False
+    assert packet["submit_call_count"] == 0
+    assert packet["cancel_attempted"] is False
+    assert fake_client.calls == []
 
 
 def test_rejected_submit_does_not_retry_or_cancel(tmp_path: Path) -> None:

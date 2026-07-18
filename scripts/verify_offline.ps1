@@ -5,11 +5,12 @@ Runs the repo's offline-safe verification checks.
 .DESCRIPTION
 This helper performs local repository hygiene checks, prints only boolean
 credential/profile state, blocks unsafe paper/credential environments, and runs
-the default offline safety guard tests. Use -Full to include the full pytest
-suite after the targeted guard tests.
+the default offline safety guard tests. Use -Full to include the complete
+exact-node bounded pytest suite after the targeted guard tests.
 
 .PARAMETER Full
-Run the full pytest suite after the targeted offline safety guard tests.
+Run the complete default pytest collection through the repository-owned
+exact-node bounded runner after the targeted offline safety guard tests.
 
 .EXAMPLE
 pwsh ./scripts/verify_offline.ps1
@@ -163,11 +164,11 @@ function Invoke-OfflineTestChecks {
     Invoke-CheckedCommand "targeted offline safety guard tests" "python" (@("-m", "pytest") + $GuardTestPaths)
 
     if ($Full) {
-        Invoke-CheckedCommand "full offline pytest suite" "python" @("-m", "pytest")
+        Invoke-CheckedCommand "bounded exact-node full offline pytest suite" "python" @("scripts/run_full_pytest_sharded.py")
     }
     else {
         Write-Section "full pytest"
-        Write-Host "Skipped. Re-run with -Full to execute python -m pytest."
+        Write-Host "Skipped. Re-run with -Full to execute the bounded exact-node full suite."
     }
 }
 

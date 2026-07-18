@@ -20,6 +20,7 @@ from algotrader.execution.alpaca_sdk_client import (
     AlpacaSdkClientError,
     _to_sdk_order_request,
 )
+from algotrader.execution.order_journal import OrderJournalState, SqliteOrderJournal
 from algotrader.execution.paper_lab_observation_log import (
     PAPER_CLOSE_PREVIEW_DESIGNED,
     make_paper_close_preview_events,
@@ -773,6 +774,9 @@ def test_spy_close_submit_accepts_m376_evidence_and_builds_fresh_request(
     assert payload["broker_result_classification"] == "accepted"
     assert payload["broker_order_id"] == "broker-spy-close-order-1"
     assert payload["accepted"] is True
+    assert payload["order_journal_claimed"] is True
+    assert payload["order_journal_state"] == OrderJournalState.ACCEPTED.value
+    assert payload["order_journal_lease_released"] is True
     assert payload["filled"] is False
     assert payload["normalized_status"] == "accepted"
     assert payload["account_cash"] == "1974.9"
@@ -821,8 +825,86 @@ def test_spy_close_submit_does_not_retry_after_submit_exception(
     assert payload["submit_attempt_count"] == 1
     assert payload["broker_result_classification"] == "ambiguous"
     assert payload["broker_error"] is True
+    assert payload["order_journal_state"] == OrderJournalState.UNKNOWN.value
+    assert payload["order_journal_lease_released"] is True
     assert SENSITIVE_API_KEY not in rendered
     assert SENSITIVE_SECRET_KEY not in rendered
+
+
+def test_spy_close_submit_durable_claim_blocks_crash_rerun(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m376-rerun.jsonl"
+    args = (
+        *_valid_spy_close_submit_args(close_preview_log, submit=True),
+        "--run-log",
+        str(run_log),
+    )
+    first_client = _install_fake_broker(
+        monkeypatch,
+        FakeSpyCloseSubmitAlpacaClient(),
+    )
+
+    first_exit, first = _run_json(args, capsys)
+
+    second_client = _install_fake_broker(
+        monkeypatch,
+        FakeSpyCloseSubmitAlpacaClient(),
+    )
+    second_exit, second = _run_json(args, capsys)
+
+    assert first_exit == 0
+    assert first["submit_attempt_count"] == 1
+    assert first_client.calls.count("submit_order") == 1
+    assert second_exit == 2
+    assert second["submitted"] is False
+    assert second["submit_attempt_count"] == 0
+    assert "durable_submit_already_reserved" in second["blockers"]
+    assert second_client.calls.count("submit_order") == 0
+    journal = SqliteOrderJournal(first["order_journal_path"])
+    record = journal.get(M376_SPY_CLOSE_CLIENT_ORDER_ID)
+    assert record is not None
+    assert record.side == "sell"
+    assert record.quantity == Decimal(M376_SPY_CLOSE_QUANTITY)
+    assert record.safe_to_resubmit is False
+
+
+def test_spy_close_submit_journal_unavailable_leaves_submit_untouched(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    import algotrader.execution.order_journal as order_journal
+
+    _set_env(monkeypatch)
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeSpyCloseSubmitAlpacaClient(),
+    )
+
+    class UnavailableJournal:
+        def __init__(self, path) -> None:  # noqa: ANN001, ARG002
+            raise OSError("journal unavailable")
+
+    monkeypatch.setattr(order_journal, "SqliteOrderJournal", UnavailableJournal)
+
+    exit_code, payload = _run_json(
+        _valid_spy_close_submit_args(close_preview_log, submit=True),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["submit_attempt_count"] == 0
+    assert payload["order_journal_error"] == "OSError"
+    assert "durable_submit_journal_unavailable" in payload["blockers"]
+    assert fake_client.calls.count("submit_order") == 0
 
 
 def test_order_probe_defaults_to_preview_and_does_not_submit(
