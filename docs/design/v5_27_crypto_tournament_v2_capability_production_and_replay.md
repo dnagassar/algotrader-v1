@@ -236,8 +236,10 @@ change the strategy-evidence clock or live-capital readiness.
 
 V5.28 now provides target-scoped, no-submit, read-only visibility for each
 frozen symbol and binds a future operational venue capability to exactly that
-target. The next evidence milestone remains terminal-winner-specific lifecycle
-and flat evidence; the legacy lifecycle chain is BTCUSD-only and cannot certify
-an ETHUSD or SOLUSD winner. Additional LLM APIs, retrieval services,
-QuantConnect integration, or a new strategy tournament do not address that
-evidence dependency.
+target. V5.29 adds canonical, exact-target independent-flat collection after a
+filled exit, including account-wide flatness, source-byte binding, sanitized
+account identity, and stale-receipt supersession. The remaining evidence
+milestone is the terminal-winner-specific bounded lifecycle operator; the
+legacy lifecycle chain is BTCUSD-only and cannot certify an ETHUSD or SOLUSD
+winner. Additional LLM APIs, retrieval services, QuantConnect integration, or
+a new strategy tournament do not address that evidence dependency.

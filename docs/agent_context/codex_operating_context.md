@@ -151,9 +151,21 @@ especially if ETHUSD or SOLUSD wins because the legacy chain is BTCUSD-only.
 New LLM APIs, retrieval services, QuantConnect, or additional strategy
 tournaments are not the principal constraint.
 
-Read `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
-and
-`docs/design/v5_28_crypto_target_scoped_read_only_venue_visibility.md` before
+V5.29 adds the missing canonical independent-flat broker collector. It binds an
+exact supported target to either the historical BTC lifecycle or the new
+target-lifecycle schema, requires a filled exit and post-exit observation,
+reads the account plus all positions and open orders, persists no raw account
+identifier, and has no mutation seam. A failed newer read supersedes any prior
+mutable-latest flat receipt.
+
+The current real V2 state was refreshed through 2026-07-17T23:00:00Z: 48 of
+672 untouched-OOS hours per symbol are sealed, candidate metrics remain empty,
+and the fixed terminal endpoint remains 2026-08-13T00:00:00Z. Do not score,
+rank, retune, or infer a winner before that gate.
+
+Read `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`,
+`docs/design/v5_28_crypto_target_scoped_read_only_venue_visibility.md`, and
+`docs/design/v5_29_crypto_target_scoped_independent_flat_collection.md` before
 changing this path. Preserve the exact V5.26 preregistration and V5.27
 safety-policy fingerprints, the untouched OOS/shadow calendar, immutable
 source provenance, account binding, and all operator gates.

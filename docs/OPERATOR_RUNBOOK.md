@@ -908,3 +908,34 @@ legacy lifecycle chain is BTCUSD-only, and the historical BTC chain no longer
 retains the exact V5.6 bytes cited downstream. The next evidence milestone is
 winner-specific lifecycle and independent-flat evidence after the terminal
 candidate is known; do not weaken those gates.
+
+## Target-Scoped Independent Flat Collection
+
+After the exact winner-specific lifecycle has a confirmed filled exit, collect
+the independent flat observation immediately from the isolated paper shell:
+
+```powershell
+.\scripts\run_crypto_bounded_probe_independent_flat_operator.ps1 `
+  -TargetSymbol <BTCUSD|ETHUSD|SOLUSD> `
+  -LifecyclePath <exact-lifecycle-result-path> `
+  -IndependentFlatReadAuthorized `
+  -AllowNetwork `
+  -AsOfTimestamp <CURRENT_UTC_TIMESTAMP>
+```
+
+The command validates the symbol and lifecycle before client construction. It
+reads the paper account, every position, and every open order; it cannot mutate
+the broker. Success requires exact expected-account matching, an active and
+unblocked account, zero account-wide positions, zero account-wide open orders,
+and an observation no earlier than the lifecycle exit order's broker-reported
+filled_at.
+
+The receipt and manifest are written under
+runs/crypto_strategy_tournament/v2/bounded_paper_probe_capabilities. Raw account
+identifiers are not persisted. A failed newer observation supersedes any prior
+mutable-latest flat receipt, so rerun capability production only after the
+current command emits independent_flat_receipt_emitted.
+
+Do not run this before a filled-exit lifecycle exists, from a credential-free
+development shell, against a live endpoint, or as authority for any submit,
+cancel, replace, close, liquidation, capital, or live action.

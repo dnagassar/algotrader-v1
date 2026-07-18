@@ -1090,3 +1090,25 @@ V5.25 terminal winner exists. This materially improves research-to-paper
 operational autonomy and evidence integrity, but adds no strategy-return
 evidence and does not change live-capital readiness. The full contract is in
 `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`.
+
+### V5.29 Target-Scoped Independent Flat Collection
+
+V5.29 adds the canonical broker-read boundary for the existing pure independent
+flat validator. It validates the exact BTCUSD, ETHUSD, or SOLUSD target and a
+same-symbol filled-exit lifecycle before environment resolution or client
+construction. The read-capable path requires explicit read and network
+switches, paper profile and endpoint, credentials, and expected-account
+matching. It reads only the account, all positions, and all open orders.
+
+Success requires a fully active, unblocked account with zero account-wide
+positions and open orders. Raw account identifiers remain process-local and
+only the V5.27 domain-separated account binding is persisted. Receipt and
+manifest bytes bind the exact lifecycle and collector source hashes. A newer
+failed or nonflat read moves any previous mutable-latest receipt into a
+recoverable generated superseded directory so stale evidence cannot remain
+active.
+
+The collector exposes no submit, cancel, replace, close, or liquidation seam.
+It grants no paper mutation, capital, or live authority. The full contract is
+in
+`docs/design/v5_29_crypto_target_scoped_independent_flat_collection.md`.
