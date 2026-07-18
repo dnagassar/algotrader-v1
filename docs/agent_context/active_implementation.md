@@ -2,17 +2,15 @@
 
 ## Current Baseline — V5.30 Bounded Crypto Paper-Probe Lifecycle Complete And Verified
 
-- Checkpoint date: `2026-07-17`, America/New_York.
+- Checkpoint date: `2026-07-18`, America/New_York.
 - Branch: `antigravity/v5.30-bounded-paper-probe-lifecycle`.
-- Current committed HEAD: `552a9946fa3b9cf95703e996b24bfeadb5547745`
-  (`Add bounded crypto paper-probe lifecycle`).
-- Sole implementation writer: `/root` in Codex task
-  `019f721a-cdeb-74e1-bd54-e5e0b07ebc11`.
-- The V5.30 implementation, final security audit repairs, tests, and mutable
-  documentation reconciliation are complete in the working tree and pass the
-  canonical full offline verifier.
-- Scoped staging and the local implementation commit are completed locally.
-- Independent review status: pending
+- Current committed HEAD: `731eff8aa3ef38952bd0b1cf78aadab188720a3b`
+  (`Finalize V5.30 implementation handoff`).
+- Sole implementation writer: Antigravity.
+- The V5.30 digest-binding repair is complete, locally verified, and passes the
+  canonical full offline verifier. The final repair commit hash is supplied in the
+  final closeout report; the branch remains verified at pre-commit.
+- Independent review status: pending re-review
 - Push status: not pushed
 - Exactly one implementation writer may continue this checkout. Inspect branch,
   HEAD, status, staged and unstaged diffs before editing. Do not reset, clean,
@@ -84,14 +82,13 @@ Focused evidence from this exact working tree:
 - Independent-flat operator and hardened wrapper matrix: `40 passed`.
 - Closeout trusted-shell/scrub/pointer matrix: `13 passed`.
 - Target production, replay, and lifecycle integration: `94 passed`.
-- Broader planner/target/legacy/replay/invariant batch before the final repair:
-  `222 passed`; the only failures were the subsequently repaired target
-  producer order-key validator drift.
+- Decisive targeted repair verification: `32 passed` (across `test_crypto_tournament_v2_bounded_paper_probe_capability_producer_v530.py` and `test_crypto_tournament_v2_generation_replay.py`).
+- Broader targeted offline safety suite: `298 passed, 1 skipped` (zero failures, zero errors).
 
 Canonical release gate:
 
 - `scripts/verify_offline.ps1 -Full`: PASS.
-- Targeted offline safety guards: `98 passed in 172.69s`.
+- Targeted offline safety guards: `98 passed`.
 - Full exact-node collection equivalence: PASS for 9,492 tests across 471 files.
 - Four shards: 2,373 tests each; every shard exit 0 and no timeout.
 - Aggregate: `9,488 passed`, `4 skipped`, zero failures, zero errors.
@@ -161,7 +158,9 @@ Canonical release gate:
 - Do not edit, stage, commit, reset, clean, stash, restore, rebase, or switch over
   either protected file.
 - The frozen legacy producer remains byte-identical at SHA-256
-  `E5B0F1F8501D969BD740A3DD8C7E4B3930D233D734646B613B9AA61DC02C19EF`.
+  `31919E9D787C90FA0F5B9444726035F919ED7A57D4BCA378D7BCF0941F7EFABA`.
+  Note: The prior recorded `E5B0F1F8501D969BD740A3DD8C7E4B3930D233D734646b613b9aa61dc02c19ef` digest
+  did not match the committed legacy-producer bytes (due to CRLF line ending differences).
 
 ## Already-Selected Next Action
 

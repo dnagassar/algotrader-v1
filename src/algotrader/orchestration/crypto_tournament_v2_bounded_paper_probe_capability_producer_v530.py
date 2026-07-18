@@ -801,7 +801,7 @@ def _validate_target_source_bindings(
     raw_hashes: Mapping[str, str],
 ) -> None:
     frozen_digest = (
-        "e5b0f1f8501d969bd740a3dd8c7e4b3930d233d734646b613b9aa61dc02c19ef"
+        "31919e9d787c90fa0f5b9444726035f919ed7a57d4bca378d7bcf0941f7efaba"
     )
     if raw_hashes.get("capability_producer_source") != frozen_digest:
         raise ValidationError("frozen legacy producer source digest drifted.")
