@@ -1,14 +1,16 @@
 # Active Implementation Checkpoint
 
-## Current Baseline — V5.28 Target-Scoped Read-Only Venue Visibility Complete
+## Current Baseline — V5.29 Target-Scoped Independent Flat Collection Complete
 
 - Checkpoint date: `2026-07-17`, America/New_York.
 - Branch: `codex/crypto-frozen-state-reset-workflow`.
-- Current HEAD: `380e3c9` (`Add target-scoped crypto venue visibility`).
+- Current HEAD: `f3a9bf3` (`Add target-scoped independent flat collection`).
 - V5.27 is committed locally as `e56e577` (`Implement crypto capability
   production and replay`).
 - V5.28 is committed locally as `380e3c9` (`Add target-scoped crypto venue
   visibility`).
+- V5.29 is committed locally as `f3a9bf3` (`Add target-scoped independent
+  flat collection`).
 - No owned implementation changes remain uncommitted. Only the two protected
   operator-owned files listed below are dirty.
 - Exactly one implementation writer may continue this checkout. Inspect branch,
@@ -21,11 +23,15 @@
   to rescue or retune tournament v2.
 - Tournament v2 remains preregistered for exactly BTCUSD, ETHUSD, and SOLUSD
   under the existing frozen fingerprints and untouched-OOS rules.
-- The latest real pipeline observation verified on 2026-07-17 remained
+- The real V2 OOS state was refreshed through
+  `2026-07-17T23:00:00Z`: 48 of 672 untouched-OOS hours per symbol are sealed,
+  candidate metrics remain empty, and the fixed terminal endpoint remains
+  `2026-08-13T00:00:00Z`. The V5.25 shadow remains
+  `waiting_for_tournament_terminal`; no winner, ranking, or selected subject
+  exists. Do not score, retune, or infer a calendar outcome early.
+- The latest real capability pipeline remains
   `candidate_deferred_pending_terminal_winner` with blocker
-  `v5_25_terminal_winner_not_available`. No V5.25 terminal winner, ranking, or
-  selected subject is available. Recheck current generated state; do not infer
-  a calendar outcome from elapsed wall time.
+  `v5_25_terminal_winner_not_available`.
 - V5.26 bounded-probe preregistration remains frozen at
   `3b82ebcaf3c80b9c1fbda5797623b2e616dfef0a3ed38d2cc52c0b1d3151efb5`.
 - V5.27 bounded-probe safety policy remains frozen at
@@ -82,6 +88,21 @@ a trustworthy, no-submit operational-capability review.
 - Both PowerShell wrappers are offline, local-artifact-only, no-submit,
   no-paper-mutation, no-live, and credential rejecting.
 
+V5.29 adds the canonical target-scoped independent-flat broker collector.
+
+- Exact BTCUSD, ETHUSD, or SOLUSD and a same-symbol filled-exit lifecycle are
+  validated before environment resolution or client construction.
+- The command reads only the paper account, all positions, and all open orders;
+  no submit, cancel, replace, close, liquidation, or mutation seam exists.
+- Success requires exact expected-account matching, an active unblocked account,
+  zero account-wide positions, zero account-wide open orders, and a read after
+  the broker-reported exit fill.
+- Raw account identifiers remain process-local. The sanitized receipt uses the
+  domain-separated account binding and its manifest binds exact lifecycle and
+  collector source bytes.
+- A failed newer read moves an older mutable-latest receipt and manifest intact
+  into generated superseded storage so stale evidence cannot remain active.
+
 ## Current Verification Evidence
 
 Credential-safe preflight on 2026-07-17:
@@ -118,6 +139,21 @@ V5.28 verification from the current worktree:
 - No network, broker/account read, broker mutation, paper mutation, live
   endpoint, or capital action occurred in the V5.28 tests.
 
+V5.29 verification from this exact worktree:
+
+- Focused flat/operator, capability producer, sealed review, and dependency
+  matrix: `181 passed in 24.76s`.
+- Default offline verifier: PASS, including `97 passed in 125.02s`.
+- Full offline verifier: PASS, including `97 passed in 95.02s`.
+- Bounded exact-node full suite: 9,296 tests; `9,292 passed`, `4 skipped`,
+  zero failures/errors; collection and execution equivalence PASS.
+- One exact isolated read-only market-data GET refreshed BTCUSD, ETHUSD, and
+  SOLUSD OOS evidence from `2026-07-16T00:00:00Z` through
+  `2026-07-17T23:00:00Z`. Credentials were not exposed; no account read or
+  broker/paper mutation occurred.
+- All implementation verification was credential-free, network-free,
+  broker-free, deterministic, and offline.
+
 ## Strategic Classification And Trajectory
 
 - Current classification:
@@ -145,19 +181,22 @@ V5.28 verification from the current worktree:
 - Tournament v2 may terminate with no winner or with an input-quality/economic
   rejection. No retuning, window extension, rescue ranking, or fingerprint
   reuse is authorized.
-- Running a fresh paper broker/account/venue read requires a credential-loaded
-  paper shell and exact scoped operator authorization. It is not authorized by
-  this checkpoint.
+- Future paper broker/account/venue reads still require a credential-loaded
+  isolated paper process and an exact operation scope. V5.29 does not turn the
+  completed OOS refresh into standing broker-read authority.
 - Any paper submit/cancel/fill/exit mutation requires exact operation-specific
-  operator authorization. No paper mutation is currently authorized.
+  authorization bound to the selected winner, lifecycle plan, USD 10 envelope,
+  account, expiry, and one-shot attempt budgets. No exact bounded lifecycle
+  mutation is currently authorized or executable before the terminal winner.
 - Live credentials, live endpoints, capital allocation, and any live order are
   hard operator gates. The repository remains paper-only and not live
   authorized.
 
 ## Worktree Ownership
 
-The V5.27 and V5.28 implementation slices are committed locally. No owned
-implementation file is staged, modified, or untracked after the V5.28 commit.
+The V5.27, V5.28, and V5.29 implementation slices are committed locally. No
+owned implementation file is staged, modified, or untracked after the V5.29
+commit. Only the mutable handoff is being reconciled for its checkpoint commit.
 
 ## Protected Dirty Work
 
@@ -172,8 +211,16 @@ implementation file is staged, modified, or untracked after the V5.28 commit.
 
 ## Already-Selected Next Action
 
-Do not perform a real paper venue read without fresh exact scoped operator
-authorization. Once genuine V5.25 terminal evidence names a winner, the next
-offline/evidence milestone is winner-specific lifecycle plus independent-flat
-evidence. The legacy lifecycle is BTC-only, so an ETHUSD or SOLUSD winner needs
-new winner-specific lifecycle evidence. Do not add another visibility layer.
+Continue receipt-bound V2 OOS accrual without scoring before
+`2026-08-13T00:00:00Z`. The next implementation slice is the dormant exact-
+winner bounded lifecycle operator: it must consume a sealed V5.25 winner,
+target-scoped venue evidence, the frozen USD 10 V5.27 safety state, exact
+account binding, expiry, and one-shot entry/exit/cancel budgets. It must remain
+non-executable before the winner and require exact operation authorization at
+mutation time.
+
+After a confirmed filled exit, run the committed V5.29 exact-target flat
+collector immediately, then source-bound capability production, sealed review,
+and pinned replay. Do not add another visibility layer, infer a winner early,
+reuse the BTC-only legacy lifecycle for ETHUSD/SOLUSD, or cross any live,
+credential-exposure, capital, or nonexact mutation gate.
