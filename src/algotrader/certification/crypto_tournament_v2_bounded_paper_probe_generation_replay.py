@@ -21,6 +21,8 @@ from algotrader.execution.crypto_bounded_probe_safety_certification import (
 )
 from algotrader.orchestration import (
     crypto_tournament_v2_bounded_paper_probe_capability_producer as producer,
+    crypto_tournament_v2_bounded_paper_probe_capability_producer_v530
+    as target_producer,
     crypto_tournament_v2_bounded_paper_probe_review as review,
 )
 
@@ -29,6 +31,10 @@ CRYPTO_TOURNAMENT_V2_CAPABILITY_REPLAY_SCHEMA_VERSION = (
     "v5_27_crypto_tournament_v2_bounded_paper_probe_generation_replay_v1"
 )
 
+_PRODUCTION_BUILDER_NAME = (
+    "build_crypto_tournament_v2_bounded_paper_probe_"
+    "capability_production"
+)
 _FALSE_AUTHORITY = {
     "network_access_authorized": False,
     "network_access_occurred": False,
@@ -85,13 +91,23 @@ def replay_crypto_tournament_v2_bounded_paper_probe_generation(
             terminal,
             "terminal_evidence",
         )
-        raw_inputs = _resolved_input_bytes(loaded.artifacts)
+        input_family, raw_inputs = _resolved_input_bytes(loaded.artifacts)
+        builder_module = (
+            target_producer if input_family == "target" else producer
+        )
+        builder = getattr(builder_module, _PRODUCTION_BUILDER_NAME)
+        target_terminal_kwargs = (
+            {"terminal_evidence_source_bytes": terminal_bytes}
+            if input_family == "target"
+            else {}
+        )
         recorded_at = _utc_datetime(status.get("as_of"), "status.as_of")
         historical = (
-            producer.build_crypto_tournament_v2_bounded_paper_probe_capability_production(
+            builder(
                 terminal,
                 resolved_input_bytes=raw_inputs,
                 as_of=recorded_at,
+                **target_terminal_kwargs,
             )
         )
         if dict(historical.artifacts) != dict(loaded.artifacts):
@@ -116,10 +132,11 @@ def replay_crypto_tournament_v2_bounded_paper_probe_generation(
             )
         safety_certification_reexecuted = True
         current_production = (
-            producer.build_crypto_tournament_v2_bounded_paper_probe_capability_production(
+            builder(
                 terminal,
                 resolved_input_bytes=raw_inputs,
                 as_of=current_utc,
+                **target_terminal_kwargs,
             )
         )
         if current_production.status.get("capability_bundle_emitted") is not True:
@@ -461,14 +478,37 @@ def _validate_outer_embedded_input_equality(
             )
 
 
-def _resolved_input_bytes(artifacts: Mapping[str, bytes]) -> dict[str, bytes]:
+def _resolved_input_bytes(
+    artifacts: Mapping[str, bytes],
+) -> tuple[str, dict[str, bytes]]:
+    resolved_paths = {
+        name
+        for name in artifacts
+        if name.startswith("resolved_sources/")
+    }
+    families = {
+        "legacy": producer._INPUT_ARTIFACT_PATHS,
+        "target": target_producer._TARGET_INPUT_ARTIFACT_PATHS,
+    }
+    matches = [
+        family
+        for family, paths in families.items()
+        if resolved_paths == set(paths.values())
+    ]
+    if len(matches) != 1:
+        raise ValidationError(
+            "pinned generation resolved source family is not exact."
+        )
+    family = matches[0]
     result: dict[str, bytes] = {}
-    for role, relative_path in producer._INPUT_ARTIFACT_PATHS.items():
+    for role, relative_path in families[family].items():
         payload = artifacts.get(relative_path)
         if not isinstance(payload, bytes) or not payload:
-            raise ValidationError(f"pinned generation source is absent: {role}.")
+            raise ValidationError(
+                f"pinned generation source is absent: {role}."
+            )
         result[role] = payload
-    return result
+    return family, result
 
 
 def _review_capability_inputs(
@@ -549,7 +589,10 @@ def _utc_datetime(value: object, field_name: str) -> datetime:
 
 def _sha256(value: object, field_name: str) -> str:
     text = str(value).strip().lower()
-    if len(text) != 64 or any(character not in "0123456789abcdef" for character in text):
+    if len(text) != 64 or any(
+        character not in "0123456789abcdef"
+        for character in text
+    ):
         raise ValidationError(f"{field_name} must be a SHA-256 digest.")
     return text
 
@@ -582,7 +625,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         trusted_current_utc=args.trusted_current_utc,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 0
+    return (
+        0
+        if result.get("classification") == "eligible_for_operator_review_only"
+        and result.get("blockers") == []
+        else 2
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

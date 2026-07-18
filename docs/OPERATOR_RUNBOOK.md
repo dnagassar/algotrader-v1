@@ -838,7 +838,8 @@ Run the complete V5.27 offline capability pipeline from a normal
 credential-free development shell, never from the paper shell:
 
 ```powershell
-.\scripts\run_crypto_tournament_v2_capability_pipeline.ps1
+.\scripts\run_crypto_tournament_v2_capability_pipeline.ps1 `
+  -InputFamily legacy
 ```
 
 The wrapper rejects paper/live profiles, all supported Alpaca credential
@@ -878,7 +879,7 @@ noncredential broker/account/order identifiers even though normalized outputs
 use a hashed account binding. Do not attach, publish, or copy a generation as a
 routine report. Blocked and malformed inputs are not snapshotted.
 
-Lifecycle eligibility is intentionally strict. V5.8 must show zero fill and no
+Legacy-family lifecycle eligibility is intentionally strict. V5.8 must show zero fill and no
 residual state; V5.9 must be the exact canonical packet/manifest output with its
 unchanged operator phrase and false authority fields; and V5.10 must show
 positive, cross-bound entry and exit fills. A fresh independent flat read must
@@ -919,8 +920,7 @@ the independent flat observation immediately from the isolated paper shell:
   -TargetSymbol <BTCUSD|ETHUSD|SOLUSD> `
   -LifecyclePath <exact-lifecycle-result-path> `
   -IndependentFlatReadAuthorized `
-  -AllowNetwork `
-  -AsOfTimestamp <CURRENT_UTC_TIMESTAMP>
+  -AllowNetwork
 ```
 
 The command validates the symbol and lifecycle before client construction. It
@@ -928,7 +928,12 @@ reads the paper account, every position, and every open order; it cannot mutate
 the broker. Success requires exact expected-account matching, an active and
 unblocked account, zero account-wide positions, zero account-wide open orders,
 and an observation no earlier than the lifecycle exit order's broker-reported
-filled_at.
+filled_at. There is no caller clock or account-ID argument: expected account is
+environment-only and observation time is taken from a trusted read-completion
+clock. Target lifecycle input must be regular, non-reparse, at most 1 MiB,
+strict UTF-8, duplicate-free canonical JSON, and pass the full V5.30 success
+validator. Explicit false account-block flags are mandatory, and an open-order
+result at the 100-order bound is treated as potentially truncated and blocks.
 
 The receipt and manifest are written under
 runs/crypto_strategy_tournament/v2/bounded_paper_probe_capabilities. Raw account
@@ -939,3 +944,76 @@ current command emits independent_flat_receipt_emitted.
 Do not run this before a filled-exit lifecycle exists, from a credential-free
 development shell, against a live endpoint, or as authority for any submit,
 cancel, replace, close, liquidation, capital, or live action.
+
+## Exact Winner Lifecycle Planning And Paper Execution
+
+Run planning only from a normal credential-free, network-free development
+shell after the tournament and V5.25 shadow have genuinely sealed an accepted
+winner and the selected-symbol venue evidence is fresh:
+
+```powershell
+.\scripts\build_crypto_tournament_v2_bounded_paper_probe_lifecycle_plan.ps1
+```
+
+The planner derives the current UTC time, terminal evidence, expected account
+binding, target venue binding, safety binding, and runtime source bundle. It
+accepts no caller account or clock argument. Exit 0 means only
+`ready_for_exact_operation_authorization`; exit 2 means dormant or blocked. Its
+`authorization_request.txt` is a non-authorizing request artifact and must
+never be renamed, copied, or used as a grant.
+
+For an exact paper operation, the operator creates a separate strict-UTF-8
+grant file under `%LOCALAPPDATA%\algo_trader\operator_grants`. The wrapper does
+not create that directory and rejects repository files, links/reparse points,
+planner request basenames, empty files, and files above 4096 bytes. From the
+isolated paper shell, run:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_bounded_paper_probe_lifecycle.ps1 `
+  -PaperMutationAuthorized `
+  -AllowNetwork `
+  -Plan runs\crypto_strategy_tournament\v2\bounded_paper_probe_lifecycle\latest\lifecycle_plan.json `
+  -GrantedAuthorizationPath <operator-owned-exact-grant-path>
+```
+
+The grant text is sent only over stdin. The fixed envelope is one USD 10
+crypto market/GTC entry, one exact filled-quantity market/GTC exit, one entry
+attempt, one exit attempt, one cancel attempt total, a 15-minute entry window,
+and zero replace/close/liquidate operations. Exit 0 is reserved for
+`filled_exit_confirmed`. Exit 2 is nonterminal or blocked: follow the persisted
+receipt's `next_action` and never blind-retry. If an entry remains open, reuse
+the exact same plan, grant, journal, safety state, and deterministic IDs after
+expiry so only that order can be observed or canceled.
+
+## Preferred Target Closeout
+
+After the exact lifecycle quartet records a confirmed filled exit, run the
+preferred closeout from the isolated paper shell:
+
+```powershell
+.\scripts\run_crypto_tournament_v2_bounded_paper_probe_closeout.ps1 `
+  -TargetSymbol <BTCUSD|ETHUSD|SOLUSD> `
+  -IndependentFlatReadAuthorized `
+  -AllowNetwork
+```
+
+The closeout requires terminal evidence, plan, lifecycle result, and manifest.
+It performs the read-only independent-flat collection first, then removes every
+profile, credential, account, endpoint, network-test, and Python-startup
+variable before running target-family capability production, sealed review,
+and pinned replay. It propagates the first nonzero child exit, derives clocks
+and the review publication fingerprint internally, and cannot plan or mutate.
+Use `-InputFamily target` only with the complete target evidence family;
+partial, mixed, extra, or legacy fallback inputs are rejected.
+
+Review and replay exit 0 only for their eligible/no-blocker outcomes. Waiting,
+blocked, malformed, stale, or nonexact evidence exits 2 and does not authorize
+paper or live activity.
+
+As of `2026-07-18T00:00:00Z`, the real V2 state has only 48 of 672 OOS hours per
+symbol through frontier `2026-07-17T23:00:00Z`; it has no metrics, qualified
+candidate, or winner, and the fixed endpoint remains
+`2026-08-13T00:00:00Z`. The V5.25 shadow therefore still waits, and no real
+V5.30 lifecycle quartet or V5.29 flat trio exists. Continue receipt-bound OOS
+accrual without early scoring, then complete the accepted 168-hour V5.25 shadow
+before venue refresh, planning, exact grant, paper lifecycle, and closeout.

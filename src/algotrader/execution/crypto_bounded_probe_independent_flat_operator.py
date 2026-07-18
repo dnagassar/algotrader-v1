@@ -13,10 +13,14 @@ from datetime import UTC, datetime
 import hashlib
 import json
 import os
+from algotrader.core.crypto_bounded_probe_lifecycle import canonical_json_bytes
 from pathlib import Path
 from typing import Any
 
 from algotrader.config import DEFAULT_ALPACA_PAPER_BASE_URL, AlpacaPaperConfig
+from algotrader.core.paper_account_binding import (
+    build_alpaca_paper_account_binding,
+)
 from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_client import AlpacaRecentOrderQuery
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
@@ -25,6 +29,10 @@ from algotrader.execution.crypto_bounded_probe_independent_flat_reconciliation i
     build_crypto_bounded_probe_independent_flat_reconciliation,
     validate_crypto_bounded_probe_independent_flat_reconciliation,
 )
+from algotrader.execution.crypto_tournament_v2_bounded_paper_probe_lifecycle_operator import (
+    validate_crypto_tournament_v2_bounded_paper_probe_lifecycle_receipt,
+)
+
 
 
 SCHEMA_VERSION = "v5_29_crypto_bounded_probe_independent_flat_operator_v1"
@@ -41,6 +49,9 @@ TARGET_LIFECYCLE_SCHEMA_VERSION = (
 LEGACY_LIFECYCLE_SCHEMA_VERSION = (
     "v5_10_crypto_paper_fill_exit_certification_v1"
 )
+
+
+_MAX_LIFECYCLE_SOURCE_BYTES = 1_048_576
 
 BrokerClientFactory = Callable[[AlpacaPaperConfig], Any]
 
@@ -71,6 +82,7 @@ def run_crypto_bounded_probe_independent_flat_operator(
     lifecycle_path: Path | str = DEFAULT_LIFECYCLE_PATH,
     output_root: Path | str = DEFAULT_OUTPUT_ROOT,
     timestamp: datetime | str | None = None,
+    clock: Callable[[], datetime] | None = None,
     env: Mapping[str, str] | None = None,
     broker_client_factory: BrokerClientFactory | None = None,
     expected_paper_account_id: str = "",
@@ -81,23 +93,53 @@ def run_crypto_bounded_probe_independent_flat_operator(
     """Collect one post-exit, account-wide flat paper observation."""
 
     selected_symbol = _symbol(symbol)
-    observed_at = _utc_datetime(timestamp or datetime.now(UTC), "timestamp")
+    claimed_not_before = (
+        None if timestamp is None else _utc_datetime(timestamp, "timestamp")
+    )
+    trusted_clock = clock or (lambda: datetime.now(UTC))
+    clock_blockers: list[str] = []
+    try:
+        observed_at = _trusted_clock_time(trusted_clock)
+    except ValidationError:
+        observed_at = claimed_not_before or datetime.now(UTC)
+        clock_blockers.append("trusted_clock_invalid")
+    if (
+        claimed_not_before is not None
+        and observed_at < claimed_not_before
+    ):
+        clock_blockers.append("trusted_clock_precedes_requested_not_before")
     source_path = _path(lifecycle_path, "lifecycle_path")
     root = _path(output_root, "output_root")
-    lifecycle, lifecycle_sha256 = _read_json_mapping(source_path)
+    lifecycle, lifecycle_sha256, lifecycle_source_blocker = (
+        _read_json_mapping(source_path)
+    )
     lifecycle_binding, lifecycle_blockers = _lifecycle_binding(
         lifecycle,
         selected_symbol=selected_symbol,
         observed_at=observed_at,
         source_sha256=lifecycle_sha256,
     )
+    if lifecycle_source_blocker:
+        lifecycle_blockers = [lifecycle_source_blocker]
     source_env = _normalized_env(dict(os.environ) if env is None else env)
     expected_account = (
         str(expected_paper_account_id).strip()
         or _first_nonempty(source_env, _EXPECTED_ACCOUNT_NAMES)
     )
     preflight = _preflight(source_env, expected_account=expected_account)
-    blockers = [*lifecycle_blockers]
+    blockers = [*clock_blockers, *lifecycle_blockers]
+    if (
+        lifecycle_binding.get("schema_version")
+        == TARGET_LIFECYCLE_SCHEMA_VERSION
+        and expected_account
+    ):
+        expected_binding = build_alpaca_paper_account_binding(
+            {"account_id": expected_account},
+            expected_account_configured=True,
+            expected_account_matched=True,
+        )
+        if lifecycle_binding.get("account_binding") != expected_binding:
+            blockers.append("target_lifecycle_account_binding_mismatch")
     if independent_flat_read_authorized is not True:
         blockers.append("independent_flat_read_authorization_required")
     if allow_network is not True:
@@ -154,9 +196,19 @@ def run_crypto_bounded_probe_independent_flat_operator(
     account_result = _read_account(client)
     positions_result = _read_positions(client)
     orders_result = _read_open_orders(client)
+    try:
+        completed_at = _trusted_clock_time(
+            trusted_clock,
+            not_before=observed_at,
+        )
+        clock_read_blocker = ""
+    except ValidationError:
+        completed_at = observed_at
+        clock_read_blocker = "trusted_clock_invalid"
     read_errors = [
         value
         for value in (
+            clock_read_blocker,
             account_result["blocker"],
             positions_result["blocker"],
             orders_result["blocker"],
@@ -174,6 +226,7 @@ def run_crypto_bounded_probe_independent_flat_operator(
         read_errors.append("account_wide_open_order_observed")
     observed_base = {
         **base,
+        "as_of": completed_at.isoformat(),
         "broker_read_occurred": True,
         "account_read_occurred": account_result["occurred"],
         "positions_read_occurred": positions_result["occurred"],
@@ -203,7 +256,7 @@ def run_crypto_bounded_probe_independent_flat_operator(
     try:
         receipt = build_crypto_bounded_probe_independent_flat_reconciliation(
             symbol=selected_symbol,
-            observed_at=observed_at,
+            observed_at=completed_at,
             account_observation=account,
             expected_account_configured=True,
             expected_account_matched=True,
@@ -259,6 +312,12 @@ def _lifecycle_binding(
         if lifecycle.get("outcome_classification") != "filled_exit_confirmed":
             blockers.append("lifecycle_fill_exit_not_confirmed")
     elif schema == TARGET_LIFECYCLE_SCHEMA_VERSION:
+        try:
+            validate_crypto_tournament_v2_bounded_paper_probe_lifecycle_receipt(
+                lifecycle
+            )
+        except (ValidationError, KeyError, TypeError, ValueError):
+            blockers.append("target_lifecycle_receipt_invalid")
         subject = lifecycle.get("subject")
         if isinstance(subject, Mapping):
             lifecycle_symbol = str(subject.get("symbol", "")).strip().upper()
@@ -291,6 +350,14 @@ def _lifecycle_binding(
         {
             "schema_version": schema,
             "symbol": lifecycle_symbol,
+            **(
+                {
+                    "account_binding": dict(lifecycle["account_binding"])
+                }
+                if schema == TARGET_LIFECYCLE_SCHEMA_VERSION
+                and isinstance(lifecycle.get("account_binding"), Mapping)
+                else {}
+            ),
             "exit_filled_at": (
                 "" if filled_at is None else filled_at.isoformat()
             ),
@@ -316,9 +383,12 @@ def _preflight(
         ),
         "live_endpoint_indicator": _live_endpoint(env),
         "network_test_flag_enabled": any(
-            env.get(name, "").strip().lower() in {"1", "true"}
+            env.get(name, "").strip().lower()
+            in {"1", "true", "yes", "on"}
             for name in _NETWORK_TEST_FLAG_NAMES
-        ),
+        )
+        or "--allow-network"
+        in env.get("PYTEST_ADDOPTS", "").strip().lower(),
         **{
             f"{name}_present": bool(env.get(name))
             for name in _CREDENTIAL_NAMES
@@ -371,8 +441,9 @@ def _build_client(
 
 def _read_account(client: Any) -> dict[str, object]:
     try:
+        raw_account = client.get_account()
         raw = _object_payload(
-            client.get_account(),
+            raw_account,
             (
                 "id",
                 "account_id",
@@ -383,20 +454,42 @@ def _read_account(client: Any) -> dict[str, object]:
                 "trading_blocked",
             ),
         )
+        if not isinstance(raw_account, Mapping):
+            for name in ("blocked", "account_blocked", "trading_blocked"):
+                if hasattr(raw_account, name):
+                    raw[name] = getattr(raw_account, name)
+        required_flags = ("account_blocked", "trading_blocked")
+        if any(
+            name not in raw or type(raw[name]) is not bool
+            for name in required_flags
+        ) or (
+            "blocked" in raw and type(raw["blocked"]) is not bool
+        ):
+            return {
+                "value": {},
+                "occurred": True,
+                "blocker": "paper_account_blocking_fields_invalid",
+            }
+        flags = {name: raw[name] for name in required_flags}
+        if "blocked" in raw:
+            flags["blocked"] = raw["blocked"]
         value = {
             "id": str(raw.get("id", "")).strip(),
             "account_id": str(raw.get("account_id", "")).strip(),
             "account_number": str(raw.get("account_number", "")).strip(),
             "status": str(raw.get("status", "")).strip(),
-            "blocked": raw.get("blocked") is True,
-            "account_blocked": raw.get("account_blocked") is True,
-            "trading_blocked": raw.get("trading_blocked") is True,
+            **flags,
         }
         if not value["id"] and value["account_id"]:
             value["id"] = value["account_id"]
         if not value["account_id"] and value["id"]:
             value["account_id"] = value["id"]
-        return {"value": value, "occurred": True, "blocker": ""}
+        blocker = (
+            "paper_account_trading_blocked"
+            if any(flags.values())
+            else ""
+        )
+        return {"value": value, "occurred": True, "blocker": blocker}
     except Exception:  # noqa: BLE001 - broker ambiguity is sanitized.
         return {
             "value": {},
@@ -422,16 +515,26 @@ def _read_positions(client: Any) -> dict[str, object]:
 
 def _read_open_orders(client: Any) -> dict[str, object]:
     try:
+        query = AlpacaRecentOrderQuery(
+            status_filter="open",
+            limit=100,
+        )
         rows = [
             _object_payload(
                 value,
                 ("symbol", "status", "client_order_id"),
             )
-            for value in client.get_orders(
-                AlpacaRecentOrderQuery(status_filter="open")
-            )
+            for value in client.get_orders(query)
         ]
-        return {"value": rows, "occurred": True, "blocker": ""}
+        return {
+            "value": rows,
+            "occurred": True,
+            "blocker": (
+                "account_wide_open_order_scan_may_be_truncated"
+                if len(rows) >= query.limit
+                else ""
+            ),
+        }
     except Exception:  # noqa: BLE001
         return {
             "value": [],
@@ -564,17 +667,71 @@ def _object_payload(
     }
 
 
-def _read_json_mapping(path: Path) -> tuple[dict[str, object], str]:
-    if not path.is_file():
-        return {}, ""
+class _DuplicateJsonKeyError(ValueError):
+    pass
+
+
+def _read_json_mapping(
+    path: Path,
+) -> tuple[dict[str, object], str, str]:
+    if not path.is_file() or _is_link_or_reparse(path):
+        return {}, "", "lifecycle_source_not_regular_non_reparse_file"
     try:
-        payload = path.read_bytes()
-        value = json.loads(payload.decode("utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}, ""
+        with path.open("rb") as stream:
+            payload = stream.read(_MAX_LIFECYCLE_SOURCE_BYTES + 1)
+    except OSError:
+        return {}, "", "lifecycle_source_not_regular_non_reparse_file"
+    if not payload:
+        return {}, "", "lifecycle_source_empty"
+    if len(payload) > _MAX_LIFECYCLE_SOURCE_BYTES:
+        return {}, "", "lifecycle_source_too_large"
+
+    def reject_duplicates(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise _DuplicateJsonKeyError(key)
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> object:
+        raise ValueError(f"non-finite JSON constant: {value}")
+
+    try:
+        decoded = payload.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return {}, "", "lifecycle_source_not_utf8"
+    try:
+        value = json.loads(
+            decoded,
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_constant,
+        )
+    except _DuplicateJsonKeyError:
+        return {}, "", "lifecycle_source_duplicate_keys"
+    except (ValueError, json.JSONDecodeError):
+        return {}, "", "lifecycle_source_invalid_json"
     if not isinstance(value, Mapping):
-        return {}, ""
-    return dict(value), hashlib.sha256(payload).hexdigest()
+        return {}, "", "lifecycle_source_not_object"
+    parsed = dict(value)
+    if (
+        parsed.get("schema_version") == TARGET_LIFECYCLE_SCHEMA_VERSION
+        and payload != canonical_json_bytes(parsed)
+    ):
+        return {}, "", "target_lifecycle_source_not_canonical_json"
+    return parsed, hashlib.sha256(payload).hexdigest(), ""
+
+
+def _is_link_or_reparse(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    try:
+        attributes = path.lstat().st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    return bool(attributes & 0x400)
 
 
 def _path(value: Path | str, field_name: str) -> Path:
@@ -610,6 +767,20 @@ def _utc_datetime(value: object, field_name: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValidationError(f"{field_name} must be timezone-aware.")
     return parsed.astimezone(UTC)
+
+
+def _trusted_clock_time(
+    clock: Callable[[], datetime],
+    *,
+    not_before: datetime | None = None,
+) -> datetime:
+    try:
+        observed = _utc_datetime(clock(), "trusted_clock")
+    except Exception as exc:
+        raise ValidationError("trusted clock is unavailable.") from exc
+    if not_before is not None and observed < not_before:
+        raise ValidationError("trusted clock regressed.")
+    return observed
 
 
 def _first_nonempty(
@@ -648,14 +819,15 @@ def _atomic_write(path: Path, payload: bytes) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        allow_abbrev=False,
+    )
     parser.add_argument("--target-symbol", required=True)
     parser.add_argument(
         "--lifecycle-path", default=str(DEFAULT_LIFECYCLE_PATH)
     )
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
-    parser.add_argument("--timestamp", default=None)
-    parser.add_argument("--expected-paper-account-id", default="")
     parser.add_argument(
         "--independent-flat-read-authorized", action="store_true"
     )
@@ -665,8 +837,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         symbol=args.target_symbol,
         lifecycle_path=args.lifecycle_path,
         output_root=args.output_root,
-        timestamp=args.timestamp,
-        expected_paper_account_id=args.expected_paper_account_id,
         independent_flat_read_authorized=(
             args.independent_flat_read_authorized
         ),

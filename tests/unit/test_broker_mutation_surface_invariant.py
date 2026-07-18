@@ -67,6 +67,12 @@ EXPECTED_DIRECT_MUTATION_CALLS = frozenset(
         ("src/algotrader/execution/crypto_paper_fill_exit_certification.py", "_submit_and_reconcile_once", "submit_order"),
         ("src/algotrader/execution/crypto_paper_mutation_drill.py", "_submit_cancel_reconcile", "submit_order"),
         ("src/algotrader/execution/crypto_paper_submit_cancel_certification.py", "_submit_cancel_reconcile", "submit_order"),
+        (
+            "src/algotrader/execution/"
+            "crypto_tournament_v2_bounded_paper_probe_lifecycle_operator.py",
+            "_submit_or_reconcile",
+            "submit_order",
+        ),
         ("src/algotrader/execution/etf_sma_daily_oms_rehearsal.py", "submit_order", "submit_order"),
         ("src/algotrader/execution/etf_sma_m370_paper_submit.py", "_submit_once", "submit_order_request"),
         ("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py", "_submit_once", "submit_order_request"),
@@ -107,6 +113,12 @@ SHARED_CLAIM_OPERATOR_MUTATION_CALLS = frozenset(
             "_submit_once",
             "submit_order_request",
         ),
+        (
+            "src/algotrader/execution/"
+            "crypto_tournament_v2_bounded_paper_probe_lifecycle_operator.py",
+            "_submit_or_reconcile",
+            "submit_order",
+        ),
     }
 )
 
@@ -139,6 +151,11 @@ EXPECTED_DYNAMIC_CANCEL_DISPATCHERS = frozenset(
         ("src/algotrader/execution/crypto_paper_mutation_drill.py", "_request_order_cancellation"),
         ("src/algotrader/execution/crypto_paper_submit_cancel_certification.py", "_request_order_cancellation"),
         ("src/algotrader/execution/etf_sma_v199_authorized_bounded_spy_paper_drill.py", "_request_order_cancellation"),
+        (
+            "src/algotrader/execution/"
+            "crypto_tournament_v2_bounded_paper_probe_lifecycle_operator.py",
+            "_cancel_order",
+        ),
         ("src/algotrader/execution/paper_mutation_oms.py", "request_order_cancellation"),
     }
 )
@@ -546,6 +563,10 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
     crypto_drill_path = (
         "src/algotrader/execution/crypto_paper_mutation_drill.py"
     )
+    bounded_lifecycle_path = (
+        "src/algotrader/execution/"
+        "crypto_tournament_v2_bounded_paper_probe_lifecycle_operator.py"
+    )
     oms_path = "src/algotrader/execution/paper_mutation_oms.py"
     invocation_path = (
         "src/algotrader/execution/paper_cancellation_invocation.py"
@@ -558,6 +579,7 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
         "etf_sma_v199_authorized_bounded_spy_paper_drill.py"
     )
     assert consumers == {
+        bounded_lifecycle_path,
         certification_path,
         crypto_drill_path,
         exact_binding_path,
@@ -844,6 +866,123 @@ def test_m376_operator_close_requires_shared_durable_claim_first() -> None:
     ]
 
     assert len(broker_calls_inside) == 1
+
+
+def test_v530_lifecycle_mutations_are_contained_by_durable_coordinators() -> None:
+    path = Path(
+        "src/algotrader/execution/"
+        "crypto_tournament_v2_bounded_paper_probe_lifecycle_operator.py"
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    submit_lifecycle = functions["_submit_or_reconcile"]
+    submit_coordinators = [
+        node
+        for node in ast.walk(submit_lifecycle)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "DurableSubmitCoordinator"
+    ]
+    submit_executes = [
+        node
+        for node in ast.walk(submit_lifecycle)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "coordinator"
+        and node.func.attr == "execute"
+    ]
+    assert len(submit_coordinators) == 1
+    assert len(submit_executes) == 1
+    submit_callback = next(
+        keyword.value
+        for keyword in submit_executes[0].keywords
+        if keyword.arg == "submit"
+    )
+    assert isinstance(submit_callback, ast.Lambda)
+    submit_calls = [
+        node
+        for node in ast.walk(submit_callback)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "client"
+        and node.func.attr == "submit_order"
+    ]
+    operator_submit_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "client"
+        and node.func.attr == "submit_order"
+    ]
+    assert len(submit_calls) == 1
+    assert len(operator_submit_calls) == 1
+
+    cancel_lifecycle = functions["_cancel_entry_or_reconcile"]
+    cancel_coordinators = [
+        node
+        for node in ast.walk(cancel_lifecycle)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "DurableCancelCoordinator"
+    ]
+    cancel_executes = [
+        node
+        for node in ast.walk(cancel_lifecycle)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "coordinator"
+        and node.func.attr == "execute"
+    ]
+    assert len(cancel_coordinators) == 1
+    assert len(cancel_executes) == 1
+    cancel_callback = next(
+        keyword.value
+        for keyword in cancel_executes[0].keywords
+        if keyword.arg == "cancel"
+    )
+    assert isinstance(cancel_callback, ast.Lambda)
+    cancel_calls = [
+        node
+        for node in ast.walk(cancel_callback)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_cancel_order"
+    ]
+    operator_cancel_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_cancel_order"
+    ]
+    assert len(cancel_calls) == 1
+    assert len(operator_cancel_calls) == 1
+
+    cancel_dispatcher = functions["_cancel_order"]
+    method_loops = [
+        node
+        for node in ast.walk(cancel_dispatcher)
+        if isinstance(node, ast.For)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "method_name"
+        and isinstance(node.iter, ast.Tuple)
+    ]
+    assert len(method_loops) == 1
+    assert tuple(
+        element.value
+        for element in method_loops[0].iter.elts
+        if isinstance(element, ast.Constant)
+    ) == ("cancel_order_by_id", "cancel_order")
 
 
 def _ast_name_observations(path: Path, tree: ast.AST) -> list[NameObservation]:

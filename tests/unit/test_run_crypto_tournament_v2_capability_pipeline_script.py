@@ -296,3 +296,114 @@ def _powershell() -> str:
     if executable is None:
         pytest.skip("PowerShell is required for wrapper verification")
     return executable
+
+
+
+def test_target_pipeline_forwards_only_pinned_local_evidence(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "target-args.txt"
+    env = _fake_python_env(tmp_path, capture)
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(PIPELINE),
+            "-InputFamily",
+            "target",
+            "-ShadowRoot",
+            "shadow",
+            "-CapabilityRoot",
+            "capabilities",
+            "-SafetyReceiptPath",
+            "safety.json",
+            "-TargetTerminalEvidencePath",
+            "terminal-evidence.json",
+            "-TargetLifecyclePlanPath",
+            "lifecycle-plan.json",
+            "-TargetLifecycleReceiptPath",
+            "lifecycle-receipt.json",
+            "-TargetLifecycleManifestPath",
+            "lifecycle-manifest.json",
+            "-IndependentFlatReconciliationPath",
+            "flat-receipt.json",
+            "-IndependentFlatStatusPath",
+            "flat-status.json",
+            "-IndependentFlatManifestPath",
+            "flat-manifest.json",
+            "-AsOf",
+            "2026-08-20T00:01:00+00:00",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0, combined
+    lines = capture.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    args = lines[0]
+    assert (
+        "-m algotrader.orchestration."
+        "crypto_tournament_v2_bounded_paper_probe_capability_producer_v530"
+    ) in args
+    assert "crypto_bounded_probe_safety_certification" not in args
+    expected = (
+        "--target-terminal-evidence-path terminal-evidence.json",
+        "--target-lifecycle-plan-path lifecycle-plan.json",
+        "--target-lifecycle-receipt-path lifecycle-receipt.json",
+        "--target-lifecycle-manifest-path lifecycle-manifest.json",
+        "--independent-flat-reconciliation-path flat-receipt.json",
+        "--independent-flat-status-path flat-status.json",
+        "--independent-flat-manifest-path flat-manifest.json",
+    )
+    for fragment in expected:
+        assert args.count(fragment) == 1
+    for forbidden in (
+        "bounded_paper_probe_lifecycle_operator",
+        "independent_flat_operator",
+        "--paper-mutation-authorized",
+        "--allow-network",
+        "--submit",
+        "--cancel",
+        "--replace",
+        "--close",
+        "--liquidate",
+    ):
+        assert forbidden not in args
+
+
+def test_legacy_pipeline_rejects_explicit_target_paths_before_python(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "legacy-target-args.txt"
+    env = _fake_python_env(tmp_path, capture)
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(PIPELINE),
+            "-TargetLifecyclePlanPath",
+            "must-not-forward.json",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "-InputFamily target" in result.stdout + result.stderr
+    assert not capture.exists()

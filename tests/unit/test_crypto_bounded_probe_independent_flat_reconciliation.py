@@ -108,13 +108,33 @@ def test_account_alias_disagreement_fails_closed() -> None:
 
 @pytest.mark.parametrize(
     "field",
-    ("blocked", "account_blocked", "trading_blocked"),
+    ("account_blocked", "trading_blocked"),
 )
 def test_missing_account_block_flag_fails_closed(field: str) -> None:
     account = _account()
     del account[field]
 
     with pytest.raises(ValidationError, match="block flags are incomplete"):
+        _receipt(account_observation=account)
+
+
+def test_optional_generic_blocked_alias_may_be_absent() -> None:
+    account = _account()
+    del account["blocked"]
+
+    receipt = _receipt(account_observation=account)
+
+    assert receipt["final_position_count"] == 0
+
+
+@pytest.mark.parametrize("value", (None, "false", 0, 1, True))
+def test_optional_generic_blocked_alias_fails_closed_when_ambiguous(
+    value: object,
+) -> None:
+    account = _account()
+    account["blocked"] = value
+
+    with pytest.raises(ValidationError, match="blocked or ambiguous"):
         _receipt(account_observation=account)
 
 

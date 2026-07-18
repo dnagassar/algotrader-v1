@@ -297,11 +297,12 @@ This flow is a contract boundary, not permission to trade.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
 - Direct production submit and cancel call sites are a closed, executable
-  inventory. The paper autopilot is the only autonomous mutation caller and
-  must atomically persist its final fenced journal claim before invoking the
-  injected broker boundary. Older certification and drill entrypoints remain
-  separately operator-gated; adding any unclassified mutation call fails the
-  default offline invariant suite.
+  inventory. The paper autopilot is the only autonomous mutation caller. V5.30
+  is a non-autonomous, exact-plan and exact-operator-grant paper lifecycle.
+  Every caller must atomically persist its final fenced journal claim before
+  invoking the injected broker boundary. Older certification and drill
+  entrypoints remain separately operator-gated; adding any unclassified
+  mutation call fails the default offline invariant suite.
 - The operator-only M370/M435 tiny SPY entry paths and M376 quantity-based SPY
   close path are legacy submits migrated onto the shared durable contract. Each
   dedicated local journal must acquire a
@@ -309,7 +310,8 @@ This flow is a contract boundary, not permission to trade.
   pre-mutation claim before its single broker call. Broker exceptions become
   durable unknown state, and crash reruns cannot resubmit.
 - `DurableSubmitCoordinator` is the shared final-submit hot-path contract used
-  by paper autopilot, M370, M376, and M435. Callers provide typed immutable
+  by paper autopilot, M370, M376, M435, and the exact V5.30 bounded lifecycle.
+  Callers provide typed immutable
   identity, fenced lease evidence, explicit canonical-risk and
   snapshot-freshness booleans, an
   injected submit callback, and a broker-observation mapper. The coordinator
@@ -323,15 +325,16 @@ This flow is a contract boundary, not permission to trade.
   Callback or observation ambiguity becomes durable unknown state and cannot
   be retried after restart. Its production consumers are limited by executable
   allowlist to the exactly authorized v5.8 BTCUSD paper submit/cancel
-  certification, the v4.12C bounded crypto paper-mutation drill, and the v1.89
-  paper-mutation OMS cancellation/restart-recovery boundary. All three
+  certification, the v4.12C bounded crypto paper-mutation drill, the v1.89
+  paper-mutation OMS cancellation/restart-recovery boundary, and the exact
+  V5.30 winner-scoped lifecycle. These
   initialize dedicated local journals before submit and remain behind their
   existing operator, paper-only, same-order, and reconciliation gates; the OMS
   additionally retains its process lock. The OMS fake-only rehearsal may
   exercise the same contract while keeping paper authorization and every
   real-broker activity flag false. The coordinator adds no authority and has
   only been exercised in these migrations with offline fakes. The executable
-  allowlist now covers all four known dynamic production cancellation
+  allowlist now covers all five known dynamic production cancellation
   dispatchers, each still separately operator-gated; it authorizes no new
   caller and no autonomous cancellation.
 - Paper fills are simulated or broker-observed paper records only.
@@ -1048,8 +1051,9 @@ contain matching empty strings when unavailable; a nonempty alternate
 `min_order_notional` must equal the primary minimum. A derived minimum order
 value above USD 10 fails closed.
 
-Lifecycle capability requires a locally hash-coherent V5.6-V5.10 chain and the
-exact producer source bytes. The legacy V5.8/V5.10 path is BTCUSD-only and
+The legacy lifecycle input family requires a locally hash-coherent V5.6-V5.10
+chain and the exact producer source bytes. The legacy V5.8/V5.10 path is
+BTCUSD-only and
 cannot certify ETHUSD or SOLUSD. The current historical mutable-latest chain is
 also rejected because it no longer retains the exact V5.6 bytes named by V5.8.
 All five lifecycle timestamps must be ordered and non-future, and the earliest
@@ -1068,6 +1072,15 @@ re-derives that ordering and the venue semantics from normalized upstreams.
 Lifecycle and flat evidence must bind the same expected paper account through a
 domain-separated hash; raw account identifiers are absent from normalized
 capability and flat outputs.
+
+The separate target input family accepts only one complete V5.30 evidence
+family: pinned terminal evidence, canonical lifecycle plan, successful lifecycle
+receipt and manifest, and the V5.29 flat receipt, status, and manifest. Partial,
+mixed, extra, or fallback layouts are rejected. Target production validates the
+full order request shape independently: USD 10 crypto market/GTC entry by
+notional, exact filled-quantity crypto market/GTC exit, and no limit price.
+Pinned replay preserves the exact selected input family and cannot reinterpret
+target evidence as legacy evidence.
 
 Capability and review generations are immutable and fingerprint-addressed,
 with an exclusive local lock and latest pointer written last. Canonical loaders
@@ -1101,14 +1114,68 @@ switches, paper profile and endpoint, credentials, and expected-account
 matching. It reads only the account, all positions, and all open orders.
 
 Success requires a fully active, unblocked account with zero account-wide
-positions and open orders. Raw account identifiers remain process-local and
-only the V5.27 domain-separated account binding is persisted. Receipt and
-manifest bytes bind the exact lifecycle and collector source hashes. A newer
-failed or nonflat read moves any previous mutable-latest receipt into a
-recoverable generated superseded directory so stale evidence cannot remain
-active.
+positions and open orders. `account_blocked` and `trading_blocked` must be
+explicit booleans and false; optional `blocked`, when present, must also be an
+explicit false boolean. The open-order read is account-wide, open-status, and
+bounded at 100; reaching the limit blocks as possibly truncated. Target
+lifecycle input must be a regular non-reparse file no larger than 1 MiB,
+strict UTF-8, duplicate-free canonical JSON, and must pass the complete V5.30
+success validator before client construction. The lifecycle and expected
+account bindings must match. Observation time is the trusted read-completion
+UTC time, and clock regression blocks.
+
+Raw account identifiers remain process-local and only the V5.27
+domain-separated account binding is persisted. Receipt and manifest bytes bind
+the exact lifecycle and collector source hashes. A newer failed or nonflat read
+moves any previous mutable-latest receipt into a recoverable generated
+superseded directory so stale evidence cannot remain active.
 
 The collector exposes no submit, cancel, replace, close, or liquidation seam.
 It grants no paper mutation, capital, or live authority. The full contract is
 in
 `docs/design/v5_29_crypto_target_scoped_independent_flat_collection.md`.
+
+### V5.30 Exact Winner Bounded Paper Lifecycle And Closeout
+
+V5.30 adds an offline sealed planner and one exact, non-autonomous Alpaca-paper
+lifecycle. Before a genuine accepted V5.25 winner exists, planning remains
+dormant and performs no environment, credential, network, broker, or mutation
+work. A ready plan binds the complete current terminal export, exact selected
+symbol, fresh target venue evidence, frozen safety certification, expected
+paper-account binding, and the runtime source bundle. It authorizes no action.
+
+The mutation envelope is fixed: one USD 10 crypto market/GTC entry, one
+risk-reducing crypto market/GTC exit for the exact confirmed filled quantity,
+a 15-minute entry window, at most one entry attempt, one exit attempt, and one
+cancel attempt total, with zero replacement, close, or liquidation attempts.
+Every direct lookup, fallback lookup, durable observation, account-wide cancel
+snapshot, final receipt, and target capability normalization binds the same
+client ID, broker identity, symbol, side, asset class, order type, time in
+force, no-limit-price state, and exact quantity/notional shape. Response loss or
+identity drift is durable ambiguity, never permission to resubmit.
+
+The credential-bearing lifecycle shell additionally requires explicit paper
+mutation and network switches plus an exact grant stored under the fixed
+operator-owned `%LOCALAPPDATA%\algo_trader\operator_grants` directory. The
+grant must be a bounded strict-UTF-8 regular file with a completely
+reparse-point-free path, outside the repository, and is delivered only over
+stdin. The planner's `authorization_request.txt` is never a grant. The shell
+resolves a signed Python Software Foundation interpreter from registered
+installs, uses isolated mode, and removes Python startup-injection variables
+from the child environment.
+
+Success is only `filled_exit_confirmed` with account-wide flat/no-open-order
+evidence and a canonical terminal/plan/receipt/manifest quartet. An open entry
+may be resumed only with the same plan, grant, deterministic IDs, and durable
+state so the exact order can be observed or canceled after expiry. The closeout
+shell runs the V5.29 flat read first, then scrubs every credential, profile,
+account, endpoint, network-test, and Python-startup variable before target
+capability production, sealed review, and pinned replay. It launches stages
+with the already-running trusted PowerShell executable and cannot plan or
+mutate.
+
+V5.30 remains paper-only. It grants no autonomous trading, capital allocation,
+live endpoint, live credential, or live-order authority. Live readiness still
+requires genuine completed strategy and paper evidence, a separate
+live-readiness review, executable-attestation hardening, explicit capital
+allocation, live credentials/endpoints, and exact live authorization.

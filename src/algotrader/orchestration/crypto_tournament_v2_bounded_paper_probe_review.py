@@ -611,8 +611,36 @@ def run_crypto_tournament_v2_bounded_paper_probe_review(
     capability_path = _local_path(capability_root, "capability_root")
     output_path = _local_path(output_root, "output_root")
     terminal_evidence: Mapping[str, object] | None = None
+    terminal_evidence_bytes: bytes | None = None
+    capabilities: Mapping[str, Mapping[str, object]] = {}
+    capability_hashes: Mapping[str, str] = {}
+    capability_sources: Mapping[str, Mapping[str, object]] = {}
+    capability_source_hashes: Mapping[str, str] = {}
+    capability_upstreams: Mapping[
+        str, Mapping[str, Mapping[str, object]]
+    ] = {}
+    capability_upstream_hashes: Mapping[str, Mapping[str, str]] = {}
+    capability_support_artifacts: Mapping[str, bytes] = {}
+    capability_artifacts_loaded = False
+    latest_capability = capability_path / "latest_manifest.json"
+    if latest_capability.exists() or latest_capability.is_symlink():
+        (
+            capabilities,
+            capability_hashes,
+            capability_sources,
+            capability_source_hashes,
+            capability_upstreams,
+            capability_upstream_hashes,
+            capability_support_artifacts,
+        ) = _load_capability_artifacts(capability_path)
+        capability_artifacts_loaded = True
+        (
+            terminal_evidence,
+            terminal_evidence_bytes,
+        ) = _pinned_terminal_evidence(capability_support_artifacts)
+
     state_path = shadow_path / "frozen_state.json"
-    if state_path.is_file():
+    if terminal_evidence is None and state_path.is_file():
         status = run_crypto_tournament_v2_forward_shadow_state(
             output_root=shadow_path,
             as_of=evaluated_at,
@@ -626,26 +654,33 @@ def run_crypto_tournament_v2_bounded_paper_probe_review(
                     as_of=evaluated_at,
                 )
             )
+            terminal_evidence_bytes = _json_artifact_bytes(
+                terminal_evidence
+            )
     packet = build_crypto_tournament_v2_bounded_paper_probe_review(
         terminal_evidence,
         as_of=evaluated_at,
     )
-    capabilities: Mapping[str, Mapping[str, object]] = {}
-    capability_sources: Mapping[str, Mapping[str, object]] = {}
-    capability_upstreams: Mapping[
-        str, Mapping[str, Mapping[str, object]]
-    ] = {}
-    capability_support_artifacts: Mapping[str, bytes] = {}
     if packet["classification"] == "blocked_by_operational_evidence":
-        (
-            capabilities,
-            capability_hashes,
-            capability_sources,
-            capability_source_hashes,
-            capability_upstreams,
-            capability_upstream_hashes,
-            capability_support_artifacts,
-        ) = _load_capability_artifacts(capability_path)
+        if not capability_artifacts_loaded:
+            (
+                capabilities,
+                capability_hashes,
+                capability_sources,
+                capability_source_hashes,
+                capability_upstreams,
+                capability_upstream_hashes,
+                capability_support_artifacts,
+            ) = _load_capability_artifacts(capability_path)
+            (
+                pinned_terminal,
+                pinned_terminal_bytes,
+            ) = _pinned_terminal_evidence(
+                capability_support_artifacts
+            )
+            if pinned_terminal is not None:
+                terminal_evidence = pinned_terminal
+                terminal_evidence_bytes = pinned_terminal_bytes
         packet = build_crypto_tournament_v2_bounded_paper_probe_review(
             terminal_evidence,
             capability_evidence=capabilities,
@@ -667,6 +702,7 @@ def run_crypto_tournament_v2_bounded_paper_probe_review(
                 packet
             ),
             terminal_evidence=terminal_evidence,
+            terminal_evidence_bytes=terminal_evidence_bytes,
             capability_evidence=capabilities,
             capability_source_evidence=capability_sources,
             capability_upstream_evidence=capability_upstreams,
@@ -2759,6 +2795,34 @@ def _load_capability_artifacts(
     )
 
 
+def _pinned_terminal_evidence(
+    support_artifacts: Mapping[str, bytes],
+) -> tuple[Mapping[str, object] | None, bytes | None]:
+    from algotrader.orchestration import (
+        crypto_tournament_v2_bounded_paper_probe_capability_producer as capability_producer,
+    )
+
+    matches = [
+        (name, payload)
+        for name, payload in support_artifacts.items()
+        if name.endswith("/inputs/terminal_evidence.json")
+    ]
+    if len(matches) > 1:
+        raise ValidationError(
+            "pinned capability terminal evidence is ambiguous."
+        )
+    if not matches:
+        return None, None
+    name, payload = matches[0]
+    terminal = capability_producer._json_mapping(payload, name)
+    capability_producer._require_canonical_json(
+        payload,
+        terminal,
+        name,
+    )
+    return terminal, payload
+
+
 def _probe_envelope() -> dict[str, object]:
     return {
         "environment": "alpaca_crypto_paper",
@@ -2932,6 +2996,7 @@ def _publish_review_artifacts(
         str, Mapping[str, Mapping[str, object]]
     ],
     capability_support_artifacts: Mapping[str, bytes],
+    terminal_evidence_bytes: bytes | None = None,
 ) -> dict[str, object]:
     from algotrader.orchestration import (
         crypto_tournament_v2_bounded_paper_probe_capability_producer as capability_producer,
@@ -2950,9 +3015,25 @@ def _publish_review_artifacts(
             "review_packet.md": markdown_bytes,
         }
         if terminal_evidence is not None:
-            artifacts["inputs/terminal_evidence.json"] = _json_artifact_bytes(
-                terminal_evidence
+            terminal_payload = (
+                _json_artifact_bytes(terminal_evidence)
+                if terminal_evidence_bytes is None
+                else terminal_evidence_bytes
             )
+            terminal_mapping = capability_producer._json_mapping(
+                terminal_payload,
+                "terminal_evidence",
+            )
+            capability_producer._require_canonical_json(
+                terminal_payload,
+                terminal_mapping,
+                "terminal_evidence",
+            )
+            if terminal_mapping != dict(terminal_evidence):
+                raise ValidationError(
+                    "terminal evidence bytes do not match review input."
+                )
+            artifacts["inputs/terminal_evidence.json"] = terminal_payload
         for kind, payload in capability_evidence.items():
             artifacts[f"inputs/capabilities/{kind}.json"] = (
                 _json_artifact_bytes(payload)
@@ -3189,7 +3270,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         as_of=args.as_of or datetime.now(UTC).isoformat(),
     )
     print(json.dumps(packet, indent=2, sort_keys=True))
-    return 0
+    return (
+        0
+        if packet.get("classification") == "eligible_for_operator_review_only"
+        and bool(packet.get("admission_fingerprint"))
+        else 2
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

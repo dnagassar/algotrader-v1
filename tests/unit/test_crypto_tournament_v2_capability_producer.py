@@ -155,10 +155,14 @@ def _build_safety_sources() -> dict[str, bytes]:
 
 
 class _FakeReadOnlyVenueClient:
+    def __init__(self, symbol: str = "BTCUSD") -> None:
+        self.symbol = symbol
+
+
     def get_all_assets(self) -> list[dict[str, object]]:
         return [
             {
-                "symbol": "BTC/USD",
+                "symbol": f"{self.symbol[:-3]}/USD",
                 "asset_class": "crypto",
                 "tradable": True,
                 "status": "active",
@@ -171,7 +175,7 @@ class _FakeReadOnlyVenueClient:
         ]
 
 
-def _build_venue_sources(root: Path) -> dict[str, bytes]:
+def _build_venue_sources(root: Path, symbol: str = "BTCUSD") -> dict[str, bytes]:
     bars_path = root / "operator_input" / "crypto_paper_bars.csv"
     visibility_root = root / "runs" / "crypto_paper_visibility" / "latest"
     refresh_root = root / "runs" / "crypto_universe_refresh" / "paper_read"
@@ -184,20 +188,20 @@ def _build_venue_sources(root: Path) -> dict[str, bytes]:
                 "low", "close", "volume",
             )
         )
-        for bar in REFRESH_BARS("BTCUSD", AS_OF, count=80):
+        for bar in REFRESH_BARS(symbol, AS_OF, count=80):
             WRITE_BAR_ROW(writer, bar)
     run_crypto_paper_visibility_cycle(
         output_root=visibility_root,
         bars_csv=bars_path,
         timestamp=AS_OF,
-        target_symbol="BTCUSD",
+        target_symbol=symbol,
         env={
             "APP_PROFILE": "paper",
             "ALPACA_API_KEY": "fixture-paper-key",
             "ALPACA_SECRET_KEY": "fixture-paper-secret",
             "ALPACA_PAPER_BASE_URL": DEFAULT_ALPACA_PAPER_BASE_URL,
         },
-        sdk_client_factory=lambda _config: _FakeReadOnlyVenueClient(),
+        sdk_client_factory=lambda _config: _FakeReadOnlyVenueClient(symbol),
         write_artifacts=True,
     )
     visibility_path = visibility_root / "latest_status.json"

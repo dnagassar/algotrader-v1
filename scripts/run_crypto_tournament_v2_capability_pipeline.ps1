@@ -20,6 +20,29 @@ param(
     [string]$SafetyReceiptPath = (
         "runs\crypto_strategy_tournament\v2\bounded_paper_probe_capabilities\safety_certification_receipt.json"
     ),
+    [ValidateSet("legacy", "target")]
+    [string]$InputFamily = "legacy",
+    [string]$TargetTerminalEvidencePath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_lifecycle\latest\terminal_evidence.json"
+    ),
+    [string]$TargetLifecyclePlanPath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_lifecycle\latest\lifecycle_plan.json"
+    ),
+    [string]$TargetLifecycleReceiptPath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_lifecycle\latest\lifecycle_result.json"
+    ),
+    [string]$TargetLifecycleManifestPath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_lifecycle\latest\manifest.json"
+    ),
+    [string]$IndependentFlatReconciliationPath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_capabilities\independent_flat_reconciliation.json"
+    ),
+    [string]$IndependentFlatStatusPath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_capabilities\latest_status.json"
+    ),
+    [string]$IndependentFlatManifestPath = (
+        "runs\crypto_strategy_tournament\v2\bounded_paper_probe_capabilities\independent_flat_manifest.json"
+    ),
     [string]$AsOf = ((Get-Date).ToUniversalTime().ToString("o"))
 )
 
@@ -30,6 +53,25 @@ $PSNativeCommandUseErrorActionPreference = $false
 $RepoRoot = (
     Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
 ).Path
+$TargetEvidenceParameterNames = @(
+    "TargetTerminalEvidencePath",
+    "TargetLifecyclePlanPath",
+    "TargetLifecycleReceiptPath",
+    "TargetLifecycleManifestPath",
+    "IndependentFlatReconciliationPath",
+    "IndependentFlatStatusPath",
+    "IndependentFlatManifestPath"
+)
+if ($InputFamily -eq "legacy") {
+    foreach ($Name in $TargetEvidenceParameterNames) {
+        if ($PSBoundParameters.ContainsKey($Name)) {
+            throw (
+                "Target evidence path parameters require " +
+                "-InputFamily target."
+            )
+        }
+    }
+}
 
 function Test-EnvLoaded {
     param([string]$Name)
@@ -114,27 +156,53 @@ $CertificationArguments = @(
     "--as-of",
     $AsOf
 )
+$ProductionModule = (
+    "algotrader.orchestration." +
+    "crypto_tournament_v2_bounded_paper_probe_capability_producer"
+)
+if ($InputFamily -eq "target") {
+    $ProductionModule += "_v530"
+}
 $ProductionArguments = @(
     "-m",
-    (
-        "algotrader.orchestration." +
-        "crypto_tournament_v2_bounded_paper_probe_capability_producer"
-    ),
+    $ProductionModule,
     "--shadow-root",
     $ShadowRoot,
     "--output-root",
     $CapabilityRoot,
     "--safety-certification-receipt-path",
-    $SafetyReceiptPath,
+    $SafetyReceiptPath
+)
+if ($InputFamily -eq "target") {
+    $ProductionArguments += @(
+        "--target-terminal-evidence-path",
+        $TargetTerminalEvidencePath,
+        "--target-lifecycle-plan-path",
+        $TargetLifecyclePlanPath,
+        "--target-lifecycle-receipt-path",
+        $TargetLifecycleReceiptPath,
+        "--target-lifecycle-manifest-path",
+        $TargetLifecycleManifestPath,
+        "--independent-flat-reconciliation-path",
+        $IndependentFlatReconciliationPath,
+        "--independent-flat-status-path",
+        $IndependentFlatStatusPath,
+        "--independent-flat-manifest-path",
+        $IndependentFlatManifestPath
+    )
+}
+$ProductionArguments += @(
     "--as-of",
     $AsOf
 )
 
 Push-Location -LiteralPath $RepoRoot
 try {
-    & $PythonCommand.Source @CertificationArguments
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+    if ($InputFamily -eq "legacy") {
+        & $PythonCommand.Source @CertificationArguments
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
     }
     & $PythonCommand.Source @ProductionArguments
     if ($LASTEXITCODE -ne 0) {

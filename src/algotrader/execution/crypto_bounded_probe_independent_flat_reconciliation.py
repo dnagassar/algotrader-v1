@@ -107,10 +107,14 @@ def build_crypto_bounded_probe_independent_flat_reconciliation(
         "ACCOUNT_ACTIVE",
     }:
         raise ValidationError("paper account is not active.")
-    for blocker in ("blocked", "account_blocked", "trading_blocked"):
+    for blocker in ("account_blocked", "trading_blocked"):
         if blocker not in account_observation:
             raise ValidationError("paper account block flags are incomplete.")
         value = account_observation.get(blocker)
+        if type(value) is not bool or value is not False:
+            raise ValidationError("paper account is blocked or ambiguous.")
+    if "blocked" in account_observation:
+        value = account_observation.get("blocked")
         if type(value) is not bool or value is not False:
             raise ValidationError("paper account is blocked or ambiguous.")
     position_rows = _mapping_rows(positions, "positions")

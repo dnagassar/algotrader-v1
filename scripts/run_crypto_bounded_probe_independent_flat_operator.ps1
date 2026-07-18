@@ -15,9 +15,7 @@ param(
     [switch]$IndependentFlatReadAuthorized,
     [switch]$AllowNetwork,
     [string]$LifecyclePath = "runs\crypto_strategy_tournament\v2\bounded_paper_probe_lifecycle\latest\lifecycle_result.json",
-    [string]$OutputRoot = "runs\crypto_strategy_tournament\v2\bounded_paper_probe_capabilities",
-    [string]$ExpectedPaperAccountId = "",
-    [string]$AsOfTimestamp = ""
+    [string]$OutputRoot = "runs\crypto_strategy_tournament\v2\bounded_paper_probe_capabilities"
 )
 
 Set-StrictMode -Version Latest
@@ -32,6 +30,137 @@ function Test-Loaded([string]$Name) {
 }
 function Format-Bool([bool]$Value) {
     return $Value.ToString().ToLowerInvariant()
+}
+
+function Test-PathUnderRoot {
+    param(
+        [string]$Path,
+        [string]$Root
+    )
+    try {
+        $FullPath = [System.IO.Path]::GetFullPath($Path)
+        $FullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar
+        )
+        return (
+            $FullPath.Equals(
+                $FullRoot,
+                [System.StringComparison]::OrdinalIgnoreCase
+            ) -or
+            $FullPath.StartsWith(
+                $FullRoot + [System.IO.Path]::DirectorySeparatorChar,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        )
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ReparsePointFreePath {
+    param([string]$Path)
+    try {
+        $FullPath = [System.IO.Path]::GetFullPath($Path)
+        $VolumeRoot = [System.IO.Path]::GetPathRoot($FullPath)
+        $RelativePath = $FullPath.Substring($VolumeRoot.Length)
+        $CurrentPath = $VolumeRoot
+        $Components = $RelativePath.Split(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringSplitOptions]::RemoveEmptyEntries
+        )
+        foreach ($Component in $Components) {
+            $CurrentPath = Join-Path $CurrentPath $Component
+            if (-not (Test-Path -LiteralPath $CurrentPath)) {
+                return $false
+            }
+            $Info = Get-Item -LiteralPath $CurrentPath -Force
+            if (
+                [bool](
+                    $Info.Attributes -band
+                    [System.IO.FileAttributes]::ReparsePoint
+                )
+            ) {
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-RegisteredPythonCandidates {
+    $Candidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($RegistryRoot in @(
+        "Registry::HKEY_CURRENT_USER\Software\Python\PythonCore",
+        "Registry::HKEY_LOCAL_MACHINE\Software\Python\PythonCore",
+        "Registry::HKEY_LOCAL_MACHINE\Software\WOW6432Node\Python\PythonCore"
+    )) {
+        if (-not (Test-Path -LiteralPath $RegistryRoot)) {
+            continue
+        }
+        foreach ($VersionKey in (
+            Get-ChildItem -LiteralPath $RegistryRoot -ErrorAction SilentlyContinue
+        )) {
+            $InstallPathKey = Join-Path $VersionKey.PSPath "InstallPath"
+            if (-not (Test-Path -LiteralPath $InstallPathKey)) {
+                continue
+            }
+            try {
+                $InstallRoot = [string](
+                    Get-Item -LiteralPath $InstallPathKey
+                ).GetValue("")
+            }
+            catch {
+                continue
+            }
+            if (-not [string]::IsNullOrWhiteSpace($InstallRoot)) {
+                $Candidates.Add((Join-Path $InstallRoot "python.exe"))
+            }
+        }
+    }
+    return $Candidates.ToArray()
+}
+
+function Resolve-TrustedPythonExecutable {
+    foreach ($Candidate in (
+        (Get-RegisteredPythonCandidates) |
+            Sort-Object -Unique -Descending
+    )) {
+        try {
+            $FullPath = [System.IO.Path]::GetFullPath($Candidate)
+            if (
+                -not [System.IO.Path]::IsPathRooted($FullPath) -or
+                -not (Test-Path -LiteralPath $FullPath -PathType Leaf) -or
+                -not (Test-ReparsePointFreePath $FullPath) -or
+                (Test-PathUnderRoot $FullPath $RepoRoot)
+            ) {
+                continue
+            }
+            $Info = Get-Item -LiteralPath $FullPath -Force
+            if ($Info.VersionInfo.ProductName -notmatch "(?i)python") {
+                continue
+            }
+            $Signature = Get-AuthenticodeSignature -LiteralPath $FullPath
+            if (
+                $Signature.Status -ne "Valid" -or
+                $null -eq $Signature.SignerCertificate -or
+                $Signature.SignerCertificate.Subject -notlike (
+                    "*Python Software Foundation*"
+                )
+            ) {
+                continue
+            }
+            return $FullPath
+        }
+        catch {
+            continue
+        }
+    }
+    throw "A trusted registered Python executable is required."
 }
 
 $AppProfile = [Environment]::GetEnvironmentVariable(
@@ -90,7 +219,10 @@ if ($LiveEndpoint) {
     throw "Live endpoint indicators are not authorized."
 }
 
+$TrustedPythonPath = Resolve-TrustedPythonExecutable
+
 $Arguments = @(
+    "-I",
     "-m",
     "algotrader.execution.crypto_bounded_probe_independent_flat_operator",
     "--target-symbol",
@@ -102,25 +234,51 @@ $Arguments = @(
     "--independent-flat-read-authorized",
     "--allow-network"
 )
-if (-not [string]::IsNullOrWhiteSpace($ExpectedPaperAccountId)) {
-    $Arguments += @(
-        "--expected-paper-account-id",
-        $ExpectedPaperAccountId
-    )
+
+$ProcessInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$ProcessInfo.FileName = $TrustedPythonPath
+$ProcessInfo.WorkingDirectory = $RepoRoot
+$ProcessInfo.UseShellExecute = $false
+$ProcessInfo.RedirectStandardOutput = $true
+$ProcessInfo.RedirectStandardError = $true
+$ProcessInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$ProcessInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+foreach ($Name in @(
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "PYTHONSTARTUP",
+    "PYTHONINSPECT",
+    "PYTHONUSERBASE",
+    "PYTHONBREAKPOINT",
+    "PYTHONPYCACHEPREFIX"
+)) {
+    [void]$ProcessInfo.Environment.Remove($Name)
 }
-if (-not [string]::IsNullOrWhiteSpace($AsOfTimestamp)) {
-    $Arguments += @("--timestamp", $AsOfTimestamp)
+foreach ($Argument in $Arguments) {
+    [void]$ProcessInfo.ArgumentList.Add([string]$Argument)
 }
 
-Push-Location -LiteralPath $RepoRoot
+$Process = [System.Diagnostics.Process]::new()
+$Process.StartInfo = $ProcessInfo
 try {
-    & python @Arguments
-    $ExitCode = $LASTEXITCODE
+    if (-not $Process.Start()) {
+        throw "Unable to start independent flat operator."
+    }
+    $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
+    $StderrTask = $Process.StandardError.ReadToEndAsync()
+    $Process.WaitForExit()
+    [System.Threading.Tasks.Task]::WaitAll(
+        [System.Threading.Tasks.Task[]]@($StdoutTask, $StderrTask)
+    )
+    if (-not [string]::IsNullOrEmpty($StdoutTask.Result)) {
+        [Console]::Out.Write($StdoutTask.Result)
+    }
+    if (-not [string]::IsNullOrEmpty($StderrTask.Result)) {
+        [Console]::Error.Write($StderrTask.Result)
+    }
+    $ExitCode = $Process.ExitCode
 }
 finally {
-    Pop-Location
-}
-if ($null -eq $ExitCode) {
-    $ExitCode = 0
+    $Process.Dispose()
 }
 exit $ExitCode

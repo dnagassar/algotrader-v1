@@ -30,6 +30,8 @@ V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX = (
 V58_CRYPTO_PAPER_CERTIFICATION_CLIENT_ORDER_ID_PREFIX = (
     "v58-btcusd-paper-cert-"
 )
+V530_CRYPTO_BOUNDED_PROBE_CLIENT_ORDER_ID_PREFIX = "v530-bounded-probe-"
+_V530_CRYPTO_BOUNDED_PROBE_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD")
 _RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
 _RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
 _RECENT_ORDER_QUERY_SIDES = ("", "buy", "sell")
@@ -178,6 +180,31 @@ class AlpacaOrderRequest:
             and not has_notional
             and self.limit_price is not None
         )
+        v530_crypto_bounded_probe = (
+            asset_class == "crypto"
+            and normalized_symbol in _V530_CRYPTO_BOUNDED_PROBE_SYMBOLS
+            and _is_v530_crypto_bounded_probe_client_order_id(
+                self.client_order_id,
+                symbol=normalized_symbol,
+                side=side,
+            )
+            and order_type == "market"
+            and time_in_force == "gtc"
+            and self.limit_price is None
+            and (
+                (
+                    side == "buy"
+                    and not has_qty
+                    and has_notional
+                    and self.notional == Decimal("10")
+                )
+                or (
+                    side == "sell"
+                    and has_qty
+                    and not has_notional
+                )
+            )
+        )
         m355_spy_close = (
             asset_class == "equity"
             and normalized_symbol == "SPY"
@@ -194,10 +221,18 @@ class AlpacaOrderRequest:
             and has_qty
             and not has_notional
         )
+        if (
+            self.client_order_id.startswith(
+                V530_CRYPTO_BOUNDED_PROBE_CLIENT_ORDER_ID_PREFIX
+            )
+            and not v530_crypto_bounded_probe
+        ):
+            raise ValueError("V5.30 bounded-probe request shape drifted.")
         if side not in {"buy", "sell"}:
             raise ValueError("Alpaca paper order requests require buy or sell side.")
         if side == "sell" and not (
             asset_class == "crypto" and normalized_symbol == "BTCUSD"
+            or v530_crypto_bounded_probe
             or m355_spy_close
             or paper_autopilot_spy_close
             or v189_spy_certification
@@ -206,7 +241,8 @@ class AlpacaOrderRequest:
                 "Alpaca paper sell requests are restricted to BTCUSD crypto "
                 "close probes, the explicit M355 SPY paper close, or the "
                 "paper-autopilot SPY close namespace, or the v1.89/v3.1 "
-                "SPY paper certification limit drill."
+                "SPY paper certification limit drill, or the exact V5.30 "
+                "bounded-probe lifecycle namespace."
             )
         if order_type not in {"market", "limit"}:
             raise ValueError("Alpaca paper order requests require market or limit type.")
@@ -293,6 +329,27 @@ class AlpacaClient(Protocol):
         ...
 
 
+def _is_v530_crypto_bounded_probe_client_order_id(
+    client_order_id: str,
+    *,
+    symbol: str,
+    side: str,
+) -> bool:
+    role = {"buy": "entry", "sell": "exit"}.get(side)
+    if role is None:
+        return False
+    prefix = (
+        f"{V530_CRYPTO_BOUNDED_PROBE_CLIENT_ORDER_ID_PREFIX}"
+        f"{symbol.lower()}-{role}-"
+    )
+    if not client_order_id.startswith(prefix):
+        return False
+    token = client_order_id[len(prefix):]
+    return len(token) == 16 and all(
+        character in "0123456789abcdef" for character in token
+    )
+
+
 def _is_spy_certification_client_order_id(client_order_id: str) -> bool:
     return (
         client_order_id == V189_SPY_CERTIFICATION_CLIENT_ORDER_ID
@@ -326,4 +383,5 @@ __all__ = [
     "V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX",
     "V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX",
     "V58_CRYPTO_PAPER_CERTIFICATION_CLIENT_ORDER_ID_PREFIX",
+    "V530_CRYPTO_BOUNDED_PROBE_CLIENT_ORDER_ID_PREFIX",
 ]
