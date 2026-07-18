@@ -1,13 +1,16 @@
 # Active Implementation Checkpoint
 
-## Current Slice — V5.28 Target-Scoped Read-Only Venue Visibility
+## Current Baseline — V5.28 Target-Scoped Read-Only Venue Visibility Complete
 
 - Checkpoint date: `2026-07-17`, America/New_York.
 - Branch: `codex/crypto-frozen-state-reset-workflow`.
-- Current HEAD: `e56e577` (`Implement crypto capability production and replay`).
-- V5.27 is committed locally. The V5.28 operator, producer/reviewer target
-  binding, wrappers, tests, and documentation are the only owned uncommitted
-  implementation slice.
+- Current HEAD: `380e3c9` (`Add target-scoped crypto venue visibility`).
+- V5.27 is committed locally as `e56e577` (`Implement crypto capability
+  production and replay`).
+- V5.28 is committed locally as `380e3c9` (`Add target-scoped crypto venue
+  visibility`).
+- No owned implementation changes remain uncommitted. Only the two protected
+  operator-owned files listed below are dirty.
 - Exactly one implementation writer may continue this checkout. Inspect branch,
   HEAD, status, staged and unstaged diffs before editing. Do not reset, clean,
   stash, restore, rebase, or switch branches during takeover.
@@ -142,8 +145,6 @@ V5.28 verification from the current worktree:
 - Tournament v2 may terminate with no winner or with an input-quality/economic
   rejection. No retuning, window extension, rescue ranking, or fingerprint
   reuse is authorized.
-- V5.28 implementation is complete; final offline verification, scoped staging,
-  and its local commit remain.
 - Running a fresh paper broker/account/venue read requires a credential-loaded
   paper shell and exact scoped operator authorization. It is not authorized by
   this checkpoint.
@@ -155,54 +156,9 @@ V5.28 verification from the current worktree:
 
 ## Worktree Ownership
 
-V5.27 committed locally as `e56e577` includes:
+The V5.27 and V5.28 implementation slices are committed locally. No owned
+implementation file is staged, modified, or untracked after the V5.28 commit.
 
-- `src/algotrader/execution/crypto_bounded_probe_safety.py`
-- `tests/unit/test_crypto_bounded_probe_safety.py`
-
-Additional committed V5.27 continuation files:
-
-- `src/algotrader/core/paper_account_binding.py`
-- `src/algotrader/execution/crypto_bounded_probe_independent_flat_reconciliation.py`
-- `src/algotrader/execution/crypto_bounded_probe_safety_certification.py`
-- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_capability_producer.py`
-- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_review.py`
-- `src/algotrader/certification/__init__.py`
-- `src/algotrader/certification/crypto_tournament_v2_bounded_paper_probe_generation_replay.py`
-- `scripts/run_crypto_tournament_v2_capability_pipeline.ps1`
-- `scripts/replay_crypto_tournament_v2_bounded_paper_probe_review.ps1`
-- `tests/unit/test_crypto_bounded_probe_independent_flat_reconciliation.py`
-- `tests/unit/test_crypto_bounded_probe_safety_certification.py`
-- `tests/unit/test_crypto_tournament_v2_capability_producer.py`
-- `tests/unit/test_crypto_tournament_v2_bounded_paper_probe_review.py`
-- `tests/unit/test_crypto_tournament_v2_generation_replay.py`
-- `tests/unit/test_run_crypto_tournament_v2_capability_pipeline_script.py`
-- `tests/unit/test_dependency_direction.py`
-- `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
-- `docs/design/v5_26_crypto_tournament_v2_bounded_paper_probe_review.md`
-- `docs/deterministic_core.md`
-- `docs/OPERATOR_RUNBOOK.md`
-- `docs/agent_context/codex_operating_context.md`
-- `docs/agent_context/active_implementation.md`
-
-Owned uncommitted V5.28 slice:
-
-- `src/algotrader/execution/crypto_paper_visibility_operator.py`
-- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_capability_producer.py`
-- `src/algotrader/orchestration/crypto_tournament_v2_bounded_paper_probe_review.py`
-- `scripts/run_crypto_paper_visibility_cycle.ps1`
-- `scripts/run_crypto_universe_refresh.ps1`
-- `tests/unit/test_crypto_paper_visibility_operator.py`
-- `tests/unit/test_run_crypto_paper_visibility_cycle_script.py`
-- `tests/unit/test_crypto_universe_refresh.py`
-- `tests/unit/test_crypto_tournament_v2_capability_producer.py`
-- `tests/unit/test_crypto_tournament_v2_bounded_paper_probe_review.py`
-- `docs/design/v5_28_crypto_target_scoped_read_only_venue_visibility.md`
-- `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`
-- `docs/deterministic_core.md`
-- `docs/OPERATOR_RUNBOOK.md`
-- `docs/agent_context/codex_operating_context.md`
-- `docs/agent_context/active_implementation.md`
 ## Protected Dirty Work
 
 - Preserve `docs/project_checkpoint.md` as unrelated modified operator work at
@@ -216,12 +172,8 @@ Owned uncommitted V5.28 slice:
 
 ## Already-Selected Next Action
 
-Finish and commit V5.28 without pushing:
-
-1. Recheck credential/profile presence and both protected hashes.
-2. Stage only the owned V5.28 slice and inspect the staged diff.
-3. Create one coherent local V5.28 commit.
-
 Do not perform a real paper venue read without fresh exact scoped operator
-authorization. After V5.28, the next evidence milestone is terminal-winner-
-specific lifecycle and independent-flat evidence, not another visibility layer.
+authorization. Once genuine V5.25 terminal evidence names a winner, the next
+offline/evidence milestone is winner-specific lifecycle plus independent-flat
+evidence. The legacy lifecycle is BTC-only, so an ETHUSD or SOLUSD winner needs
+new winner-specific lifecycle evidence. Do not add another visibility layer.
