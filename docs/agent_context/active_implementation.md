@@ -1,65 +1,44 @@
-# Active Implementation Checkpoint
+# Active Implementation Handoff
 
-## Current Baseline — V5.31A Closed-Hour Scheduling Semantics Repaired and Verified
+## Status
+Implementation complete; publication pending independent review.
 
-- Checkpoint date: `2026-07-19`, America/New_York.
-- Branch: `antigravity/v5.31a-deterministic-oos-scheduler`.
-- Current committed HEAD: `af23e0a1727206b11d0431cc617691fe4f493aad`.
-- Sole implementation writer: Antigravity.
-- The V5.31A scheduler timing repairs and safety hardness modifications are complete, locally verified, and pass the canonical sharded offline verifier.
-- Independent review status: pending independent review
-- Push status: not pushed (do not push, do not open a pull request)
-- Exactly one implementation writer may continue this checkout. Inspect branch, HEAD, status, staged and unstaged diffs before editing. Do not reset, clean, stash, restore, rebase, or switch branches during takeover.
+## Repository Reference State
+- **Repair Base**: `2f59e6a232cd851d93bec18b523ab0d402d5ff44`
+- **Round 3 Code Commit SHA**: `04d6a361d29125419a24313b60be768c28c0b647`
+- **Round 3 Code Commit Tree**: `ca04a425054b1e5aad5b93070bfeb69939a03be6`
+- **Exact Code-Commit Changed Files**:
+  - [crypto_tournament_v2_oos_scheduler.py](file:///C:/Users/danie/Desktop/algo_trader_v531a_oos_scheduler/src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py)
+  - [test_crypto_tournament_v2_oos_scheduler_repairs.py](file:///C:/Users/danie/Desktop/algo_trader_v531a_oos_scheduler/tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py)
 
-## Implemented Contract
+## Operational and Safety Gates
+- **Task Registered**: False (No task registered in Windows Task Scheduler)
+- **Real Dispatcher Executed**: False (Execution remained completely pre-broker/offline)
+- **Network Access**: False (No network requests were executed)
+- **Broker Access**: False (No live or paper broker access occurred)
+- **Credentials Present**: False (No API credentials or keys loaded or printed)
+- **Git Push/PR**: None (No branches pushed, no pull requests opened)
 
-V5.31A provides a deterministic scheduled execution layer for tournament-v2 OOS accrual without active agents or polling loops:
-
-- **Timing Semantics**: Hourly bar timestamps represent the **opening time** of the bar, not its completion/publication time (e.g. bar covering `20:00:00Z` to `21:00:00Z` is labeled `20:00:00Z`). It closes at `21:00:00Z` and is eligible with a 5-minute publication grace period at `21:05:00Z`.
-- **Trigger Logic**: The scheduled task runs 5 minutes after every UTC hour boundary. Thus, a trigger at `21:05:00Z` schedules the prior hour's bar-open timestamp (`20:00:00Z`), not `21:00:00Z`.
-- **Forming Bar Protection**: The scheduler strictly filters out any currently forming bar. A forming bar (at hour `HH:00` for a tick at `HH:MM`) will never be requested or dispatched.
-- **Database Storage**: Uses schema `v5_31a_scheduler_schema_v2` with renamed columns to prevent timing ambiguity (`requested_start_bar_open`, `requested_end_bar_open`, `provider_as_of_boundary`, `accepted_frontier_bar_open`, `expected_frontier_bar_open`).
-- **Subprocess Dispatch Mapping**: The real command dispatcher maps `--as-of` to `provider_as_of_boundary` (`requested_end_bar_open + 1 hour`).
-- **Receipt Model**: Records explicit timing/boundary keys separately (`clock_time_utc`, `publication_grace_seconds`, `accepted_frontier_bar_open`, `requested_start_bar_open`, `requested_end_bar_open`, `provider_as_of_boundary`, `expected_frontier_bar_open`, `next_eligible_scheduler_time`). No-op receipts state that no post-frontier bar is eligible.
-- **Stale Job and Failure Policy**: Stale RUNNING jobs (older than 15 minutes) are recovered to FAILED. FAILED/BLOCKED jobs never auto-retry. A subsequent distinct eligible window is not blocked, but overlapping windows cannot be silently skipped. Operator action is required to resolve historical failures.
+## Defect and Hardening Details
+- **Unresolved-Job Precedence**: Implemented. `OneShotExecutor.tick()` queries for and prioritizes existing unresolved jobs (PENDING, RUNNING, FAILED, BLOCKED) in the lane, using their original parameters verbatim. This prevents concurrent overlap deadlocks where advancing time expands windows.
+- **Receipt Validation**: Receipts in the manifest must match an allowed type (`operating_packet`, `frozen_state`). Fails closed on unrecognized types (`unknown_receipt_type`) or structure mismatch (`receipt_type_mismatch`).
+- **Endpoint Parser / Adversarial Evasion**: Pure-Python hostname parser `_extract_hostname` normalizes casing, and strips userinfo (`user:pass@host`), port, trailing dot, fragment, and path elements, preventing endpoint spoofing.
+- **Claim-Identity Nonce**: Appends a random 8-character `uuid4` hex suffix to the claim identity (`run_{yyyymmddHHMMSS}_{pid}_{uuid4hex[:8]}`) ensuring unique identification for parallel execution starts within the same second.
+- **Type-Hint Resolution**: Correctly types the recovery handler with `EligibleWindow` and removes `ScheduleWindow` from the namespace, enabling `get_type_hints()` to resolve cleanly without exceptions.
+- **Timing Layer**: Unchanged. The timing boundary computation formulas remain identical to the baseline.
 
 ## Verification Evidence
+- **Environment**: Python `3.13.2`, pytest `9.0.3`
+- **Repair Module Suite**: 35 tests passed
+  - Command: `python -m pytest tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py`
+  - Target: A-H added and passed.
+  - Parameterized delays: `0`, `1`, `6`, and `30` hours parameterized for recovery deadlock testing.
+- **Canonical Offline Safety Gates**: 98 tests passed
+  - Command: `.\scripts\verify_offline.ps1`
+  - Covers: dependency direction, broker mutation surface, network guard, strategy factory, and preview candidate review.
+- **Full Release Verifier**: 9554 collected, 9549 passed, 5 skipped, 0 failures, 0 errors
+  - Command: `.\scripts\verify_offline.ps1 -Full` (executed against commit `04d6a36`)
 
-Credential/profile preflight remained safe:
-
-- `APP_PROFILE=paper`: false.
-- `ALPACA_API_KEY`, `ALPACA_API_SECRET_KEY`, `ALPACA_SECRET_KEY`, `APCA_API_KEY_ID`, and `APCA_API_SECRET_KEY`: absent.
-- Network-test switches: false/absent.
-- No credential value was printed.
-
-Focused evidence from this exact working tree:
-
-- Python Version: `3.13.2`
-- Focused scheduler aggregate: `56 passed` (composed of: `test_crypto_tournament_v2_oos_scheduler.py` [23], `test_crypto_tournament_v2_oos_scheduler_task.py` [4], `test_crypto_tournament_v2_oos_scheduler_repairs.py` [11], `test_crypto_tournament_v2_forward_oos.py` [18])
-- Safety aggregate: `63 passed, 1 skipped` (composed of: `test_dependency_direction.py`, `test_broker_mutation_surface_invariant.py`, `test_paper_integration_gate.py`, `test_default_pytest_network_guard.py`)
-- Full canonical release gate: `.\scripts\verify_offline.ps1 -Full` (aggregate result: `tests:9530,passed:9525,skipped:5,failures:0,errors:0`)
-- Verification execution outcome: PASS (offline, deterministic, credential-free, broker-free, network-free)
-- Verified pre-commit source tree hash (staged repair code & tests, excluding active_implementation.md): `51cc325570f5b36d806ca25cb470e97cca3fa777`
-
-## Current Real Readiness
-
-- The scheduler is disabled by default. No scheduled Windows tasks have been registered on the machine (Task Registered: False).
-- Real command dispatcher remains disabled.
-- Live-capital readiness is false.
-
-## Implementation-Owned Files Staged for Commit
-
-- `docs/agent_context/active_implementation.md`
-- `src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py`
-- `tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py`
-
-## Protected Dirty Work
-
-- Preserve `docs/project_checkpoint.md` exactly as unrelated modified operator work.
-- Preserve `docs/design/v5_20_3_crypto_frozen_state_reset_baseline.md` exactly as unrelated untracked operator work.
-- Do not edit, stage, commit, reset, clean, stash, restore, rebase, or switch over either protected file.
-- The frozen legacy producer remains byte-identical.
-
-## Recommended Next Milestone
-
-1. V5.31B — immutable strategy registry and frozen champion–challenger shadow cohort. Adapt the useful strategy-lifecycle concepts from Vibe-Trading while preserving algo_trader's stricter evidence and safety model.
+## Publication Status
+- **Handoff Disposition**: Pending fresh detached independent review.
+- **Risk Assessment**: The implementation evidence is complete but independent reproduction remains pending.
