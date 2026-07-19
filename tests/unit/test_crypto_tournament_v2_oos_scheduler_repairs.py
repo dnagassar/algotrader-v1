@@ -1283,3 +1283,138 @@ def test_type_hint_resolution() -> None:
     assert not hasattr(sched_mod, "ScheduleWindow"), (
         "ScheduleWindow must not exist as a module-level name; only EligibleWindow is canonical"
     )
+
+
+# ==========================================
+# ROUND 4 — TEST I: Disabled Adoption Gate
+# ==========================================
+
+def _persist_pending_job(store: SqliteJobStore) -> SchedulerJob:
+    """Helper: insert one hour-aligned PENDING job as a crash leftover."""
+    start = datetime(2026, 7, 18, 3, 0, tzinfo=UTC)
+    end = datetime(2026, 7, 18, 5, 0, tzinfo=UTC)
+    job = SchedulerJob(
+        schema_version=SCHEDULER_SCHEMA_VERSION,
+        job_id=hashlib.sha256(b"round4_disabled_gate").hexdigest()[:32],
+        lane="crypto_tournament_v2_forward_oos",
+        source_commit="deadbeef",
+        created_at=datetime(2026, 7, 18, 6, 0, tzinfo=UTC),
+        requested_start_bar_open=start,
+        requested_end_bar_open=end,
+        provider_as_of_boundary=end + timedelta(hours=1),
+        symbols=("BTCUSD", "ETHUSD", "SOLUSD"),
+        accepted_frontier_bar_open=start - timedelta(hours=1),
+        expected_frontier_bar_open=end + timedelta(hours=1),
+        status=SchedulerJobStatus.PENDING,
+        attempt_number=0,
+        claim_identity="",
+    )
+    store.insert_job(job)
+    return job
+
+
+def test_disabled_tick_never_claims_persisted_pending_job(tmp_path: Path) -> None:
+    """I1. enabled=False + persisted PENDING job → blocked, no claim, no dispatch."""
+    db_file = tmp_path / "disabled_gate.sqlite3"
+    output_root = tmp_path / "disabled_gate"
+    output_root.mkdir(parents=True, exist_ok=True)
+    (output_root / "frozen_state.json").write_text("{}", encoding="utf-8")
+
+    dispatcher = MagicMock()
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=dispatcher,
+        enabled=False,
+        allow_network=False,
+    )
+    executor.store.initialize()
+    pending = _persist_pending_job(executor.store)
+
+    receipt = executor.tick(datetime(2026, 7, 19, 12, 0, tzinfo=UTC))
+
+    assert receipt["command_classification"] == "blocked_scheduler_disabled"
+    assert receipt["job_status"] == "blocked"
+    assert receipt["job_id"] == pending.job_id
+    dispatcher.dispatch.assert_not_called()
+
+    stored = executor.store.get_job(pending.job_id)
+    assert stored is not None
+    assert stored.status == SchedulerJobStatus.PENDING
+    assert stored.attempt_number == 0
+    assert stored.claim_identity == ""
+
+
+def test_disabled_tick_preserves_real_state_from_preview_overwrite(
+    tmp_path: Path,
+) -> None:
+    """I2. enabled=False + PENDING job + PreviewDispatcher → real artifacts untouched."""
+    db_file = tmp_path / "disabled_preview.sqlite3"
+    output_root = tmp_path / "disabled_preview"
+    output_root.mkdir(parents=True, exist_ok=True)
+    real_state = json.dumps(
+        {"record_type": "crypto_tournament_v2_frozen_state", "marker": "REAL_STATE"}
+    )
+    (output_root / "frozen_state.json").write_text(real_state, encoding="utf-8")
+
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=PreviewDispatcher(),
+        enabled=False,
+        allow_network=False,
+    )
+    executor.store.initialize()
+    pending = _persist_pending_job(executor.store)
+
+    receipt = executor.tick(datetime(2026, 7, 19, 12, 0, tzinfo=UTC))
+
+    assert receipt["command_classification"] == "blocked_scheduler_disabled"
+    state_after = (output_root / "frozen_state.json").read_text(encoding="utf-8")
+    assert state_after == real_state
+    assert not (output_root / "operating_packet.json").exists()
+
+    stored = executor.store.get_job(pending.job_id)
+    assert stored is not None
+    assert stored.status == SchedulerJobStatus.PENDING
+    assert stored.attempt_number == 0
+
+
+def test_enabled_tick_still_adopts_persisted_pending_job(tmp_path: Path) -> None:
+    """I3. enabled=True keeps round-3 adoption: stored PENDING job is claimed."""
+    db_file = tmp_path / "enabled_adoption.sqlite3"
+    output_root = tmp_path / "enabled_adoption"
+    output_root.mkdir(parents=True, exist_ok=True)
+    (output_root / "frozen_state.json").write_text("{}", encoding="utf-8")
+
+    dispatcher = MagicMock()
+    dispatcher.dispatch.return_value = {
+        "status": "failed",
+        "classification": "subprocess_error",
+        "reason": "Simulated failure",
+    }
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=dispatcher,
+        enabled=True,
+        allow_network=False,
+    )
+    executor.store.initialize()
+    pending = _persist_pending_job(executor.store)
+
+    executor.tick(datetime(2026, 7, 19, 12, 0, tzinfo=UTC))
+
+    dispatcher.dispatch.assert_called_once()
+    stored = executor.store.get_job(pending.job_id)
+    assert stored is not None
+    assert stored.attempt_number == 1
+    dispatched_job = dispatcher.dispatch.call_args.kwargs["job"]
+    assert dispatched_job.requested_start_bar_open == pending.requested_start_bar_open
+    assert dispatched_job.requested_end_bar_open == pending.requested_end_bar_open

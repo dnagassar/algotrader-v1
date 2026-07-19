@@ -1088,6 +1088,24 @@ class OneShotExecutor:
         elif len(unresolved_jobs) == 1:
             active_job = unresolved_jobs[0]
             if active_job.status == SchedulerJobStatus.PENDING:
+                # A disabled scheduler must never claim, dispatch, or mutate;
+                # the fresh-window path enforces this inside ScheduleCalculator,
+                # and adoption must hold the same gate.
+                if not self.enabled:
+                    return self._write_noop_receipt(
+                        job_id=active_job.job_id,
+                        status=SchedulerJobStatus.BLOCKED,
+                        mode="status",
+                        frontier=active_job.accepted_frontier_bar_open,
+                        start=active_job.requested_start_bar_open,
+                        end=active_job.requested_end_bar_open,
+                        provider_as_of=active_job.provider_as_of_boundary,
+                        expected_frontier=active_job.accepted_frontier_bar_open,
+                        classification="blocked_scheduler_disabled",
+                        reason="Scheduler is disabled; persisted pending job was not claimed.",
+                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                    )
+
                 # Adopt the persisted recovery job verbatim
                 job = active_job
                 job_id = job.job_id
