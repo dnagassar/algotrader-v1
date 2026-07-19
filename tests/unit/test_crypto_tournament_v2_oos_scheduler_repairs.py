@@ -336,7 +336,7 @@ def test_failed_window_recovery(tmp_path: Path) -> None:
     # Verify DB state of updated job
     updated_job = executor.store.get_job("failed_job_1")
     assert updated_job.status == SchedulerJobStatus.PENDING
-    assert updated_job.attempt_number == 2
+    assert updated_job.attempt_number == 1
     assert updated_job.claim_identity == ""
     assert updated_job.started_at is None
     assert updated_job.completed_at is None
@@ -563,3 +563,202 @@ def test_environment_isolation_and_live_rejection() -> None:
             assert "APP_PROFILE" not in child_env
             # Unrelated keys must be scrubbed
             assert "MY_UNRELATED_VAR" not in child_env
+
+
+# ==========================================
+# 7. Additional Bounded Repair Tests
+# ==========================================
+
+def test_failed_to_reset_to_completed_e2e(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_e2e.sqlite3"
+    output_root = tmp_path / "oos_latest"
+    output_root.mkdir()
+    (output_root / "frozen_state.json").write_text("{}", encoding="utf-8")
+
+    dispatcher = MagicMock()
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=dispatcher,
+        enabled=True,
+        allow_network=False,
+    )
+    executor.store.initialize()
+
+    # Mock next_refresh return
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": "2026-07-18T20:00:00Z",
+                "requested_end": "2026-07-18T20:00:00Z",
+                "as_of": "2026-07-18T21:00:00Z",
+            }
+        }
+
+        # First run: dispatcher fails, resulting in a FAILED job.
+        dispatcher.dispatch.return_value = {
+            "status": "failed",
+            "classification": "subprocess_error",
+            "reason": "Simulated failure",
+        }
+
+        current_time = datetime(2026, 7, 18, 21, 5, tzinfo=UTC)
+        receipt1 = executor.tick(current_time)
+        assert receipt1["job_status"] == "failed"
+
+        # Verify the job exists in the DB with attempt_number = 1
+        jobs = executor.store.list_jobs()
+        assert len(jobs) == 1
+        job_id = jobs[0].job_id
+        assert jobs[0].status == SchedulerJobStatus.FAILED
+        assert jobs[0].attempt_number == 1
+
+        # Reset failed job (operator-authorized)
+        reset_receipt = executor.reset_failed(job_id, authorized=True)
+        assert reset_receipt["job_status"] == "pending"
+        # Verify attempt_number did not double increment during reset (stays at 1)
+        job_after_reset = executor.store.get_job(job_id)
+        assert job_after_reset.status == SchedulerJobStatus.PENDING
+        assert job_after_reset.attempt_number == 1
+
+        # Second run: dispatcher succeeds, we write valid expected receipts
+        p_path = output_root / "operating_packet.json"
+        s_path = output_root / "frozen_state.json"
+        p_content = {"as_of": "2026-07-18T21:00:00Z"}
+        s_content = {"updated_at": "2026-07-18T21:00:00Z"}
+        p_path.write_text(json.dumps(p_content), encoding="utf-8")
+        s_path.write_text(json.dumps(s_content), encoding="utf-8")
+        p_hash = hashlib.sha256(p_path.read_bytes()).hexdigest()
+        s_hash = hashlib.sha256(s_path.read_bytes()).hexdigest()
+
+        dispatcher.dispatch.return_value = {
+            "status": "success",
+            "classification": "subprocess_completed",
+            "expected_receipts": [
+                {
+                    "path": str(p_path),
+                    "sha256": p_hash,
+                    "type": "operating_packet",
+                    "window_identity": "2026-07-18T20:00:00+00:00_2026-07-18T20:00:00+00:00",
+                },
+                {
+                    "path": str(s_path),
+                    "sha256": s_hash,
+                    "type": "frozen_state",
+                    "window_identity": "2026-07-18T20:00:00+00:00_2026-07-18T20:00:00+00:00",
+                }
+            ]
+        }
+
+        # Tick again: must NOT trip overlap guard (not blocked_concurrent_overlap) and succeed
+        receipt2 = executor.tick(current_time)
+        assert receipt2["job_status"] == "completed"
+        assert receipt2["command_classification"] == "subprocess_completed"
+
+        # Verify the completed job in DB has attempt_number = 2 (incremented during the second claim)
+        final_job = executor.store.get_job(job_id)
+        assert final_job.status == SchedulerJobStatus.COMPLETED
+        assert final_job.attempt_number == 2
+
+
+def test_window_identity_mismatch_fails_closed(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_window_mismatch.sqlite3"
+    output_root = tmp_path / "oos_latest"
+    output_root.mkdir()
+    (output_root / "frozen_state.json").write_text("{}", encoding="utf-8")
+
+    dispatcher = MagicMock()
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=dispatcher,
+        enabled=True,
+        allow_network=False,
+    )
+    executor.store.initialize()
+
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": "2026-07-18T20:00:00Z",
+                "requested_end": "2026-07-18T20:00:00Z",
+                "as_of": "2026-07-18T21:00:00Z",
+            }
+        }
+
+        p_path = output_root / "operating_packet.json"
+        p_content = {"as_of": "2026-07-18T21:00:00Z"}
+        p_path.write_text(json.dumps(p_content), encoding="utf-8")
+        p_hash = hashlib.sha256(p_path.read_bytes()).hexdigest()
+
+        dispatcher.dispatch.return_value = {
+            "status": "success",
+            "classification": "subprocess_completed",
+            "expected_receipts": [
+                {
+                    "path": str(p_path),
+                    "sha256": p_hash,
+                    "type": "operating_packet",
+                    "window_identity": "wrong_window_identity_here",
+                }
+            ]
+        }
+
+        current_time = datetime(2026, 7, 18, 21, 5, tzinfo=UTC)
+        receipt = executor.tick(current_time)
+        assert receipt["job_status"] == "failed"
+        assert receipt["command_classification"] == "receipt_window_mismatch"
+
+        # Verify job in DB is FAILED and not completed
+        jobs = executor.store.list_jobs()
+        assert jobs[0].status == SchedulerJobStatus.FAILED
+
+
+def test_absent_expected_receipts_manifest_fails_closed(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_absent_manifest.sqlite3"
+    output_root = tmp_path / "oos_latest"
+    output_root.mkdir()
+    (output_root / "frozen_state.json").write_text("{}", encoding="utf-8")
+
+    dispatcher = MagicMock()
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=dispatcher,
+        enabled=True,
+        allow_network=False,
+    )
+    executor.store.initialize()
+
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": "2026-07-18T20:00:00Z",
+                "requested_end": "2026-07-18T20:00:00Z",
+                "as_of": "2026-07-18T21:00:00Z",
+            }
+        }
+
+        dispatcher.dispatch.return_value = {
+            "status": "success",
+            "classification": "subprocess_completed",
+            "expected_receipts": None,  # absent/None manifest
+        }
+
+        current_time = datetime(2026, 7, 18, 21, 5, tzinfo=UTC)
+        receipt = executor.tick(current_time)
+        assert receipt["job_status"] == "failed"
+        assert receipt["command_classification"] == "missing_receipt_manifest"
+
+        # Verify job in DB is FAILED and not completed
+        jobs = executor.store.list_jobs()
+        assert jobs[0].status == SchedulerJobStatus.FAILED

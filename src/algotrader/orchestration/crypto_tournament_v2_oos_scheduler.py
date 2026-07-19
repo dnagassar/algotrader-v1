@@ -606,7 +606,6 @@ class SqliteJobStore:
                         """
                         UPDATE scheduler_jobs
                         SET status = ?,
-                            attempt_number = attempt_number + 1,
                             claim_identity = '',
                             started_at = '',
                             completed_at = '',
@@ -882,10 +881,18 @@ class RealCommandDispatcher(CommandDispatcher):
             raise ValidationError("Real dispatch rejected: APP_PROFILE cannot be 'live'.")
 
         for k, v in os.environ.items():
-            k_upper = k.upper()
-            v_lower = v.lower()
-            if "api.alpaca.markets" in v_lower and "paper" not in v_lower:
-                raise ValidationError(f"Real dispatch rejected: Live Alpaca endpoint found in environment variable {k}.")
+            if "alpaca.markets" in v.lower():
+                temp = v.lower()
+                if "://" in temp:
+                    temp = temp.split("://", 1)[1]
+                if "/" in temp:
+                    temp = temp.split("/", 1)[0]
+                if ":" in temp:
+                    temp = temp.split(":", 1)[0]
+                if "@" in temp:
+                    temp = temp.rsplit("@", 1)[1]
+                if temp == "api.alpaca.markets":
+                    raise ValidationError(f"Real dispatch rejected: Live Alpaca endpoint found in environment variable {k}.")
 
         cmd = [
             sys.executable,
@@ -920,7 +927,6 @@ class RealCommandDispatcher(CommandDispatcher):
             "LANG",
             "LC_ALL",
             "LC_CTYPE",
-            "PYTHONPATH",
         }
 
         excluded_prefixes = ("ALPACA_", "APCA_", "TIINGO_")
@@ -1237,6 +1243,7 @@ class OneShotExecutor:
         existing_job = self.store.get_job(job_id)
         source_state_before = _file_sha256(self.output_root / "frozen_state.json")
 
+        job = None
         if existing_job:
             if existing_job.status == SchedulerJobStatus.COMPLETED:
                 return self._write_noop_receipt(
@@ -1310,39 +1317,42 @@ class OneShotExecutor:
                     reason=f"Prior job was in {existing_job.status} state. Retries disabled.",
                     duration=(datetime.now(UTC) - start_time).total_seconds(),
                 )
+            elif existing_job.status == SchedulerJobStatus.PENDING:
+                job = existing_job
 
-        # 6. Create Pending Job
-        commit_hash = _get_source_commit()
-        job = SchedulerJob(
-            schema_version=SCHEDULER_SCHEMA_VERSION,
-            job_id=job_id,
-            lane=lane,
-            source_commit=commit_hash,
-            created_at=datetime.now(UTC),
-            requested_start_bar_open=window.start_bar_open,
-            requested_end_bar_open=window.end_bar_open,
-            provider_as_of_boundary=window.provider_as_of_boundary,
-            symbols=symbols,
-            accepted_frontier_bar_open=accepted_frontier_bar_open,
-            expected_frontier_bar_open=window.end_bar_open + _ONE_HOUR,
-            status=SchedulerJobStatus.PENDING,
-            attempt_number=0,
-            claim_identity="",
-            source_state_fingerprint_before=source_state_before,
-        )
-
-        try:
-            self.store.insert_job(job)
-        except ValidationError as exc:
-            # Overlap or concurrent insert block
-            return self._write_noop_receipt(
+        if job is None:
+            # 6. Create Pending Job
+            commit_hash = _get_source_commit()
+            job = SchedulerJob(
+                schema_version=SCHEDULER_SCHEMA_VERSION,
                 job_id=job_id,
-                status=SchedulerJobStatus.BLOCKED,
-                mode="status",
-                frontier=accepted_frontier_bar_open,
-                start=window.start_bar_open,
-                end=window.end_bar_open,
-                provider_as_of=window.provider_as_of_boundary,
+                lane=lane,
+                source_commit=commit_hash,
+                created_at=datetime.now(UTC),
+                requested_start_bar_open=window.start_bar_open,
+                requested_end_bar_open=window.end_bar_open,
+                provider_as_of_boundary=window.provider_as_of_boundary,
+                symbols=symbols,
+                accepted_frontier_bar_open=accepted_frontier_bar_open,
+                expected_frontier_bar_open=window.end_bar_open + _ONE_HOUR,
+                status=SchedulerJobStatus.PENDING,
+                attempt_number=0,
+                claim_identity="",
+                source_state_fingerprint_before=source_state_before,
+            )
+
+            try:
+                self.store.insert_job(job)
+            except ValidationError as exc:
+                # Overlap or concurrent insert block
+                return self._write_noop_receipt(
+                    job_id=job_id,
+                    status=SchedulerJobStatus.BLOCKED,
+                    mode="status",
+                    frontier=accepted_frontier_bar_open,
+                    start=window.start_bar_open,
+                    end=window.end_bar_open,
+                    provider_as_of=window.provider_as_of_boundary,
                 expected_frontier=accepted_frontier_bar_open,
                 classification="blocked_concurrent_overlap",
                 reason=str(exc),
@@ -1390,18 +1400,13 @@ class OneShotExecutor:
             expected_receipts = dispatch_result.get("expected_receipts")
             if not expected_receipts:
                 # If no expected receipts are provided in success, fail closed
-                return self._write_noop_receipt(
-                    job_id=job_id,
-                    status=SchedulerJobStatus.FAILED,
-                    mode="run_once",
-                    frontier=accepted_frontier_bar_open,
-                    start=window.start_bar_open,
-                    end=window.end_bar_open,
-                    provider_as_of=window.provider_as_of_boundary,
-                    expected_frontier=accepted_frontier_bar_open,
+                return self._fail_job_and_write_receipt(
+                    job=job,
                     classification="missing_receipt_manifest",
                     reason="Dispatcher did not return an explicit expected receipt manifest.",
-                    duration=(datetime.now(UTC) - start_time).total_seconds(),
+                    start_time=start_time,
+                    accepted_frontier_bar_open=accepted_frontier_bar_open,
+                    window=window,
                 )
 
             validated_paths = []
@@ -1414,179 +1419,124 @@ class OneShotExecutor:
                 r_window_id = item.get("window_identity")
 
                 if not r_path_str or not r_hash or not r_type or not r_window_id:
-                    return self._write_noop_receipt(
-                        job_id=job_id,
-                        status=SchedulerJobStatus.FAILED,
-                        mode="run_once",
-                        frontier=accepted_frontier_bar_open,
-                        start=window.start_bar_open,
-                        end=window.end_bar_open,
-                        provider_as_of=window.provider_as_of_boundary,
-                        expected_frontier=accepted_frontier_bar_open,
+                    return self._fail_job_and_write_receipt(
+                        job=job,
                         classification="malformed_receipt_manifest",
                         reason="Expected receipt manifest entry is missing required fields.",
-                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
                     )
 
                 r_path = Path(r_path_str)
                 if not r_path.is_file():
-                    return self._write_noop_receipt(
-                        job_id=job_id,
-                        status=SchedulerJobStatus.FAILED,
-                        mode="run_once",
-                        frontier=accepted_frontier_bar_open,
-                        start=window.start_bar_open,
-                        end=window.end_bar_open,
-                        provider_as_of=window.provider_as_of_boundary,
-                        expected_frontier=accepted_frontier_bar_open,
+                    return self._fail_job_and_write_receipt(
+                        job=job,
                         classification="missing_receipt_file",
                         reason=f"Expected receipt file does not exist: {r_path}",
-                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
                     )
 
                 actual_hash = _file_sha256(r_path)
                 if actual_hash != r_hash:
-                    return self._write_noop_receipt(
-                        job_id=job_id,
-                        status=SchedulerJobStatus.FAILED,
-                        mode="run_once",
-                        frontier=accepted_frontier_bar_open,
-                        start=window.start_bar_open,
-                        end=window.end_bar_open,
-                        provider_as_of=window.provider_as_of_boundary,
-                        expected_frontier=accepted_frontier_bar_open,
+                    return self._fail_job_and_write_receipt(
+                        job=job,
                         classification="receipt_hash_mismatch",
                         reason=f"Receipt hash mismatch for {r_path.name}. Expected {r_hash}, got {actual_hash}",
-                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
                     )
 
                 try:
                     content = json.loads(r_path.read_text(encoding="utf-8"))
                 except Exception as exc:
-                    return self._write_noop_receipt(
-                        job_id=job_id,
-                        status=SchedulerJobStatus.FAILED,
-                        mode="run_once",
-                        frontier=accepted_frontier_bar_open,
-                        start=window.start_bar_open,
-                        end=window.end_bar_open,
-                        provider_as_of=window.provider_as_of_boundary,
-                        expected_frontier=accepted_frontier_bar_open,
+                    return self._fail_job_and_write_receipt(
+                        job=job,
                         classification="unparseable_receipt_file",
                         reason=f"Failed to parse receipt file as JSON: {exc}",
-                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
                     )
 
                 if r_type == "operating_packet":
                     as_of_str = content.get("as_of")
                     if not as_of_str:
-                        return self._write_noop_receipt(
-                            job_id=job_id,
-                            status=SchedulerJobStatus.FAILED,
-                            mode="run_once",
-                            frontier=accepted_frontier_bar_open,
-                            start=window.start_bar_open,
-                            end=window.end_bar_open,
-                            provider_as_of=window.provider_as_of_boundary,
-                            expected_frontier=accepted_frontier_bar_open,
+                        return self._fail_job_and_write_receipt(
+                            job=job,
                             classification="receipt_binding_mismatch",
                             reason="operating_packet lacks 'as_of' binding field.",
-                            duration=(datetime.now(UTC) - start_time).total_seconds(),
+                            start_time=start_time,
+                            accepted_frontier_bar_open=accepted_frontier_bar_open,
+                            window=window,
                         )
                     try:
                         as_of_dt = datetime.fromisoformat(as_of_str.replace("Z", "+00:00"))
                         job_as_of_dt = job.provider_as_of_boundary
                         if abs((as_of_dt - job_as_of_dt).total_seconds()) > 1.0:
-                            return self._write_noop_receipt(
-                                job_id=job_id,
-                                status=SchedulerJobStatus.FAILED,
-                                mode="run_once",
-                                frontier=accepted_frontier_bar_open,
-                                start=window.start_bar_open,
-                                end=window.end_bar_open,
-                                provider_as_of=window.provider_as_of_boundary,
-                                expected_frontier=accepted_frontier_bar_open,
+                            return self._fail_job_and_write_receipt(
+                                job=job,
                                 classification="receipt_binding_mismatch",
                                 reason=f"operating_packet 'as_of' ({as_of_str}) does not match job provider_as_of_boundary ({job.provider_as_of_boundary.isoformat()}).",
-                                duration=(datetime.now(UTC) - start_time).total_seconds(),
+                                start_time=start_time,
+                                accepted_frontier_bar_open=accepted_frontier_bar_open,
+                                window=window,
                             )
                     except Exception as exc:
-                        return self._write_noop_receipt(
-                            job_id=job_id,
-                            status=SchedulerJobStatus.FAILED,
-                            mode="run_once",
-                            frontier=accepted_frontier_bar_open,
-                            start=window.start_bar_open,
-                            end=window.end_bar_open,
-                            provider_as_of=window.provider_as_of_boundary,
-                            expected_frontier=accepted_frontier_bar_open,
+                        return self._fail_job_and_write_receipt(
+                            job=job,
                             classification="receipt_binding_mismatch",
                             reason=f"Failed to parse 'as_of' in operating_packet: {exc}",
-                            duration=(datetime.now(UTC) - start_time).total_seconds(),
+                            start_time=start_time,
+                            accepted_frontier_bar_open=accepted_frontier_bar_open,
+                            window=window,
                         )
 
                 elif r_type == "frozen_state":
                     updated_at_str = content.get("updated_at")
                     if not updated_at_str:
-                        return self._write_noop_receipt(
-                            job_id=job_id,
-                            status=SchedulerJobStatus.FAILED,
-                            mode="run_once",
-                            frontier=accepted_frontier_bar_open,
-                            start=window.start_bar_open,
-                            end=window.end_bar_open,
-                            provider_as_of=window.provider_as_of_boundary,
-                            expected_frontier=accepted_frontier_bar_open,
+                        return self._fail_job_and_write_receipt(
+                            job=job,
                             classification="receipt_binding_mismatch",
                             reason="frozen_state lacks 'updated_at' binding field.",
-                            duration=(datetime.now(UTC) - start_time).total_seconds(),
+                            start_time=start_time,
+                            accepted_frontier_bar_open=accepted_frontier_bar_open,
+                            window=window,
                         )
                     try:
                         updated_at_dt = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
                         job_as_of_dt = job.provider_as_of_boundary
                         if abs((updated_at_dt - job_as_of_dt).total_seconds()) > 1.0:
-                            return self._write_noop_receipt(
-                                job_id=job_id,
-                                status=SchedulerJobStatus.FAILED,
-                                mode="run_once",
-                                frontier=accepted_frontier_bar_open,
-                                start=window.start_bar_open,
-                                end=window.end_bar_open,
-                                provider_as_of=window.provider_as_of_boundary,
-                                expected_frontier=accepted_frontier_bar_open,
+                            return self._fail_job_and_write_receipt(
+                                job=job,
                                 classification="receipt_binding_mismatch",
                                 reason=f"frozen_state 'updated_at' ({updated_at_str}) does not match job provider_as_of_boundary ({job.provider_as_of_boundary.isoformat()}).",
-                                duration=(datetime.now(UTC) - start_time).total_seconds(),
+                                start_time=start_time,
+                                accepted_frontier_bar_open=accepted_frontier_bar_open,
+                                window=window,
                             )
                     except Exception as exc:
-                        return self._write_noop_receipt(
-                            job_id=job_id,
-                            status=SchedulerJobStatus.FAILED,
-                            mode="run_once",
-                            frontier=accepted_frontier_bar_open,
-                            start=window.start_bar_open,
-                            end=window.end_bar_open,
-                            provider_as_of=window.provider_as_of_boundary,
-                            expected_frontier=accepted_frontier_bar_open,
+                        return self._fail_job_and_write_receipt(
+                            job=job,
                             classification="receipt_binding_mismatch",
                             reason=f"Failed to parse 'updated_at' in frozen_state: {exc}",
-                            duration=(datetime.now(UTC) - start_time).total_seconds(),
+                            start_time=start_time,
+                            accepted_frontier_bar_open=accepted_frontier_bar_open,
+                            window=window,
                         )
 
                 expected_window_id = f"{job.requested_start_bar_open.isoformat()}_{job.requested_end_bar_open.isoformat()}"
                 if r_window_id != expected_window_id:
-                    return self._write_noop_receipt(
-                        job_id=job_id,
-                        status=SchedulerJobStatus.FAILED,
-                        mode="run_once",
-                        frontier=accepted_frontier_bar_open,
-                        start=window.start_bar_open,
-                        end=window.end_bar_open,
-                        provider_as_of=window.provider_as_of_boundary,
-                        expected_frontier=accepted_frontier_bar_open,
+                    return self._fail_job_and_write_receipt(
+                        job=job,
                         classification="receipt_window_mismatch",
                         reason=f"Receipt window identity mismatch. Expected {expected_window_id}, got {r_window_id}",
-                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
                     )
 
                 validated_paths.append(str(r_path.name))
@@ -1804,6 +1754,50 @@ class OneShotExecutor:
         _write_receipt_file_atomic(self.output_root, job.job_id, receipt)
         return receipt
 
+    def _fail_job_and_write_receipt(
+        self,
+        job: SchedulerJob,
+        classification: str,
+        reason: str,
+        start_time: datetime,
+        accepted_frontier_bar_open: datetime,
+        window: ScheduleWindow,
+    ) -> dict[str, object]:
+        now_utc = datetime.now(UTC)
+        source_state_after = _file_sha256(self.output_root / "frozen_state.json")
+        try:
+            final_job = replace(
+                job,
+                status=SchedulerJobStatus.FAILED,
+                completed_at=now_utc,
+                error_classification=classification,
+                receipt_paths=(),
+                receipt_hashes=(),
+                source_state_fingerprint_after=source_state_after,
+            )
+            self.store.update_job(final_job)
+            return self._write_receipt_file(
+                job=final_job,
+                mode="run_once",
+                duration=(datetime.now(UTC) - start_time).total_seconds(),
+                reason=reason,
+            )
+        except ValidationError as exc:
+            return self._write_noop_receipt(
+                job_id=job.job_id,
+                status=SchedulerJobStatus.FAILED,
+                mode="run_once",
+                frontier=accepted_frontier_bar_open,
+                start=window.start_bar_open,
+                end=window.end_bar_open,
+                provider_as_of=window.provider_as_of_boundary,
+                expected_frontier=accepted_frontier_bar_open,
+                classification="fencing_conflict",
+                reason=str(exc),
+                duration=(datetime.now(UTC) - start_time).total_seconds(),
+            )
+
+
 
 def _generate_job_id(lane: str, start: datetime, end: datetime) -> str:
     # deterministic string hash
@@ -1823,20 +1817,6 @@ def _file_sha256(path: Path) -> str:
     except OSError:
         return ""
 
-
-def _get_tournament_receipts(output_root: Path) -> tuple[list[str], list[str]]:
-    paths = []
-    hashes = []
-    # collect tournament v2 latest state outputs
-    for p in sorted(output_root.glob("*")):
-        if (
-            p.is_file()
-            and p.name not in ("scheduler.sqlite3", "scheduler_receipts")
-            and not p.name.startswith("receipt_")
-        ):
-            paths.append(str(p.name))
-            hashes.append(_file_sha256(p))
-    return paths, hashes
 
 
 def _write_receipt_file_atomic(
