@@ -56,6 +56,7 @@ def run_crypto_supervised_readiness_trial(
     broker_observed_readiness: bool = False,
     allow_alpaca_paper_read: bool = False,
     write_artifacts: bool = True,
+    receipt_path: Path | str | None = None,
 ) -> dict[str, object]:
     """Run two equivalent sequential replays plus fail-closed scenarios."""
 
@@ -89,11 +90,32 @@ def run_crypto_supervised_readiness_trial(
         broker_observed_readiness=broker_observed_readiness,
         allow_alpaca_paper_read=allow_alpaca_paper_read,
     )
-    broker_observed = _broker_observed_result(
-        scenario_receipts=scenario_receipts,
-        requested=broker_observed_readiness,
-        authorized=allow_alpaca_paper_read,
-    )
+    if receipt_path is not None:
+        validation = _validate_offline_receipt(receipt_path)
+        broker_observed = {
+            "classification": validation["classification"],
+            "requested": broker_observed_readiness,
+            "read_authorized": allow_alpaca_paper_read,
+            "broker_read_occurred": validation["broker_read_occurred"],
+            "broker_state_observed": validation["broker_state_observed"],
+            "network_used": validation["network_used"],
+            "paper_submit_performed": False,
+            "broker_mutation_performed": False,
+            "underlying_decision": "hold_noop_no_action_taken" if validation["valid"] else "blocked",
+            "blocker_code": "" if validation["valid"] else validation["classification"],
+            "exact_rerun_command": (
+                ".\\scripts\\run_crypto_supervised_readiness_trial.ps1 "
+                "-BrokerObservedReadiness -AllowAlpacaPaperRead"
+            ),
+        }
+        if "receipt" in validation:
+            broker_observed["receipt_details"] = validation["receipt"]
+    else:
+        broker_observed = _broker_observed_result(
+            scenario_receipts=scenario_receipts,
+            requested=broker_observed_readiness,
+            authorized=allow_alpaca_paper_read,
+        )
     broker_state_observed = broker_observed["broker_state_observed"] is True
     current_rung = "R2_broker_observed_no_submit" if broker_state_observed else "R1_deterministic_replay"
     current_rung_code = "R2" if broker_state_observed else "R1"
@@ -995,6 +1017,102 @@ def _write_jsonl(path: Path, rows: Sequence[Mapping[str, object]]) -> None:
             stream.write(json.dumps(_json_safe(row), sort_keys=True) + "\n")
 
 
+def _validate_offline_receipt(receipt_path: Path | str | None) -> dict[str, Any]:
+    if not receipt_path:
+        return {"valid": False, "classification": "blocked_credentials_unavailable", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+    path = Path(receipt_path)
+    if not path.is_file():
+        return {"valid": False, "classification": "blocked_credentials_or_expected_account_unavailable", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"valid": False, "classification": "blocked_malformed_receipt", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 1. Schema check
+    if receipt.get("schema_version") != "v5_33_broker_observation_receipt_v1":
+        return {"valid": False, "classification": "blocked_malformed_receipt", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 2. Tampering check (re-calculate canonical hash)
+    r_copy = dict(receipt)
+    original_hash = r_copy.pop("canonical_receipt_sha256", None)
+    canonical_str = json.dumps(r_copy, sort_keys=True, separators=(",", ":"))
+    expected_hash = hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+    if original_hash != expected_hash:
+        return {"valid": False, "classification": "blocked_receipt_tampered", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 3. Genuine source check
+    if receipt.get("source_classification") != "genuine_alpaca_paper_observation":
+        return {"valid": False, "classification": "blocked_not_genuine", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 4. Endpoint check
+    endpoint = receipt.get("paper_endpoint_classification")
+    if endpoint != "https://paper-api.alpaca.markets":
+        return {"valid": False, "classification": "blocked_endpoint_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 5. Account match check
+    if not receipt.get("expected_account_match"):
+        return {"valid": False, "classification": "blocked_expected_account_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 6. Target asset class and target symbol checks
+    if receipt.get("target_symbol") != "BTCUSD":
+        return {"valid": False, "classification": "blocked_target_symbol_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+    if receipt.get("target_asset_class") != "crypto":
+        return {"valid": False, "classification": "blocked_target_asset_class_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 7. Tradability / orderability check
+    if not receipt.get("target_tradability") or not receipt.get("target_orderability"):
+        return {"valid": False, "classification": "blocked_non_tradable_or_non_orderable", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 8. Truncation checks
+    trunc = receipt.get("truncation_indicators", {})
+    if trunc.get("positions_truncated") or trunc.get("orders_truncated"):
+        return {"valid": False, "classification": "blocked_truncation_detected", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 9. Unexpected exposure checks
+    if receipt.get("unexpected_exposure_classification") != "clean":
+        return {"valid": False, "classification": "blocked_unexpected_exposure", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 10. Ambiguity indicators
+    ambiguity = receipt.get("ambiguity_indicators", {})
+    if ambiguity.get("duplicate_positions") or ambiguity.get("duplicate_client_order_ids"):
+        return {"valid": False, "classification": "blocked_ambiguity_detected", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 11. Stale timestamp checks
+    fresh = receipt.get("freshness", {})
+    price_timestamp = fresh.get("price_timestamp")
+    if not price_timestamp:
+        return {"valid": False, "classification": "blocked_price_timestamp_missing", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+    try:
+        price_dt = datetime.fromisoformat(price_timestamp.replace("Z", "+00:00"))
+        observed_at = receipt.get("observed_at_utc")
+        if observed_at:
+            obs_dt = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        else:
+            obs_dt = datetime.now(UTC)
+        age = (obs_dt - price_dt).total_seconds()
+        if age < -60 or age > 900:
+            return {"valid": False, "classification": "blocked_stale_observation", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+    except Exception:
+        return {"valid": False, "classification": "blocked_malformed_timestamp", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    # 12. Safety checks (prevent mutation or live)
+    safety = receipt.get("safety_booleans", {})
+    if (safety.get("paper_submit_authorized") or safety.get("paper_submit_performed") or
+        safety.get("broker_mutation_authorized") or safety.get("broker_mutation_performed") or
+        safety.get("live_authorized")):
+        return {"valid": False, "classification": "blocked_mutation_or_live_authorized", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+    return {
+        "valid": True,
+        "classification": "broker_observed_no_submit_completed",
+        "broker_state_observed": True,
+        "network_used": True,
+        "broker_read_occurred": True,
+        "receipt": receipt
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=MILESTONE_NAME)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
@@ -1004,6 +1122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--allow-alpaca-paper-read", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument("--receipt-path", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.validate_only:
         result = validate_crypto_supervised_readiness_trial(args.output_root)
@@ -1016,6 +1135,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         broker_observed_readiness=args.broker_observed_readiness,
         allow_alpaca_paper_read=args.allow_alpaca_paper_read,
         write_artifacts=True,
+        receipt_path=args.receipt_path,
     )
     if args.format == "json":
         print(json.dumps(_json_safe(packet), sort_keys=True))
