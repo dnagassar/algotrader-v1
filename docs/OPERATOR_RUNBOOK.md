@@ -1091,3 +1091,43 @@ To preview or register/unregister the task, use the registration helper script:
     ```
 
 No real credentials, live endpoints, or trading actions are permitted or stored in the task configuration.
+
+## V5.32 End-to-End Supervised Crypto Readiness Trial
+
+Run the complete 24-cycle deterministic proof from a normal credential-free
+shell:
+
+```powershell
+.\scripts\run_crypto_supervised_readiness_trial.ps1
+```
+
+The command runs the same hourly sequence twice, validates restart-safe state,
+executes the eight required fail-closed scenarios, and writes a readiness packet
+under `runs\crypto_supervised_readiness_trial\latest`. A successful default run
+reports `v5_32_trial_classification=accepted` and readiness rung `R1`.
+
+Validate the outer packet and manifest hashes without rerunning the trial:
+
+```powershell
+.\scripts\run_crypto_supervised_readiness_trial.ps1 -ValidateOnly
+```
+
+The default command rejects paper/live profiles, loaded credentials, and
+network-test flags. It performs no network or broker read. Credential values
+are never printed.
+
+If an exact read-only Alpaca paper shell is already available and this specific
+observation is authorized, run:
+
+```powershell
+.\scripts\run_crypto_supervised_readiness_trial.ps1 `
+  -BrokerObservedReadiness `
+  -AllowAlpacaPaperRead
+```
+
+Both switches are required. The wrapper must positively identify paper profile,
+credential presence, and the exact paper endpoint and must reject any live
+indicator. This lane is read-only and no-submit; the script has no paper
+mutation, submit, cancel, replace, close, liquidation, or live switch. Without
+inherited credentials, retain the default
+`blocked_credentials_unavailable` classification and do not expose secrets.
