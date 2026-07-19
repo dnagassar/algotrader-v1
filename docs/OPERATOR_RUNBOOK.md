@@ -1040,6 +1040,28 @@ The one-shot scheduler calculates eligible closed crypto hours, claims jobs atom
   ```powershell
   .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode recover_stale
   ```
+* **Reset Failed**: Resets a failed job to pending state using explicit operator authorization switches:
+  ```powershell
+  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
+  ```
+
+#### Stale Job Recovery and Failure Reset Policy
+
+*   **No Automatic Retry**: Automatic retries are strictly prohibited to prevent cascading network errors, database corruption, or rate-limit violations during transient failures.
+*   **Identifying Failed Windows**: If a job fails, the scheduler's accepted frontier will not advance. To identify failed windows, query the status command:
+    ```powershell
+    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode status
+    ```
+    The status output table lists the recorded jobs, their IDs, windows, and current status.
+*   **Failed Window Reset Command**: To make a failed window retryable, execute the reset command with the exact job ID and the explicit authorization switch:
+    ```powershell
+    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
+    ```
+*   **Executing the Rerun**: After resetting, the job transitions to `pending`. Execute the normal one-shot run command to dispatch and rerun the job:
+    ```powershell
+    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork
+    ```
+*   **Avoiding Skipped Intervals**: Since the scheduler computes the eligible window starting immediately after the accepted frontier, a blocked/failed job blocks subsequent hours from being processed in that lane. Once reset and rerun successfully, the accepted frontier advances, ensuring that no intervals are skipped or processed out of order.
 
 #### Timing Semantics and Hour Bounds
 

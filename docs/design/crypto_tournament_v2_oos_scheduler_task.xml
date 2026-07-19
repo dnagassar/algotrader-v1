@@ -33,10 +33,6 @@
       <StopOnIdleEnd>true</StopOnIdleEnd>
       <RestartOnIdle>false</RestartOnIdle>
     </IdleSettings>
-    <RestartOnFailure>
-      <Interval>PT15M</Interval>
-      <Count>3</Count>
-    </RestartOnFailure>
     <AllowStartOnDemand>true</AllowStartOnDemand>
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
@@ -50,7 +46,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_crypto_tournament_v2_oos_scheduler.ps1" -Mode run_once</Arguments>
+      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_crypto_tournament_v2_oos_scheduler.ps1" -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork</Arguments>
       <WorkingDirectory>%REPO_ROOT%</WorkingDirectory>
     </Exec>
   </Actions>

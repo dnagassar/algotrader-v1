@@ -29,8 +29,7 @@ def test_task_xml_scheduler_settings() -> None:
     assert _text(root, ".//task:MultipleInstancesPolicy") == "IgnoreNew"
     assert _text(root, ".//task:StartWhenAvailable") == "true"
     assert _text(root, ".//task:RunOnlyIfNetworkAvailable") == "true"
-    assert _text(root, ".//task:RestartOnFailure/task:Interval") == "PT15M"
-    assert _text(root, ".//task:RestartOnFailure/task:Count") == "3"
+    assert root.find(".//task:RestartOnFailure", NAMESPACE) is None
     assert _text(root, ".//task:ExecutionTimeLimit") == "PT15M"
     assert _text(root, ".//task:Priority") == "7"
 
@@ -48,6 +47,9 @@ def test_task_xml_actions() -> None:
     assert command == "powershell.exe"
     assert "run_crypto_tournament_v2_oos_scheduler.ps1" in arguments
     assert "-Mode run_once" in arguments
+    assert "-SchedulerEnabled" in arguments
+    assert "-MarketDataReadAuthorized" in arguments
+    assert "-AllowNetwork" in arguments
     assert "%REPO_ROOT%" in arguments
     assert working_dir == "%REPO_ROOT%"
 

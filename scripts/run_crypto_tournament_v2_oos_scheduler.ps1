@@ -9,7 +9,7 @@ It scrubs credentials and other sensitive environment variables for credential-f
 
 [CmdletBinding()]
 param(
-    [ValidateSet("preview", "run_once", "status", "recover_stale")]
+    [ValidateSet("preview", "run_once", "status", "recover_stale", "reset_failed")]
     [string]$Mode = "preview",
     [string]$OutputRoot = "runs\crypto_strategy_tournament\v2\latest",
     [string]$DiscoverySourcePath = "runs\crypto_strategy_tournament\v1\input\crypto_1h_1y.csv",
@@ -18,7 +18,9 @@ param(
     [switch]$SchedulerEnabled,
     [switch]$MarketDataReadAuthorized,
     [switch]$AllowNetwork,
-    [string]$AsOf = ""
+    [string]$AsOf = "",
+    [string]$JobId = "",
+    [switch]$ResetAuthorized
 )
 
 Set-StrictMode -Version Latest
@@ -32,9 +34,16 @@ if ($Mode -eq "run_once") {
     if (-not $SchedulerEnabled.IsPresent -or -not $MarketDataReadAuthorized.IsPresent -or -not $AllowNetwork.IsPresent) {
         throw "Mode run_once requires -SchedulerEnabled, -MarketDataReadAuthorized, and -AllowNetwork switches."
     }
+} elseif ($Mode -eq "reset_failed") {
+    if ([string]::IsNullOrWhiteSpace($JobId)) {
+        throw "Mode reset_failed requires -JobId."
+    }
+    if (-not $ResetAuthorized.IsPresent) {
+        throw "Mode reset_failed requires -ResetAuthorized switch."
+    }
 } else {
-    if ($SchedulerEnabled.IsPresent -or $MarketDataReadAuthorized.IsPresent -or $AllowNetwork.IsPresent) {
-        throw "Authorization switches require Mode run_once."
+    if ($SchedulerEnabled.IsPresent -or $MarketDataReadAuthorized.IsPresent -or $AllowNetwork.IsPresent -or $ResetAuthorized.IsPresent) {
+        throw "Authorization switches require Mode run_once or reset_failed."
     }
 }
 
@@ -106,6 +115,12 @@ if ($MarketDataReadAuthorized.IsPresent) {
 }
 if ($AllowNetwork.IsPresent) {
     $Arguments += @("--allow-network")
+}
+if (-not [string]::IsNullOrWhiteSpace($JobId)) {
+    $Arguments += @("--job-id", $JobId)
+}
+if ($ResetAuthorized.IsPresent) {
+    $Arguments += @("--reset-authorized")
 }
 
 $ExitCode = 0

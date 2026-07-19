@@ -2,12 +2,12 @@
 
 ## Current Baseline — V5.31A Closed-Hour Scheduling Semantics Repaired and Verified
 
-- Checkpoint date: `2026-07-18`, America/New_York.
+- Checkpoint date: `2026-07-19`, America/New_York.
 - Branch: `antigravity/v5.31a-deterministic-oos-scheduler`.
-- Current committed HEAD: `09c16bfeeb7df837e32c6e4d7ff3116a08576e2c`.
+- Current committed HEAD: `426f81332864e345643bbd9f96f9b236a738bab7`.
 - Sole implementation writer: Antigravity.
-- The V5.31A scheduler timing repairs are complete, locally verified, and pass the canonical full offline verifier.
-- Independent review status: pending review
+- The V5.31A scheduler timing repairs and safety hardness modifications are complete, locally verified, and pass the canonical sharded offline verifier.
+- Independent review status: pending independent Claude re-review
 - Push status: not pushed (do not push, do not open a pull request)
 - Exactly one implementation writer may continue this checkout. Inspect branch, HEAD, status, staged and unstaged diffs before editing. Do not reset, clean, stash, restore, rebase, or switch branches during takeover.
 
@@ -34,23 +34,28 @@ Credential/profile preflight remained safe:
 
 Focused evidence from this exact working tree:
 
-- Pure scheduler logic, SQLite claim fencing, executor ticks, regression cases A-I, and dispatcher mappings: `23 passed`.
-- Task XML schema and PowerShell registration arguments: `4 passed`.
-- Orchestration boundary import safety and dependency check: `33 passed`.
-- Full canonical release gate: `.\scripts\verify_offline.ps1 -Full` (status: running).
+- Python Version: `3.13.2`
+- Focused scheduler aggregate: `53 passed` (composed of: `test_crypto_tournament_v2_oos_scheduler.py` [23], `test_crypto_tournament_v2_oos_scheduler_task.py` [4], `test_crypto_tournament_v2_oos_scheduler_repairs.py` [8], `test_crypto_tournament_v2_forward_oos.py` [18])
+- Safety aggregate: `63 passed, 1 skipped` (composed of: `test_dependency_direction.py`, `test_broker_mutation_surface_invariant.py`, `test_paper_integration_gate.py`, `test_default_pytest_network_guard.py`)
+- Full canonical release gate: `.\scripts\verify_offline.ps1 -Full` (aggregate result: `tests:9527,passed:9522,skipped:5,failures:0,errors:0`)
+- Verification execution outcome: PASS (offline, deterministic, credential-free, broker-free, network-free)
+- Verified pre-commit source tree hash (staged repair code & tests, excluding active_implementation.md): `20d18096c8aa2d11ec631581879c0180224d34f5`
 
 ## Current Real Readiness
 
-- The scheduler is disabled by default. No scheduled Windows tasks have been registered on the machine.
+- The scheduler is disabled by default. No scheduled Windows tasks have been registered on the machine (Task Registered: False).
 - Real command dispatcher remains disabled.
 - Live-capital readiness is false.
 
-## Implementation-Owned Files Awaiting Scoped Staging
+## Implementation-Owned Files Staged for Commit
 
 - `docs/OPERATOR_RUNBOOK.md`
 - `docs/agent_context/active_implementation.md`
+- `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`
+- `scripts/run_crypto_tournament_v2_oos_scheduler.ps1`
 - `src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py`
-- `tests/unit/test_crypto_tournament_v2_oos_scheduler.py`
+- `tests/unit/test_crypto_tournament_v2_oos_scheduler_task.py`
+- `tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py`
 
 ## Protected Dirty Work
 
