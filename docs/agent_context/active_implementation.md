@@ -1,44 +1,105 @@
 # Active Implementation Handoff
 
 ## Status
-Implementation complete; publication pending independent review.
+V5.31A Round 4 repair complete and fully verified; publication pending
+independent review by a different agent.
 
 ## Repository Reference State
-- **Repair Base**: `2f59e6a232cd851d93bec18b523ab0d402d5ff44`
-- **Round 3 Code Commit SHA**: `04d6a361d29125419a24313b60be768c28c0b647`
-- **Round 3 Code Commit Tree**: `ca04a425054b1e5aad5b93070bfeb69939a03be6`
-- **Exact Code-Commit Changed Files**:
-  - [crypto_tournament_v2_oos_scheduler.py](file:///C:/Users/danie/Desktop/algo_trader_v531a_oos_scheduler/src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py)
-  - [test_crypto_tournament_v2_oos_scheduler_repairs.py](file:///C:/Users/danie/Desktop/algo_trader_v531a_oos_scheduler/tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py)
+- **Branch**: `claude/v531a-disabled-adoption-gate` (pushed; never force-pushed
+  or rewritten)
+- **Reviewed Commit (Round 3)**: `aa3a5e5879a3dc980bf34aa655232673197daaef`
+  (`Document V5.31A Round 3 verification`) — independently reviewed and
+  classified **needs-repair**.
+- **Round 4 Repair Commit SHA**: `a66cd56ad06fe651950da6aae27e7ac6154bfdea`
+- **Round 4 Repair Commit Tree**: `8b44ecfd29fb6690e60ec8b93f6c6fd3348317e1`
+- **Round 4 Repair Commit Parent**: `aa3a5e5879a3dc980bf34aa655232673197daaef`
+- **Round 4 Repair Commit Subject**: `Add V5.31A Round 4 repair: gate persisted
+  pending-job adoption on scheduler enabled`
+- **Exact Repair-Commit Changed Files**:
+  - `src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py`
+  - `tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py`
+
+## Confirmed Round 3 Defect (Reason For needs-repair)
+The Round 3 unresolved-job precedence path in `OneShotExecutor.tick()` adopted
+a persisted PENDING job before the `ScheduleCalculator` enabled gate could run.
+The enabled gate lived only on the fresh-window path, so a disabled tick — the
+wrapper-enforced state for every preview invocation of
+`scripts/run_crypto_tournament_v2_oos_scheduler.ps1` — could claim, dispatch,
+and durably complete a leftover PENDING job.
+
+Disabled-scheduler reproduction observed at `aa3a5e5` (persisted PENDING job,
+`enabled=False`, `PreviewDispatcher`, real-content `frozen_state.json`):
+
+- receipt `command_classification`: `preview_successful`
+- receipt `job_status`: `completed`
+- stored job status after tick: `completed`, attempt number `0 -> 1`
+- real `frozen_state.json`: **overwritten** with a mock two-key payload
+- mock `operating_packet.json`: **created**
+
+The identical scenario at repair base `2f59e6a` correctly produced a blocked
+receipt, left the job `pending` at attempt `0`, and wrote nothing — confirming
+a Round 3 regression, not pre-existing behavior.
+
+## Round 4 Repair
+The PENDING-adoption path now enforces the same disabled gate as the
+fresh-window path, before any store mutation or validation side effect. A
+disabled tick returns `blocked_scheduler_disabled` and is read-only.
+
+Post-repair disabled behavior (same reproduction, executed at `a66cd56`):
+
+- receipt `command_classification`: `blocked_scheduler_disabled`
+- receipt `job_status`: `blocked`
+- stored job status after tick: `pending`, attempt number `0`, claim identity
+  empty — the job never transitions to COMPLETED
+- no dispatcher call occurs
+  (`test_disabled_tick_never_claims_persisted_pending_job` asserts
+  `dispatcher.dispatch.assert_not_called()`)
+- no receipt artifact is overwritten or created
+  (`test_disabled_tick_preserves_real_state_from_preview_overwrite` asserts
+  `frozen_state.json` is byte-identical and `operating_packet.json` does not
+  exist)
+- enabled unresolved-job adoption is unchanged
+  (`test_enabled_tick_still_adopts_persisted_pending_job` asserts the stored
+  PENDING job is claimed once and dispatched with its original verbatim window;
+  all Round 3 delayed-recovery tests still pass)
+
+## Verification Evidence (personally observed at `a66cd56`)
+- **Environment**: Python `3.13.2`, pytest `9.0.3`
+- **Focused scheduler aggregate**: `65 passed`
+  - Command: `python -m pytest
+    tests/unit/test_crypto_tournament_v2_oos_scheduler.py
+    tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py
+    tests/unit/test_crypto_tournament_v2_oos_scheduler_task.py -q`
+  - 62 pre-existing tests plus 3 new Round 4 regression tests (I1–I3).
+- **Canonical offline safety gates**: `98 passed`
+  - Command: `.\scripts\verify_offline.ps1`
+- **Full release verifier**: `9557` collected, `9552 passed`, `5 skipped`,
+  `0 failures`, `0 errors`, exit code `0`
+  - Command: `.\scripts\verify_offline.ps1 -Full`
+  - Four shards (2390/2389/2389/2389), every shard exit 0, no timeout;
+    collection equivalence PASS; execution equivalence PASS; final result PASS.
+- Independent reproduction of the reviewed commit `aa3a5e5` in a detached
+  checkout: repairs suite `35 passed`; canonical gates `98 passed`; full suite
+  `9554` collected, `9549 passed`, `5 skipped`, `0 failures`, `0 errors`,
+  exit 0 — matching the Round 3 handoff claims exactly.
 
 ## Operational and Safety Gates
-- **Task Registered**: False (No task registered in Windows Task Scheduler)
-- **Real Dispatcher Executed**: False (Execution remained completely pre-broker/offline)
-- **Network Access**: False (No network requests were executed)
-- **Broker Access**: False (No live or paper broker access occurred)
-- **Credentials Present**: False (No API credentials or keys loaded or printed)
-- **Git Push/PR**: None (No branches pushed, no pull requests opened)
-
-## Defect and Hardening Details
-- **Unresolved-Job Precedence**: Implemented. `OneShotExecutor.tick()` queries for and prioritizes existing unresolved jobs (PENDING, RUNNING, FAILED, BLOCKED) in the lane, using their original parameters verbatim. This prevents concurrent overlap deadlocks where advancing time expands windows.
-- **Receipt Validation**: Receipts in the manifest must match an allowed type (`operating_packet`, `frozen_state`). Fails closed on unrecognized types (`unknown_receipt_type`) or structure mismatch (`receipt_type_mismatch`).
-- **Endpoint Parser / Adversarial Evasion**: Pure-Python hostname parser `_extract_hostname` normalizes casing, and strips userinfo (`user:pass@host`), port, trailing dot, fragment, and path elements, preventing endpoint spoofing.
-- **Claim-Identity Nonce**: Appends a random 8-character `uuid4` hex suffix to the claim identity (`run_{yyyymmddHHMMSS}_{pid}_{uuid4hex[:8]}`) ensuring unique identification for parallel execution starts within the same second.
-- **Type-Hint Resolution**: Correctly types the recovery handler with `EligibleWindow` and removes `ScheduleWindow` from the namespace, enabling `get_type_hints()` to resolve cleanly without exceptions.
-- **Timing Layer**: Unchanged. The timing boundary computation formulas remain identical to the baseline.
-
-## Verification Evidence
-- **Environment**: Python `3.13.2`, pytest `9.0.3`
-- **Repair Module Suite**: 35 tests passed
-  - Command: `python -m pytest tests/unit/test_crypto_tournament_v2_oos_scheduler_repairs.py`
-  - Target: A-H added and passed.
-  - Parameterized delays: `0`, `1`, `6`, and `30` hours parameterized for recovery deadlock testing.
-- **Canonical Offline Safety Gates**: 98 tests passed
-  - Command: `.\scripts\verify_offline.ps1`
-  - Covers: dependency direction, broker mutation surface, network guard, strategy factory, and preview candidate review.
-- **Full Release Verifier**: 9554 collected, 9549 passed, 5 skipped, 0 failures, 0 errors
-  - Command: `.\scripts\verify_offline.ps1 -Full` (executed against commit `04d6a36`)
+- **Task Registered**: False (no task registered in Windows Task Scheduler)
+- **Broker Access**: False (no live or paper broker access occurred)
+- **Network Access**: False (no network requests were executed by any test or
+  verification step)
+- **Credentials Present**: False (credential/profile preflight booleans all
+  False; no credential value printed)
+- **Live Trading**: remains forbidden; no live, capital, or paper-submit
+  surface was touched
+- **Git Push/PR**: branch pushed to
+  `origin/claude/v531a-disabled-adoption-gate` under explicit operator
+  instruction; no force-push, no history rewrite, no merge, no PR opened by the
+  implementation agent
 
 ## Publication Status
-- **Handoff Disposition**: Pending fresh detached independent review.
-- **Risk Assessment**: The implementation evidence is complete but independent reproduction remains pending.
+- **Original reviewed commit `aa3a5e5`**: needs-repair.
+- **Repair branch `claude/v531a-disabled-adoption-gate`**: pending independent
+  review by a different agent. The repairing agent must not act as the sole
+  publication reviewer of its own repair; merge remains blocked until that
+  review passes.
