@@ -762,3 +762,524 @@ def test_absent_expected_receipts_manifest_fails_closed(tmp_path: Path) -> None:
         # Verify job in DB is FAILED and not completed
         jobs = executor.store.list_jobs()
         assert jobs[0].status == SchedulerJobStatus.FAILED
+
+
+# ==========================================
+# ROUND 3 — TEST A: Delayed FAILED Classification
+# ==========================================
+
+def _make_executor_with_mock(tmp_path: Path, test_name: str) -> tuple:
+    """Helper: create executor + mock dispatcher + frozen state."""
+    db_file = tmp_path / f"{test_name}.sqlite3"
+    output_root = tmp_path / test_name
+    output_root.mkdir(parents=True, exist_ok=True)
+    (output_root / "frozen_state.json").write_text("{}", encoding="utf-8")
+
+    dispatcher = MagicMock()
+    executor = OneShotExecutor(
+        db_path=db_file,
+        output_root=output_root,
+        discovery_source=tmp_path / "source.csv",
+        discovery_receipt=tmp_path / "receipt.json",
+        dispatcher=dispatcher,
+        enabled=True,
+        allow_network=False,
+    )
+    executor.store.initialize()
+    return executor, dispatcher, output_root
+
+
+def test_delayed_failed_classification(tmp_path: Path) -> None:
+    """A. Fail a job at time T, advance 6h, tick without reset → no_automatic_retry."""
+    executor, dispatcher, output_root = _make_executor_with_mock(tmp_path, "delayed_failed")
+
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": "2026-07-18T11:00:00Z",
+                "requested_end": "2026-07-18T11:00:00Z",
+                "as_of": "2026-07-18T12:00:00Z",
+            }
+        }
+
+        dispatcher.dispatch.return_value = {
+            "status": "failed",
+            "classification": "subprocess_error",
+            "reason": "Simulated failure at T",
+        }
+
+        t0 = datetime(2026, 7, 18, 12, 5, tzinfo=UTC)
+        r0 = executor.tick(t0)
+        assert r0["job_status"] == "failed"
+
+        jobs = executor.store.list_jobs()
+        assert len(jobs) == 1
+        failed_job_id = jobs[0].job_id
+        failed_start = jobs[0].requested_start_bar_open
+        failed_end = jobs[0].requested_end_bar_open
+        failed_attempt = jobs[0].attempt_number
+
+        # Advance 6+ closed hours without reset
+        t1 = datetime(2026, 7, 18, 18, 15, tzinfo=UTC)
+        r1 = executor.tick(t1)
+        assert r1["command_classification"] == "no_automatic_retry"
+        assert r1["job_status"] == "failed"
+
+        # DB unchanged
+        jobs_after = executor.store.list_jobs()
+        assert len(jobs_after) == 1
+        assert jobs_after[0].job_id == failed_job_id
+        assert jobs_after[0].requested_start_bar_open == failed_start
+        assert jobs_after[0].requested_end_bar_open == failed_end
+        assert jobs_after[0].attempt_number == failed_attempt
+        assert jobs_after[0].status == SchedulerJobStatus.FAILED
+        assert dispatcher.dispatch.call_count == 1
+
+
+# ==========================================
+# ROUND 3 — TEST B: Delayed Reset and Recovery (Parameterized)
+# ==========================================
+
+@pytest.mark.parametrize("advance_hours", [0, 1, 6, 30])
+def test_delayed_reset_and_recovery(tmp_path: Path, advance_hours: int) -> None:
+    """B. Fail, reset, advance clock far, tick → adopts stored PENDING job verbatim."""
+    test_name = f"delayed_recovery_{advance_hours}h"
+    executor, dispatcher, output_root = _make_executor_with_mock(tmp_path, test_name)
+
+    # requested_start/end come from next_refresh; provider_as_of_boundary comes from
+    # ScheduleCalculator which uses current_time floor(hour). t_fail = 12:05 → as_of = 12:00.
+    stored_start = datetime(2026, 7, 18, 10, 0, tzinfo=UTC)
+    stored_end = datetime(2026, 7, 18, 11, 0, tzinfo=UTC)
+    expected_as_of = datetime(2026, 7, 18, 12, 0, tzinfo=UTC)  # provider_as_of_boundary set by ScheduleCalculator
+
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": stored_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "requested_end": stored_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "as_of": expected_as_of.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        }
+
+        # STEP 1: fail the job
+        dispatcher.dispatch.return_value = {
+            "status": "failed",
+            "classification": "subprocess_error",
+            "reason": "Forced failure",
+        }
+        t_fail = datetime(2026, 7, 18, 12, 5, tzinfo=UTC)
+        r_fail = executor.tick(t_fail)
+        assert r_fail["job_status"] == "failed"
+
+        jobs = executor.store.list_jobs()
+        assert len(jobs) == 1
+        original_job_id = jobs[0].job_id
+        stored_provider_as_of = jobs[0].provider_as_of_boundary  # actual stored value
+        assert jobs[0].status == SchedulerJobStatus.FAILED
+        assert jobs[0].attempt_number == 1
+
+        # STEP 2: authorized reset
+        reset_result = executor.reset_failed(original_job_id, authorized=True)
+        assert reset_result["job_status"] == "pending"
+        assert dispatcher.dispatch.call_count == 1  # reset must NOT dispatch
+
+        jobs_after_reset = executor.store.list_jobs()
+        assert len(jobs_after_reset) == 1
+        assert jobs_after_reset[0].status == SchedulerJobStatus.PENDING
+        assert jobs_after_reset[0].attempt_number == 1
+
+        # STEP 3: advance far (simulate delayed tick)
+        t_after_reset = t_fail + timedelta(hours=advance_hours + 6)
+
+        # Prepare valid receipts matching the STORED provider_as_of_boundary
+        p_path = output_root / "operating_packet.json"
+        s_path = output_root / "frozen_state.json"
+        p_content = {"as_of": stored_provider_as_of.isoformat()}
+        s_content = {"updated_at": stored_provider_as_of.isoformat()}
+        p_path.write_text(json.dumps(p_content), encoding="utf-8")
+        s_path.write_text(json.dumps(s_content), encoding="utf-8")
+        p_hash = hashlib.sha256(p_path.read_bytes()).hexdigest()
+        s_hash = hashlib.sha256(s_path.read_bytes()).hexdigest()
+        window_id = f"{stored_start.isoformat()}_{stored_end.isoformat()}"
+
+        dispatcher.dispatch.return_value = {
+            "status": "success",
+            "classification": "subprocess_completed",
+            "expected_receipts": [
+                {
+                    "path": str(p_path),
+                    "sha256": p_hash,
+                    "type": "operating_packet",
+                    "window_identity": window_id,
+                },
+                {
+                    "path": str(s_path),
+                    "sha256": s_hash,
+                    "type": "frozen_state",
+                    "window_identity": window_id,
+                },
+            ],
+        }
+
+        r_recovery = executor.tick(t_after_reset)
+        assert r_recovery["job_status"] == "completed", f"Expected completed, got: {r_recovery}"
+        assert r_recovery["command_classification"] == "subprocess_completed"
+
+        # Same job_id, same stored window
+        jobs_final = executor.store.list_jobs()
+        assert len(jobs_final) == 1
+        final_job = jobs_final[0]
+        assert final_job.job_id == original_job_id
+        assert final_job.requested_start_bar_open == stored_start
+        assert final_job.requested_end_bar_open == stored_end
+        assert final_job.provider_as_of_boundary == stored_provider_as_of
+        assert final_job.status == SchedulerJobStatus.COMPLETED
+
+        # Attempt number bumped to 2 on reclaim
+        assert final_job.attempt_number == 2
+
+        # Recovery receipt reports stored window (not widened)
+        assert r_recovery["requested_start_bar_open"] == stored_start.isoformat()
+        assert r_recovery["requested_end_bar_open"] == stored_end.isoformat()
+
+        # Dispatcher called exactly twice total (fail + recovery)
+        assert dispatcher.dispatch.call_count == 2
+
+
+
+# ==========================================
+# ROUND 3 — TEST C: Multiple Unresolved Rows
+# ==========================================
+
+def test_multiple_unresolved_rows_fails_closed(tmp_path: Path) -> None:
+    """C. Store with 2 unresolved jobs → blocked_ambiguous_unresolved_jobs."""
+    executor, dispatcher, output_root = _make_executor_with_mock(tmp_path, "ambiguous")
+
+    t_base = datetime(2026, 7, 18, 10, 0, tzinfo=UTC)
+    lane = "crypto_tournament_v2_forward_oos"
+
+    job_a = SchedulerJob(
+        schema_version=SCHEDULER_SCHEMA_VERSION,
+        job_id="aaaa1111aaaa1111aaaa1111aaaa1111",
+        lane=lane,
+        source_commit="abc",
+        created_at=t_base,
+        requested_start_bar_open=t_base,
+        requested_end_bar_open=t_base,
+        provider_as_of_boundary=t_base,
+        symbols=("BTCUSD",),
+        accepted_frontier_bar_open=t_base,
+        expected_frontier_bar_open=t_base + timedelta(hours=1),
+        status=SchedulerJobStatus.PENDING,
+        attempt_number=0,
+        claim_identity="",
+    )
+    job_b = SchedulerJob(
+        schema_version=SCHEDULER_SCHEMA_VERSION,
+        job_id="bbbb2222bbbb2222bbbb2222bbbb2222",
+        lane=lane,
+        source_commit="abc",
+        created_at=t_base + timedelta(hours=1),
+        requested_start_bar_open=t_base + timedelta(hours=1),
+        requested_end_bar_open=t_base + timedelta(hours=1),
+        provider_as_of_boundary=t_base + timedelta(hours=1),
+        symbols=("BTCUSD",),
+        accepted_frontier_bar_open=t_base + timedelta(hours=1),
+        expected_frontier_bar_open=t_base + timedelta(hours=2),
+        status=SchedulerJobStatus.FAILED,
+        attempt_number=1,
+        claim_identity="",
+    )
+    executor.store.insert_job(job_a)
+    executor.store.insert_job(job_b)
+
+    current_time = datetime(2026, 7, 18, 18, 0, tzinfo=UTC)
+    receipt = executor.tick(current_time)
+    assert receipt["command_classification"] == "blocked_ambiguous_unresolved_jobs"
+    assert receipt["job_status"] == "blocked"
+    assert dispatcher.dispatch.call_count == 0
+
+    jobs = executor.store.list_jobs()
+    assert len(jobs) == 2
+
+
+# ==========================================
+# ROUND 3 — TEST D: Unknown Receipt Type
+# ==========================================
+
+def test_unrecognized_receipt_type_fails_closed(tmp_path: Path) -> None:
+    """D. unknown receipt type must fail closed, never reach COMPLETED."""
+    executor, dispatcher, output_root = _make_executor_with_mock(tmp_path, "unknown_type")
+
+    stored_start = datetime(2026, 7, 18, 20, 0, tzinfo=UTC)
+    stored_end = datetime(2026, 7, 18, 20, 0, tzinfo=UTC)
+    stored_as_of = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
+
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": stored_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "requested_end": stored_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "as_of": stored_as_of.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        }
+
+        p_path = output_root / "operating_packet.json"
+        p_path.write_text("{}", encoding="utf-8")
+        p_hash = hashlib.sha256(p_path.read_bytes()).hexdigest()
+        window_id = f"{stored_start.isoformat()}_{stored_end.isoformat()}"
+
+        dispatcher.dispatch.return_value = {
+            "status": "success",
+            "classification": "subprocess_completed",
+            "expected_receipts": [
+                {
+                    "path": str(p_path),
+                    "sha256": p_hash,
+                    "type": "wrong_type",  # unrecognized
+                    "window_identity": window_id,
+                }
+            ],
+        }
+
+        current_time = datetime(2026, 7, 18, 21, 5, tzinfo=UTC)
+        receipt = executor.tick(current_time)
+        assert receipt["job_status"] == "failed"
+        assert receipt["command_classification"] == "unknown_receipt_type"
+
+        jobs = executor.store.list_jobs()
+        assert len(jobs) == 1
+        assert jobs[0].status == SchedulerJobStatus.FAILED
+
+        # Subsequent tick → no_automatic_retry (frontier not advanced)
+        receipt2 = executor.tick(current_time + timedelta(hours=6))
+        assert receipt2["command_classification"] == "no_automatic_retry"
+
+
+# ==========================================
+# ROUND 3 — TEST E: Recognized But Wrong Type
+# ==========================================
+
+def test_recognized_but_wrong_type_fails_closed(tmp_path: Path) -> None:
+    """E. Manifest says 'operating_packet' but content is frozen_state → receipt_type_mismatch."""
+    executor, dispatcher, output_root = _make_executor_with_mock(tmp_path, "wrong_type")
+
+    stored_start = datetime(2026, 7, 18, 20, 0, tzinfo=UTC)
+    stored_end = datetime(2026, 7, 18, 20, 0, tzinfo=UTC)
+    stored_as_of = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
+
+    with patch("algotrader.research.crypto_tournament_v2_forward_oos.run_crypto_tournament_v2_forward_oos") as mock_run:
+        mock_run.return_value = {
+            "next_refresh": {
+                "classification": "ready_for_explicit_read_only_market_data_fetch",
+                "requested_start": stored_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "requested_end": stored_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "as_of": stored_as_of.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        }
+
+        # File has frozen_state content but manifest says operating_packet
+        p_path = output_root / "packet.json"
+        p_content = {"updated_at": stored_as_of.isoformat()}  # frozen_state content
+        p_path.write_text(json.dumps(p_content), encoding="utf-8")
+        p_hash = hashlib.sha256(p_path.read_bytes()).hexdigest()
+        window_id = f"{stored_start.isoformat()}_{stored_end.isoformat()}"
+
+        dispatcher.dispatch.return_value = {
+            "status": "success",
+            "classification": "subprocess_completed",
+            "expected_receipts": [
+                {
+                    "path": str(p_path),
+                    "sha256": p_hash,
+                    "type": "operating_packet",  # manifest says this, file is frozen_state
+                    "window_identity": window_id,
+                }
+            ],
+        }
+
+        current_time = datetime(2026, 7, 18, 21, 5, tzinfo=UTC)
+        receipt = executor.tick(current_time)
+        assert receipt["job_status"] == "failed"
+        assert receipt["command_classification"] == "receipt_type_mismatch"
+        jobs_failed = executor.store.list_jobs()
+        assert len(jobs_failed) == 1
+        assert jobs_failed[0].status == SchedulerJobStatus.FAILED
+
+
+# ==========================================
+# ROUND 3 — TEST F: Endpoint Adversarial Table
+# ==========================================
+
+@pytest.mark.parametrize("url,expected_hostname,should_reject", [
+    ("https://api.alpaca.markets/v2", "api.alpaca.markets", True),
+    ("https://api.alpaca.markets/v2?note=paper", "api.alpaca.markets", True),
+    ("https://api.alpaca.markets/paper", "api.alpaca.markets", True),
+    ("https://api.alpaca.markets#paper", "api.alpaca.markets", True),
+    ("https://API.ALPACA.MARKETS/v2", "api.alpaca.markets", True),
+    ("https://api.alpaca.markets:443/v2", "api.alpaca.markets", True),
+    ("https://api.alpaca.markets./v2", "api.alpaca.markets", True),
+    ("https://user@api.alpaca.markets/v2", "api.alpaca.markets", True),
+    ("https://user:pass@api.alpaca.markets/v2", "api.alpaca.markets", True),
+    ("https://paper-api.alpaca.markets@api.alpaca.markets/v2", "api.alpaca.markets", True),
+    ("https://paper-api.alpaca.markets", "paper-api.alpaca.markets", False),
+    ("https://paper-api.alpaca.markets:443", "paper-api.alpaca.markets", False),
+    ("https://paper-api.alpaca.markets.example.invalid", "paper-api.alpaca.markets.example.invalid", False),
+    ("http://other.markets", "other.markets", False),
+])
+def test_endpoint_parser_table(url: str, expected_hostname: str, should_reject: bool) -> None:
+    from algotrader.orchestration.crypto_tournament_v2_oos_scheduler import _extract_hostname
+    hostname = _extract_hostname(url)
+    assert hostname == expected_hostname, (
+        f"URL {url!r}: expected hostname {expected_hostname!r}, got {hostname!r}"
+    )
+
+    dispatcher = RealCommandDispatcher(scheduler_enabled=True, market_data_read_authorized=True)
+    job = SchedulerJob(
+        schema_version=SCHEDULER_SCHEMA_VERSION,
+        job_id="dummy_job_id_1234567890123456",
+        lane="dummy",
+        source_commit="dummy",
+        created_at=datetime.now(UTC),
+        requested_start_bar_open=datetime(2026, 7, 18, 10, 0, tzinfo=UTC),
+        requested_end_bar_open=datetime(2026, 7, 18, 10, 0, tzinfo=UTC),
+        provider_as_of_boundary=datetime(2026, 7, 18, 10, 0, tzinfo=UTC),
+        symbols=("BTCUSD",),
+        accepted_frontier_bar_open=datetime(2026, 7, 18, 10, 0, tzinfo=UTC),
+        expected_frontier_bar_open=datetime(2026, 7, 18, 11, 0, tzinfo=UTC),
+        status=SchedulerJobStatus.PENDING,
+        attempt_number=1,
+        claim_identity="dummy",
+    )
+
+    with patch.dict(os.environ, {"ALPACA_API_ENDPOINT": url}), \
+         patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}")
+
+        if should_reject:
+            with pytest.raises(ValidationError) as exc_info:
+                dispatcher.dispatch(
+                    job=job,
+                    output_root=Path("/tmp"),
+                    discovery_source=Path("/tmp"),
+                    discovery_receipt=Path("/tmp"),
+                    allow_network=True,
+                )
+            assert "Live Alpaca endpoint found" in str(exc_info.value)
+        else:
+            try:
+                dispatcher.dispatch(
+                    job=job,
+                    output_root=Path("/tmp"),
+                    discovery_source=Path("/tmp"),
+                    discovery_receipt=Path("/tmp"),
+                    allow_network=True,
+                )
+            except ValidationError as exc:
+                assert "Live Alpaca endpoint found" not in str(exc), (
+                    f"URL {url!r} (hostname={hostname!r}) was wrongly rejected: {exc}"
+                )
+
+
+# ==========================================
+# ROUND 3 — TEST G: Claim Identity Uniqueness
+# ==========================================
+
+def test_claim_identity_uniqueness(tmp_path: Path) -> None:
+    """G. Same timestamp+PID → different identities; stale identity cannot complete/fail new."""
+    import uuid
+    from algotrader.orchestration.crypto_tournament_v2_oos_scheduler import (
+        _generate_job_id,
+    )
+    from dataclasses import replace as dc_replace
+
+    db_file = tmp_path / "claim_identity.sqlite3"
+    store = SqliteJobStore(db_file)
+    store.initialize()
+
+    lane = "test_lane"
+    t = datetime(2026, 7, 18, 10, 0, tzinfo=UTC)
+    job_id = _generate_job_id(lane, t, t)
+
+    job = SchedulerJob(
+        schema_version=SCHEDULER_SCHEMA_VERSION,
+        job_id=job_id,
+        lane=lane,
+        source_commit="abc",
+        created_at=t,
+        requested_start_bar_open=t,
+        requested_end_bar_open=t,
+        provider_as_of_boundary=t,
+        symbols=("BTCUSD",),
+        accepted_frontier_bar_open=t,
+        expected_frontier_bar_open=t + timedelta(hours=1),
+        status=SchedulerJobStatus.PENDING,
+        attempt_number=0,
+        claim_identity="",
+    )
+    store.insert_job(job)
+
+    # Same fixed timestamp and PID but different nonces
+    fixed_ts = "20260718100000"
+    fixed_pid = "12345"
+    nonce_a = uuid.uuid4().hex[:8]
+    nonce_b = uuid.uuid4().hex[:8]
+    # UUID4 nonces are astronomically unlikely to collide but resample if they do
+    while nonce_a == nonce_b:
+        nonce_b = uuid.uuid4().hex[:8]
+
+    identity_a = f"run_{fixed_ts}_{fixed_pid}_{nonce_a}"
+    identity_b = f"run_{fixed_ts}_{fixed_pid}_{nonce_b}"
+    assert identity_a != identity_b, "Identities with same ts/pid but different nonces must differ"
+
+    # Claim with identity_a
+    claimed = store.claim_job(job_id, identity_a, datetime.now(UTC))
+    assert claimed
+
+    j = store.get_job(job_id)
+    assert j is not None
+    assert j.claim_identity == identity_a
+
+    # Stale identity_b cannot complete attempt owned by identity_a
+    stale_complete = dc_replace(j, claim_identity=identity_b, status=SchedulerJobStatus.COMPLETED)
+    with pytest.raises(ValidationError):
+        store.update_job(stale_complete)
+
+    # Stale identity_b cannot fail attempt owned by identity_a
+    stale_fail = dc_replace(j, claim_identity=identity_b, status=SchedulerJobStatus.FAILED)
+    with pytest.raises(ValidationError):
+        store.update_job(stale_fail)
+
+    # Correct identity_a can complete
+    good_final = dc_replace(j, status=SchedulerJobStatus.COMPLETED)
+    store.update_job(good_final)
+    completed = store.get_job(job_id)
+    assert completed is not None
+    assert completed.status == SchedulerJobStatus.COMPLETED
+
+
+# ==========================================
+# ROUND 3 — TEST H: Type-Hint Resolution
+# ==========================================
+
+def test_type_hint_resolution() -> None:
+    """H. EligibleWindow annotation resolves; ScheduleWindow is not defined in the module."""
+    import typing
+    import algotrader.orchestration.crypto_tournament_v2_oos_scheduler as sched_mod
+
+    assert hasattr(sched_mod, "EligibleWindow"), "EligibleWindow must be defined in the scheduler module"
+    ew = sched_mod.EligibleWindow
+
+    hints = typing.get_type_hints(sched_mod.OneShotExecutor._fail_job_and_write_receipt)
+    window_hint = hints.get("window")
+    assert window_hint is ew, (
+        f"_fail_job_and_write_receipt.window annotated as {window_hint!r}, "
+        f"expected EligibleWindow ({ew!r})"
+    )
+
+    assert not hasattr(sched_mod, "ScheduleWindow"), (
+        "ScheduleWindow must not exist as a module-level name; only EligibleWindow is canonical"
+    )

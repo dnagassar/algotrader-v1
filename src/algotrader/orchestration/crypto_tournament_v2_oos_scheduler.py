@@ -882,16 +882,8 @@ class RealCommandDispatcher(CommandDispatcher):
 
         for k, v in os.environ.items():
             if "alpaca.markets" in v.lower():
-                temp = v.lower()
-                if "://" in temp:
-                    temp = temp.split("://", 1)[1]
-                if "/" in temp:
-                    temp = temp.split("/", 1)[0]
-                if ":" in temp:
-                    temp = temp.split(":", 1)[0]
-                if "@" in temp:
-                    temp = temp.rsplit("@", 1)[1]
-                if temp == "api.alpaca.markets":
+                hostname = _extract_hostname(v)
+                if hostname == "api.alpaca.markets":
                     raise ValidationError(f"Real dispatch rejected: Live Alpaca endpoint found in environment variable {k}.")
 
         cmd = [
@@ -1066,40 +1058,164 @@ class OneShotExecutor:
         lane = "crypto_tournament_v2_forward_oos"
         symbols = ("BTCUSD", "ETHUSD", "SOLUSD")
 
-        # 2. Inspect tournament v2 OOS state to find frontier
-        # Import research/orchestration lane inside executor boundary to satisfy dependency checks
-        from algotrader.research.crypto_tournament_v2_forward_oos import (
-            run_crypto_tournament_v2_forward_oos,
-            initialize_crypto_tournament_v2_forward_oos,
-        )
+        # Query the store for unresolved jobs belonging to this scheduler lane
+        all_jobs = self.store.list_jobs(lane)
+        unresolved_jobs = [
+            j for j in all_jobs
+            if j.status in (
+                SchedulerJobStatus.PENDING,
+                SchedulerJobStatus.RUNNING,
+                SchedulerJobStatus.FAILED,
+                SchedulerJobStatus.BLOCKED,
+            )
+        ]
 
-        paths_dict = {
-            "state": self.output_root / "frozen_state.json",
-        }
+        if len(unresolved_jobs) > 1:
+            return self._write_noop_receipt(
+                job_id="na",
+                status=SchedulerJobStatus.BLOCKED,
+                mode="status",
+                frontier=current_time,
+                start=None,
+                end=None,
+                provider_as_of=None,
+                expected_frontier=None,
+                classification="blocked_ambiguous_unresolved_jobs",
+                reason=f"Ambiguous state: {len(unresolved_jobs)} unresolved jobs exist.",
+                duration=(datetime.now(UTC) - start_time).total_seconds(),
+            )
 
-        # Initialize tournament state if missing
-        if not paths_dict["state"].is_file():
-            if not self.discovery_source.is_file():
-                return self._write_noop_receipt(
-                    job_id="na",
-                    status=SchedulerJobStatus.BLOCKED,
-                    mode="status",
-                    frontier=current_time,
-                    start=None,
-                    end=None,
-                    provider_as_of=None,
-                    expected_frontier=None,
-                    classification="blocked_missing_discovery_source",
-                    reason="Tournament state not initialized and discovery source missing",
-                    duration=0.0,
+        elif len(unresolved_jobs) == 1:
+            active_job = unresolved_jobs[0]
+            if active_job.status == SchedulerJobStatus.PENDING:
+                # Adopt the persisted recovery job verbatim
+                job = active_job
+                job_id = job.job_id
+                window = EligibleWindow(
+                    start_bar_open=job.requested_start_bar_open,
+                    end_bar_open=job.requested_end_bar_open,
+                    provider_as_of_boundary=job.provider_as_of_boundary,
                 )
+                accepted_frontier_bar_open = job.accepted_frontier_bar_open
+
+                # Validate stored fields using existing alignment and UTC rules
+                try:
+                    _validate_stored_job_fields(job)
+                except ValidationError as exc:
+                    return self._fail_job_and_write_receipt(
+                        job=job,
+                        classification="malformed_persisted_job",
+                        reason=f"Stored job validation failed: {exc}",
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
+                    )
+            elif active_job.status in (SchedulerJobStatus.FAILED, SchedulerJobStatus.BLOCKED):
+                return self._write_noop_receipt(
+                    job_id=active_job.job_id,
+                    status=active_job.status,
+                    mode="status",
+                    frontier=active_job.accepted_frontier_bar_open,
+                    start=active_job.requested_start_bar_open,
+                    end=active_job.requested_end_bar_open,
+                    provider_as_of=active_job.provider_as_of_boundary,
+                    expected_frontier=active_job.accepted_frontier_bar_open,
+                    classification="no_automatic_retry",
+                    reason=f"Prior job was in {active_job.status.value} state. Retries disabled.",
+                    duration=(datetime.now(UTC) - start_time).total_seconds(),
+                )
+            elif active_job.status == SchedulerJobStatus.RUNNING:
+                stale_limit = timedelta(minutes=15)
+                if (
+                    active_job.updated_at
+                    and datetime.now(UTC) - active_job.updated_at > stale_limit
+                ):
+                    # Recover stale job
+                    self.store.recover_stale_jobs(lane, stale_limit)
+                    return self._write_noop_receipt(
+                        job_id=active_job.job_id,
+                        status=SchedulerJobStatus.FAILED,
+                        mode="status",
+                        frontier=active_job.accepted_frontier_bar_open,
+                        start=active_job.requested_start_bar_open,
+                        end=active_job.requested_end_bar_open,
+                        provider_as_of=active_job.provider_as_of_boundary,
+                        expected_frontier=active_job.accepted_frontier_bar_open,
+                        classification="stale_timeout_recovered",
+                        reason="Crashed/stale running job detected and recovered to FAILED.",
+                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                    )
+                else:
+                    return self._write_noop_receipt(
+                        job_id=active_job.job_id,
+                        status=SchedulerJobStatus.BLOCKED,
+                        mode="status",
+                        frontier=active_job.accepted_frontier_bar_open,
+                        start=active_job.requested_start_bar_open,
+                        end=active_job.requested_end_bar_open,
+                        provider_as_of=active_job.provider_as_of_boundary,
+                        expected_frontier=active_job.accepted_frontier_bar_open,
+                        classification="blocked_concurrent_run",
+                        reason="Job is currently running under a valid lease.",
+                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                    )
+
+        else:
+            # 2. Inspect tournament v2 OOS state to find frontier
+            # Import research/orchestration lane inside executor boundary to satisfy dependency checks
+            from algotrader.research.crypto_tournament_v2_forward_oos import (
+                run_crypto_tournament_v2_forward_oos,
+                initialize_crypto_tournament_v2_forward_oos,
+            )
+
+            paths_dict = {
+                "state": self.output_root / "frozen_state.json",
+            }
+
+            # Initialize tournament state if missing
+            if not paths_dict["state"].is_file():
+                if not self.discovery_source.is_file():
+                    return self._write_noop_receipt(
+                        job_id="na",
+                        status=SchedulerJobStatus.BLOCKED,
+                        mode="status",
+                        frontier=current_time,
+                        start=None,
+                        end=None,
+                        provider_as_of=None,
+                        expected_frontier=None,
+                        classification="blocked_missing_discovery_source",
+                        reason="Tournament state not initialized and discovery source missing",
+                        duration=0.0,
+                    )
+                try:
+                    initialize_crypto_tournament_v2_forward_oos(
+                        discovery_source_path=self.discovery_source,
+                        discovery_receipt_path=self.discovery_receipt,
+                        output_root=self.output_root,
+                        as_of=current_time,
+                        write_artifacts=True,
+                    )
+                except Exception as exc:
+                    return self._write_noop_receipt(
+                        job_id="na",
+                        status=SchedulerJobStatus.BLOCKED,
+                        mode="status",
+                        frontier=current_time,
+                        start=None,
+                        end=None,
+                        provider_as_of=None,
+                        expected_frontier=None,
+                        classification="blocked_initialization_failed",
+                        reason=f"Failed to initialize tournament state: {exc}",
+                        duration=0.0,
+                    )
+
             try:
-                initialize_crypto_tournament_v2_forward_oos(
-                    discovery_source_path=self.discovery_source,
-                    discovery_receipt_path=self.discovery_receipt,
+                status = run_crypto_tournament_v2_forward_oos(
                     output_root=self.output_root,
                     as_of=current_time,
-                    write_artifacts=True,
+                    write_artifacts=False,
                 )
             except Exception as exc:
                 return self._write_noop_receipt(
@@ -1111,55 +1227,16 @@ class OneShotExecutor:
                     end=None,
                     provider_as_of=None,
                     expected_frontier=None,
-                    classification="blocked_initialization_failed",
-                    reason=f"Failed to initialize tournament state: {exc}",
+                    classification="blocked_oos_load_failed",
+                    reason=f"Failed to load OOS status: {exc}",
                     duration=0.0,
                 )
 
-        try:
-            status = run_crypto_tournament_v2_forward_oos(
-                output_root=self.output_root,
-                as_of=current_time,
-                write_artifacts=False,
-            )
-        except Exception as exc:
-            return self._write_noop_receipt(
-                job_id="na",
-                status=SchedulerJobStatus.BLOCKED,
-                mode="status",
-                frontier=current_time,
-                start=None,
-                end=None,
-                provider_as_of=None,
-                expected_frontier=None,
-                classification="blocked_oos_load_failed",
-                reason=f"Failed to load OOS status: {exc}",
-                duration=0.0,
-            )
+            next_refresh = status.get("next_refresh", {})
+            ref_class = next_refresh.get("classification", "")
 
-        next_refresh = status.get("next_refresh", {})
-        ref_class = next_refresh.get("classification", "")
-
-        # Check completed tournament
-        if ref_class == "terminal_window_closed":
-            return self._write_noop_receipt(
-                job_id="na",
-                status=SchedulerJobStatus.COMPLETED,
-                mode="status",
-                frontier=current_time,
-                start=None,
-                end=None,
-                provider_as_of=None,
-                expected_frontier=None,
-                classification="accrual_complete",
-                reason="Tournament forward OOS accrual is complete (terminal window reached)",
-                duration=0.0,
-            )
-
-        requested_start_str = next_refresh.get("requested_start", "")
-        if not requested_start_str:
-            # accrual complete or waiting for hour
-            if ref_class == "accrual_complete":
+            # Check completed tournament
+            if ref_class == "terminal_window_closed":
                 return self._write_noop_receipt(
                     job_id="na",
                     status=SchedulerJobStatus.COMPLETED,
@@ -1170,121 +1247,199 @@ class OneShotExecutor:
                     provider_as_of=None,
                     expected_frontier=None,
                     classification="accrual_complete",
-                    reason="Accrual complete according to tournament next_refresh payload",
+                    reason="Tournament forward OOS accrual is complete (terminal window reached)",
                     duration=0.0,
                 )
-            else:
+
+            requested_start_str = next_refresh.get("requested_start", "")
+            if not requested_start_str:
+                # accrual complete or waiting for hour
+                if ref_class == "accrual_complete":
+                    return self._write_noop_receipt(
+                        job_id="na",
+                        status=SchedulerJobStatus.COMPLETED,
+                        mode="status",
+                        frontier=current_time,
+                        start=None,
+                        end=None,
+                        provider_as_of=None,
+                        expected_frontier=None,
+                        classification="accrual_complete",
+                        reason="Accrual complete according to tournament next_refresh payload",
+                        duration=0.0,
+                    )
+                else:
+                    return self._write_noop_receipt(
+                        job_id="na",
+                        status=SchedulerJobStatus.BLOCKED,
+                        mode="status",
+                        frontier=current_time,
+                        start=None,
+                        end=None,
+                        provider_as_of=None,
+                        expected_frontier=None,
+                        classification="no_eligible_closed_window",
+                        reason="No next refresh hour requested by OOS status",
+                        duration=0.0,
+                    )
+
+            requested_start = datetime.fromisoformat(
+                requested_start_str.replace("Z", "+00:00")
+            )
+            accepted_frontier_bar_open = requested_start - _ONE_HOUR
+
+            # 3. Calculate Eligible Window using ScheduleCalculator
+            calc = ScheduleCalculator.calculate_eligible_window(
+                current_time=current_time,
+                accepted_frontier_bar_open=accepted_frontier_bar_open,
+                bar_interval=_ONE_HOUR,
+                publication_grace=timedelta(minutes=5),
+                max_catch_up_hours=24,
+                enabled=self.enabled,
+            )
+
+            if calc.status == "blocked":
                 return self._write_noop_receipt(
                     job_id="na",
                     status=SchedulerJobStatus.BLOCKED,
                     mode="status",
-                    frontier=current_time,
+                    frontier=accepted_frontier_bar_open,
                     start=None,
                     end=None,
                     provider_as_of=None,
                     expected_frontier=None,
-                    classification="no_eligible_closed_window",
-                    reason="No next refresh hour requested by OOS status",
+                    classification=calc.classification,
+                    reason=calc.reason,
                     duration=0.0,
                 )
 
-        requested_start = datetime.fromisoformat(
-            requested_start_str.replace("Z", "+00:00")
-        )
-        accepted_frontier_bar_open = requested_start - _ONE_HOUR
-
-        # 3. Calculate Eligible Window using ScheduleCalculator
-        calc = ScheduleCalculator.calculate_eligible_window(
-            current_time=current_time,
-            accepted_frontier_bar_open=accepted_frontier_bar_open,
-            bar_interval=_ONE_HOUR,
-            publication_grace=timedelta(minutes=5),
-            max_catch_up_hours=24,
-            enabled=self.enabled,
-        )
-
-        if calc.status == "blocked":
-            return self._write_noop_receipt(
-                job_id="na",
-                status=SchedulerJobStatus.BLOCKED,
-                mode="status",
-                frontier=accepted_frontier_bar_open,
-                start=None,
-                end=None,
-                provider_as_of=None,
-                expected_frontier=None,
-                classification=calc.classification,
-                reason=calc.reason,
-                duration=0.0,
-            )
-
-        if calc.status == "no_eligible_window":
-            return self._write_noop_receipt(
-                job_id="na",
-                status=SchedulerJobStatus.BLOCKED,
-                mode="status",
-                frontier=accepted_frontier_bar_open,
-                start=None,
-                end=None,
-                provider_as_of=None,
-                expected_frontier=None,
-                classification=calc.classification,
-                reason=calc.reason,
-                duration=0.0,
-            )
-
-        assert calc.window is not None
-        window = calc.window
-
-        # 4. Deterministic Job ID for same lane/window
-        job_id = _generate_job_id(lane, window.start_bar_open, window.end_bar_open)
-
-        # 5. Check if Job exists in store
-        existing_job = self.store.get_job(job_id)
-        source_state_before = _file_sha256(self.output_root / "frozen_state.json")
-
-        job = None
-        if existing_job:
-            if existing_job.status == SchedulerJobStatus.COMPLETED:
+            if calc.status == "no_eligible_window":
                 return self._write_noop_receipt(
-                    job_id=job_id,
-                    status=SchedulerJobStatus.COMPLETED,
+                    job_id="na",
+                    status=SchedulerJobStatus.BLOCKED,
                     mode="status",
                     frontier=accepted_frontier_bar_open,
-                    start=window.start_bar_open,
-                    end=window.end_bar_open,
-                    provider_as_of=window.provider_as_of_boundary,
-                    expected_frontier=window.end_bar_open + _ONE_HOUR,
-                    classification="idempotent_no_op",
-                    reason="Window already successfully processed and recorded.",
-                    duration=(datetime.now(UTC) - start_time).total_seconds(),
+                    start=None,
+                    end=None,
+                    provider_as_of=None,
+                    expected_frontier=None,
+                    classification=calc.classification,
+                    reason=calc.reason,
+                    duration=0.0,
                 )
-            elif existing_job.status == SchedulerJobStatus.RUNNING:
-                # Check if stale (timeout 15 minutes)
-                stale_limit = timedelta(minutes=15)
-                if (
-                    existing_job.updated_at
-                    and datetime.now(UTC) - existing_job.updated_at
-                    > stale_limit
-                ):
-                    # Recover stale job
-                    self.store.recover_stale_jobs(lane, stale_limit)
+
+            assert calc.window is not None
+            window = calc.window
+
+            # 4. Deterministic Job ID for same lane/window
+            job_id = _generate_job_id(lane, window.start_bar_open, window.end_bar_open)
+
+            # 5. Check if Job exists in store
+            existing_job = self.store.get_job(job_id)
+            source_state_before = _file_sha256(self.output_root / "frozen_state.json")
+
+            job = None
+            if existing_job:
+                if existing_job.status == SchedulerJobStatus.COMPLETED:
                     return self._write_noop_receipt(
                         job_id=job_id,
-                        status=SchedulerJobStatus.FAILED,
+                        status=SchedulerJobStatus.COMPLETED,
+                        mode="status",
+                        frontier=accepted_frontier_bar_open,
+                        start=window.start_bar_open,
+                        end=window.end_bar_open,
+                        provider_as_of=window.provider_as_of_boundary,
+                        expected_frontier=window.end_bar_open + _ONE_HOUR,
+                        classification="idempotent_no_op",
+                        reason="Window already successfully processed and recorded.",
+                        duration=(datetime.now(UTC) - start_time).total_seconds(),
+                    )
+                elif existing_job.status == SchedulerJobStatus.RUNNING:
+                    # Check if stale (timeout 15 minutes)
+                    stale_limit = timedelta(minutes=15)
+                    if (
+                        existing_job.updated_at
+                        and datetime.now(UTC) - existing_job.updated_at
+                        > stale_limit
+                    ):
+                        # Recover stale job
+                        self.store.recover_stale_jobs(lane, stale_limit)
+                        return self._write_noop_receipt(
+                            job_id=job_id,
+                            status=SchedulerJobStatus.FAILED,
+                            mode="status",
+                            frontier=accepted_frontier_bar_open,
+                            start=window.start_bar_open,
+                            end=window.end_bar_open,
+                            provider_as_of=window.provider_as_of_boundary,
+                            expected_frontier=accepted_frontier_bar_open,
+                            classification="stale_timeout_recovered",
+                            reason="Crashed/stale running job detected and recovered to FAILED.",
+                            duration=(
+                                datetime.now(UTC) - start_time
+                            ).total_seconds(),
+                        )
+                    else:
+                        return self._write_noop_receipt(
+                            job_id=job_id,
+                            status=SchedulerJobStatus.BLOCKED,
+                            mode="status",
+                            frontier=accepted_frontier_bar_open,
+                            start=window.start_bar_open,
+                            end=window.end_bar_open,
+                            provider_as_of=window.provider_as_of_boundary,
+                            expected_frontier=accepted_frontier_bar_open,
+                            classification="blocked_concurrent_run",
+                            reason="Job is currently running under a valid lease.",
+                            duration=(
+                                datetime.now(UTC) - start_time
+                            ).total_seconds(),
+                        )
+                elif existing_job.status in (
+                    SchedulerJobStatus.FAILED,
+                    SchedulerJobStatus.BLOCKED,
+                ):
+                    return self._write_noop_receipt(
+                        job_id=job_id,
+                        status=existing_job.status,
                         mode="status",
                         frontier=accepted_frontier_bar_open,
                         start=window.start_bar_open,
                         end=window.end_bar_open,
                         provider_as_of=window.provider_as_of_boundary,
                         expected_frontier=accepted_frontier_bar_open,
-                        classification="stale_timeout_recovered",
-                        reason="Crashed/stale running job detected and recovered to FAILED.",
-                        duration=(
-                            datetime.now(UTC) - start_time
-                        ).total_seconds(),
+                        classification="no_automatic_retry",
+                        reason=f"Prior job was in {existing_job.status} state. Retries disabled.",
+                        duration=(datetime.now(UTC) - start_time).total_seconds(),
                     )
-                else:
+                elif existing_job.status == SchedulerJobStatus.PENDING:
+                    job = existing_job
+
+            if job is None:
+                # 6. Create Pending Job
+                commit_hash = _get_source_commit()
+                job = SchedulerJob(
+                    schema_version=SCHEDULER_SCHEMA_VERSION,
+                    job_id=job_id,
+                    lane=lane,
+                    source_commit=commit_hash,
+                    created_at=datetime.now(UTC),
+                    requested_start_bar_open=window.start_bar_open,
+                    requested_end_bar_open=window.end_bar_open,
+                    provider_as_of_boundary=window.provider_as_of_boundary,
+                    symbols=symbols,
+                    accepted_frontier_bar_open=accepted_frontier_bar_open,
+                    expected_frontier_bar_open=window.end_bar_open + _ONE_HOUR,
+                    status=SchedulerJobStatus.PENDING,
+                    attempt_number=0,
+                    claim_identity="",
+                    source_state_fingerprint_before=source_state_before,
+                )
+
+                try:
+                    self.store.insert_job(job)
+                except ValidationError as exc:
+                    # Overlap or concurrent insert block
                     return self._write_noop_receipt(
                         job_id=job_id,
                         status=SchedulerJobStatus.BLOCKED,
@@ -1294,73 +1449,14 @@ class OneShotExecutor:
                         end=window.end_bar_open,
                         provider_as_of=window.provider_as_of_boundary,
                         expected_frontier=accepted_frontier_bar_open,
-                        classification="blocked_concurrent_run",
-                        reason="Job is currently running under a valid lease.",
-                        duration=(
-                            datetime.now(UTC) - start_time
-                        ).total_seconds(),
+                        classification="blocked_concurrent_overlap",
+                        reason=str(exc),
+                        duration=(datetime.now(UTC) - start_time).total_seconds(),
                     )
-            elif existing_job.status in (
-                SchedulerJobStatus.FAILED,
-                SchedulerJobStatus.BLOCKED,
-            ):
-                return self._write_noop_receipt(
-                    job_id=job_id,
-                    status=existing_job.status,
-                    mode="status",
-                    frontier=accepted_frontier_bar_open,
-                    start=window.start_bar_open,
-                    end=window.end_bar_open,
-                    provider_as_of=window.provider_as_of_boundary,
-                    expected_frontier=accepted_frontier_bar_open,
-                    classification="no_automatic_retry",
-                    reason=f"Prior job was in {existing_job.status} state. Retries disabled.",
-                    duration=(datetime.now(UTC) - start_time).total_seconds(),
-                )
-            elif existing_job.status == SchedulerJobStatus.PENDING:
-                job = existing_job
-
-        if job is None:
-            # 6. Create Pending Job
-            commit_hash = _get_source_commit()
-            job = SchedulerJob(
-                schema_version=SCHEDULER_SCHEMA_VERSION,
-                job_id=job_id,
-                lane=lane,
-                source_commit=commit_hash,
-                created_at=datetime.now(UTC),
-                requested_start_bar_open=window.start_bar_open,
-                requested_end_bar_open=window.end_bar_open,
-                provider_as_of_boundary=window.provider_as_of_boundary,
-                symbols=symbols,
-                accepted_frontier_bar_open=accepted_frontier_bar_open,
-                expected_frontier_bar_open=window.end_bar_open + _ONE_HOUR,
-                status=SchedulerJobStatus.PENDING,
-                attempt_number=0,
-                claim_identity="",
-                source_state_fingerprint_before=source_state_before,
-            )
-
-            try:
-                self.store.insert_job(job)
-            except ValidationError as exc:
-                # Overlap or concurrent insert block
-                return self._write_noop_receipt(
-                    job_id=job_id,
-                    status=SchedulerJobStatus.BLOCKED,
-                    mode="status",
-                    frontier=accepted_frontier_bar_open,
-                    start=window.start_bar_open,
-                    end=window.end_bar_open,
-                    provider_as_of=window.provider_as_of_boundary,
-                expected_frontier=accepted_frontier_bar_open,
-                classification="blocked_concurrent_overlap",
-                reason=str(exc),
-                duration=(datetime.now(UTC) - start_time).total_seconds(),
-            )
 
         # 7. Claim Job Atomically
-        claim_identity = f"run_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}_{os.getpid()}"
+        import uuid
+        claim_identity = f"run_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}_{os.getpid()}_{uuid.uuid4().hex[:8]}"
         started_at = datetime.now(UTC)
         claimed = self.store.claim_job(job_id, claim_identity, started_at)
 
@@ -1457,6 +1553,35 @@ class OneShotExecutor:
                         job=job,
                         classification="unparseable_receipt_file",
                         reason=f"Failed to parse receipt file as JSON: {exc}",
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
+                    )
+
+                # Validate expected receipt type is allowlisted
+                if r_type not in ("operating_packet", "frozen_state"):
+                    return self._fail_job_and_write_receipt(
+                        job=job,
+                        classification="unknown_receipt_type",
+                        reason=f"Unrecognized receipt type '{r_type}' is not permitted.",
+                        start_time=start_time,
+                        accepted_frontier_bar_open=accepted_frontier_bar_open,
+                        window=window,
+                    )
+
+                # Infer actual type of the receipt file from content
+                if "as_of" in content:
+                    actual_type = "operating_packet"
+                elif "updated_at" in content:
+                    actual_type = "frozen_state"
+                else:
+                    actual_type = "unknown"
+
+                if actual_type != r_type:
+                    return self._fail_job_and_write_receipt(
+                        job=job,
+                        classification="receipt_type_mismatch",
+                        reason=f"Receipt type mismatch for {r_path.name}. Expected '{r_type}', got '{actual_type}'",
                         start_time=start_time,
                         accepted_frontier_bar_open=accepted_frontier_bar_open,
                         window=window,
@@ -1761,7 +1886,7 @@ class OneShotExecutor:
         reason: str,
         start_time: datetime,
         accepted_frontier_bar_open: datetime,
-        window: ScheduleWindow,
+        window: EligibleWindow,
     ) -> dict[str, object]:
         now_utc = datetime.now(UTC)
         source_state_after = _file_sha256(self.output_root / "frozen_state.json")
@@ -1796,7 +1921,49 @@ class OneShotExecutor:
                 reason=str(exc),
                 duration=(datetime.now(UTC) - start_time).total_seconds(),
             )
+def _extract_hostname(url: str) -> str:
+    temp = url.strip().lower()
+    if "://" in temp:
+        temp = temp.split("://", 1)[1]
+    cut_idx = len(temp)
+    for char in ("/", "?", "#"):
+        idx = temp.find(char)
+        if idx != -1 and idx < cut_idx:
+            cut_idx = idx
+    temp = temp[:cut_idx]
+    if "@" in temp:
+        temp = temp.rsplit("@", 1)[1]
+    if ":" in temp:
+        temp = temp.split(":", 1)[0]
+    if temp.endswith("."):
+        temp = temp[:-1]
+    return temp
 
+
+def _validate_stored_job_fields(job: SchedulerJob) -> None:
+    require_utc_datetime(job.requested_start_bar_open)
+    require_utc_datetime(job.requested_end_bar_open)
+    require_utc_datetime(job.provider_as_of_boundary)
+    require_utc_datetime(job.accepted_frontier_bar_open)
+    require_utc_datetime(job.expected_frontier_bar_open)
+
+    for dt in (
+        job.requested_start_bar_open,
+        job.requested_end_bar_open,
+        job.provider_as_of_boundary,
+        job.accepted_frontier_bar_open,
+        job.expected_frontier_bar_open,
+    ):
+        if dt.minute != 0 or dt.second != 0 or dt.microsecond != 0:
+            raise ValidationError(
+                f"Stored job datetime is not aligned to the hour: {dt.isoformat()}"
+            )
+
+    if job.requested_start_bar_open > job.requested_end_bar_open:
+        raise ValidationError(
+            f"Stored job requested_start_bar_open ({job.requested_start_bar_open.isoformat()}) "
+            f"cannot be after requested_end_bar_open ({job.requested_end_bar_open.isoformat()})"
+        )
 
 
 def _generate_job_id(lane: str, start: datetime, end: datetime) -> str:
