@@ -1179,3 +1179,31 @@ live endpoint, live credential, or live-order authority. Live readiness still
 requires genuine completed strategy and paper evidence, a separate
 live-readiness review, executable-attestation hardening, explicit capital
 allocation, live credentials/endpoints, and exact live authorization.
+
+## V5.32 End-to-End Supervised Crypto Readiness Trial
+
+V5.32 composes the existing deterministic crypto operating loop into one
+credential-free evidence command. It runs 24 completed-hour decisions twice
+from canonical initial state, reloads persisted simulation state at every
+cycle, and requires identical canonical receipt chains and semantic final-state
+hashes. BTCUSD, ETHUSD, and SOLUSD are the only evaluated symbols. The command
+binds each fixture input hash to the existing candidate/router decision,
+immutable `ExecutionIntent`, immutable pre-broker `ExecutionPlan`, risk and
+planning gates, simulation observation, reconciliation result, no-submit
+readiness decision, state hashes, and prior receipt hash.
+
+Decision time is one hour after the admitted input frontier, so forming and
+future bars are excluded explicitly. Eight machine-readable scenarios prove
+eligible, hold/no-trade, duplicate/open-order, broker-unobserved, unexpected
+exposure, restart/idempotency, mismatched-state, and normal no-submit behavior.
+Only local simulation state may change. Paper submit, broker mutation, capital,
+and live authority remain false. Generated evidence stays under ignored
+`runs/` paths.
+
+Without inherited paper-read credentials the broker-observed portion records
+`blocked_credentials_unavailable` while the deterministic R1 proof completes.
+A separate double-switch read-only paper command may establish R2 only after
+paper profile, credential presence, and exact paper endpoint gates pass. V5.32
+adds no broker-mutation switch and grants no R3 or R4 authority. The detailed
+contract is in
+`docs/design/v5_32_end_to_end_supervised_crypto_readiness_trial.md`.

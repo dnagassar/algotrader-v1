@@ -1017,3 +1017,117 @@ candidate, or winner, and the fixed endpoint remains
 V5.30 lifecycle quartet or V5.29 flat trio exists. Continue receipt-bound OOS
 accrual without early scoring, then complete the accepted 168-hour V5.25 shadow
 before venue refresh, planning, exact grant, paper lifecycle, and closeout.
+
+## Deterministic One-Shot Tournament-V2 OOS Scheduler
+
+The one-shot scheduler calculates eligible closed crypto hours, claims jobs atomically using SQLite transaction fencing, dispatches the existing accrual command, and records durable audit receipts. It is entirely offline by default, never polls or sleeps, and enforces strict security gates.
+
+### Usage Modes
+
+* **Preview (Default)**: Runs the scheduler in offline preview mode without using credentials or network. It prints a deterministic mock receipt:
+  ```powershell
+  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode preview
+  ```
+* **Run Once**: Runs the scheduler in real mode. It requires explicit authorization switches and will execute the accrual lane if an eligible closed window is calculated:
+  ```powershell
+  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork
+  ```
+* **Status**: Displays the current status of the scheduler and lists the last 10 recorded jobs:
+  ```powershell
+  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode status
+  ```
+* **Recover Stale**: Scans the database and marks any running jobs that have exceeded the 15-minute lease limit as FAILED:
+  ```powershell
+  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode recover_stale
+  ```
+* **Reset Failed**: Resets a failed job to pending state using explicit operator authorization switches:
+  ```powershell
+  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
+  ```
+
+#### Stale Job Recovery and Failure Reset Policy
+
+*   **No Automatic Retry**: Automatic retries are strictly prohibited to prevent cascading network errors, database corruption, or rate-limit violations during transient failures.
+*   **Identifying Failed Windows**: If a job fails, the scheduler's accepted frontier will not advance. To identify failed windows, query the status command:
+    ```powershell
+    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode status
+    ```
+    The status output table lists the recorded jobs, their IDs, windows, and current status.
+*   **Failed Window Reset Command**: To make a failed window retryable, execute the reset command with the exact job ID and the explicit authorization switch:
+    ```powershell
+    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
+    ```
+*   **Executing the Rerun**: After resetting, the job transitions to `pending`. Execute the normal one-shot run command to dispatch and rerun the job:
+    ```powershell
+    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork
+    ```
+*   **Avoiding Skipped Intervals**: Since the scheduler computes the eligible window starting immediately after the accepted frontier, a blocked/failed job blocks subsequent hours from being processed in that lane. Once reset and rerun successfully, the accepted frontier advances, ensuring that no intervals are skipped or processed out of order.
+
+#### Timing Semantics and Hour Bounds
+
+*   **Bar Timestamps**: Hourly bar timestamps represent the **opening time** of the bar, not its completion or publication time. For example, a bar covering the interval `20:00:00Z` to `21:00:00Z` is identified by the timestamp `20:00:00Z`.
+*   **Closing Boundary**: An hourly bar is not closed and cannot be fetched until the end of its hour (e.g., `21:00:00Z` for the `20:00:00Z` bar).
+*   **Trigger and Grace Period Offset**: The Windows scheduled task triggers 5 minutes after every UTC hour boundary (e.g., at `HH:05`). The 5-minute offset represents the publication grace period. Thus, a scheduler tick firing at `21:05:00Z` evaluates the eligibility of the prior hour's bar-open timestamp (`20:00:00Z` or `21:05:00Z - 1 hour - 5 minutes` floored).
+*   **Forming Bar Protection**: The scheduler strictly filters out any currently forming bar. At tick time `HH:MM`, the bar for hour `HH:00` is currently forming and will never be requested, queued, or dispatched.
+*   **Dispatcher Status**: The real command dispatcher remains **disabled** in normal configuration and is only enabled dynamically at runtime with explicit authorization switches.
+*   **Task Registration Status**: The Windows scheduled task template is provided for operator review and remains **unregistered** by default.
+
+### Windows Scheduled Task Template
+
+A Windows Task Scheduler XML template is available at `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`. It triggers 5 minutes after every UTC hour boundary, uses least privileges, prevents overlapping executions (`MultipleInstancesPolicy = IgnoreNew`), and has a 15-minute execution limit.
+
+To preview or register/unregister the task, use the registration helper script:
+*   **Preview XML Template (Default)**:
+    ```powershell
+    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1
+    ```
+*   **Register Scheduled Task**:
+    ```powershell
+    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -RegisterTask
+    ```
+*   **Unregister Scheduled Task**:
+    ```powershell
+    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -UnregisterTask
+    ```
+
+No real credentials, live endpoints, or trading actions are permitted or stored in the task configuration.
+
+## V5.32 End-to-End Supervised Crypto Readiness Trial
+
+Run the complete 24-cycle deterministic proof from a normal credential-free
+shell:
+
+```powershell
+.\scripts\run_crypto_supervised_readiness_trial.ps1
+```
+
+The command runs the same hourly sequence twice, validates restart-safe state,
+executes the eight required fail-closed scenarios, and writes a readiness packet
+under `runs\crypto_supervised_readiness_trial\latest`. A successful default run
+reports `v5_32_trial_classification=accepted` and readiness rung `R1`.
+
+Validate the outer packet and manifest hashes without rerunning the trial:
+
+```powershell
+.\scripts\run_crypto_supervised_readiness_trial.ps1 -ValidateOnly
+```
+
+The default command rejects paper/live profiles, loaded credentials, and
+network-test flags. It performs no network or broker read. Credential values
+are never printed.
+
+If an exact read-only Alpaca paper shell is already available and this specific
+observation is authorized, run:
+
+```powershell
+.\scripts\run_crypto_supervised_readiness_trial.ps1 `
+  -BrokerObservedReadiness `
+  -AllowAlpacaPaperRead
+```
+
+Both switches are required. The wrapper must positively identify paper profile,
+credential presence, and the exact paper endpoint and must reject any live
+indicator. This lane is read-only and no-submit; the script has no paper
+mutation, submit, cancel, replace, close, liquidation, or live switch. Without
+inherited credentials, retain the default
+`blocked_credentials_unavailable` classification and do not expose secrets.

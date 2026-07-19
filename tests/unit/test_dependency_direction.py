@@ -210,6 +210,7 @@ ORCHESTRATION_BOUNDARY_MODULES = (
         "algotrader.orchestration."
         "crypto_tournament_v2_bounded_paper_probe_capability_producer"
     ),
+    "algotrader.orchestration.crypto_tournament_v2_oos_scheduler",
 )
 
 ORCHESTRATION_BOUNDARY_RULES = tuple(
