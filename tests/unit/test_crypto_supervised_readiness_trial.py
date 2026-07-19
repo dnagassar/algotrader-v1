@@ -33,6 +33,8 @@ def test_eight_cycle_trial_proves_complete_r1_path_and_scenarios(
     assert packet["current_readiness_rung_code"] == "R1"
     assert packet["cycle_count"] == 8
     assert packet["symbols_evaluated"] == ["BTCUSD", "ETHUSD", "SOLUSD"]
+    assert packet["branch_and_commit"]["branch"]
+    assert packet["branch_and_commit"]["head"]
     assert packet["deterministic_rerun"]["equivalent"] is True
     assert packet["deterministic_rerun"]["final_state_hash_equal"] is True
     assert packet["sequential_replay"]["all_cycles_valid"] is True

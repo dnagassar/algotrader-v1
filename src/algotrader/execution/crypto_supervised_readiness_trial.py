@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 from typing import Mapping, Sequence
 
 from algotrader.execution.tomorrow_crypto_trader_demo import (
@@ -129,7 +130,10 @@ def run_crypto_supervised_readiness_trial(
         "record_type": "crypto_supervised_readiness_trial",
         "milestone_name": MILESTONE_NAME,
         "operator_command": COMMAND_NAME,
-        "branch_and_commit": dict(_mapping(first_packet.get("git_state"))),
+        "branch_and_commit": {
+            **dict(_mapping(first_packet.get("git_state"))),
+            "branch": _git_branch_name(),
+        },
         "depends_on_unmerged_branch": V531A_BRANCH,
         "depends_on_commit": V531A_DEPENDENCY,
         "decision_start": start.isoformat(),
@@ -902,6 +906,20 @@ def _environment_preflight() -> dict[str, bool]:
         "app_profile_live": profile == "live",
         "credentials_present": any(bool(os.environ.get(name, "").strip()) for name in credential_names),
     }
+
+
+def _git_branch_name() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def _scenario_passed(receipts: Sequence[Mapping[str, object]], scenario_id: str) -> bool:
