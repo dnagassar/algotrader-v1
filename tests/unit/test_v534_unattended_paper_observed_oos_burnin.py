@@ -7,6 +7,7 @@ frontier progression, and strict credential/safety isolation.
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
