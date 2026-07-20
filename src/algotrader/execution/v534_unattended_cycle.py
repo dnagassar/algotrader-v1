@@ -59,7 +59,7 @@ def run_v534_unattended_cycle(
             if (
                 prior_data.get("schema_version") == CYCLE_SCHEMA_VERSION
                 and prior_data.get("accepted_hour_window") == current_hour_str
-                and prior_data.get("classification") in ("cycle_completed_hold", "idempotent_same_window_replay")
+                and prior_data.get("classification") != "in_progress"
             ):
                 idempotent_receipt = dict(prior_data)
                 idempotent_receipt["classification"] = "idempotent_same_window_replay"

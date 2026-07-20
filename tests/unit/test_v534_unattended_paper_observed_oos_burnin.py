@@ -64,9 +64,18 @@ def test_cleanup_account_mismatch(mock_paper_env, mock_clean_provenance):
 
 
 def test_cleanup_successful(mock_paper_env, mock_clean_provenance):
+    exp_acc_id = os.environ.get("ALPACA_EXPECTED_PAPER_ACCOUNT_ID", "test-account-uuid-1234")
     with patch("algotrader.execution.crypto_paper_account_cleanup.AlpacaSdkClient") as mock_client_cls:
         client = MagicMock()
-        account_mock = MagicMock(id="test-account-uuid-1234", status="ACTIVE", trading_blocked=False, account_blocked=False)
+        account_mock = MagicMock(
+            id=exp_acc_id,
+            account_number=exp_acc_id,
+            status="ACTIVE",
+            trading_blocked=False,
+            account_blocked=False,
+            suspended=False,
+            transact_blocked=False,
+        )
         client.get_account.return_value = account_mock
 
         # First call has 1 position and 1 open order; second call (reconciliation) has 0
