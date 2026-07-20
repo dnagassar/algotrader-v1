@@ -137,7 +137,7 @@ def run_v534_unattended_cycle(
     composite["scheduler_job_identity"] = sched_tick.get("job_id", "na")
     composite["scheduler_classification"] = cmd_class
 
-    if job_status not in ("succeeded", "success", "no_op"):
+    if job_status not in ("completed", "succeeded", "success", "no_op"):
         composite["classification"] = f"scheduler_failed_{cmd_class}"
         composite["completed_at_utc"] = datetime.now(UTC).isoformat()
         _write_json_atomic(composite_receipt_path, composite)
