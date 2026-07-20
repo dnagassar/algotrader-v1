@@ -938,6 +938,20 @@ class RealCommandDispatcher(CommandDispatcher):
                 if not k_upper.startswith(excluded_prefixes) and k_upper not in excluded_exact:
                     env[k] = v
 
+        if self.market_data_read_authorized:
+            for k in (
+                "ALPACA_API_KEY",
+                "ALPACA_SECRET_KEY",
+                "ALPACA_API_SECRET_KEY",
+                "ALPACA_API_KEY_ID",
+                "ALPACA_PAPER_BASE_URL",
+                "APCA_API_KEY_ID",
+                "APCA_API_SECRET_KEY",
+                "APCA_API_BASE_URL",
+            ):
+                if k in os.environ:
+                    env[k] = os.environ[k]
+
         try:
             result = subprocess.run(
                 cmd,
