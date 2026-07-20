@@ -946,12 +946,7 @@ class RealCommandDispatcher(CommandDispatcher):
                 env=env,
                 check=False,
             )
-            print(f"DEBUG RealCommandDispatcher cmd: {cmd}")
-            print(f"DEBUG RealCommandDispatcher RC: {result.returncode}")
-            print(f"DEBUG RealCommandDispatcher stdout: {result.stdout}")
-            print(f"DEBUG RealCommandDispatcher stderr: {result.stderr}")
             if result.returncode != 0:
-                sys.stderr.write(f"DISPATCH_FAIL_RC: {result.returncode}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}\n")
                 return {
                     "status": "failed",
                     "classification": "subprocess_error",
