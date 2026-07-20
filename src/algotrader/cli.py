@@ -13464,21 +13464,39 @@ def _run_crypto_readiness_preflight(args: argparse.Namespace) -> int:
 
 
 def _write_receipt_atomically(path: Path, data: dict[str, Any]) -> None:
+    import json
+    import os
     import tempfile
-    # Create temp file in the same directory to make os.replace atomic
+
     parent = path.parent
-    temp_fd, temp_path_str = tempfile.mkstemp(dir=parent, prefix=f"tmp_{path.name}_", suffix=".tmp")
+    parent.mkdir(parents=True, exist_ok=True)
+    temp_path_str = None
     try:
+        temp_fd, temp_path_str = tempfile.mkstemp(dir=parent, prefix=f"tmp_{path.name}_", suffix=".tmp")
         with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(data, sort_keys=True, indent=2) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
         os.replace(temp_path_str, path)
-    except Exception as exc:
-        if os.path.exists(temp_path_str):
+        temp_path_str = None
+
+        try:
+            dir_fd = os.open(parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except Exception:
+            pass
+    except Exception:
+        if temp_path_str and os.path.exists(temp_path_str):
             try:
                 os.unlink(temp_path_str)
             except OSError:
                 pass
-        raise RuntimeError("receipt_persistence_failed") from exc
+        raise RuntimeError("receipt_persistence_failed") from None
+
 
 
 def _run_crypto_paper_broker_observation(args: argparse.Namespace) -> int:

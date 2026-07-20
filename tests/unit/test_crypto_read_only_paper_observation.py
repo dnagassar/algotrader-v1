@@ -522,6 +522,10 @@ def test_wrong_adapter_source_bundle_digest_rejected(tmp_path: Path) -> None:
     inv = {
         "schema_version": "v5_33_production_invocation_receipt_v1",
         "adapter_version": "1.0",
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_bundle_manifest": {},
         "adapter_source_bundle_sha256": "a" * 64,  # wrong digest!
         "command_source_identity": "crypto-paper-broker-observation",
         "normalized_paper_endpoint": "https://paper-api.alpaca.markets",
@@ -542,9 +546,19 @@ def test_wrong_adapter_source_bundle_digest_rejected(tmp_path: Path) -> None:
     (tmp_path / "observation_receipt.json").write_text(json.dumps(obs), encoding="utf-8")
     (tmp_path / "invocation_receipt.json").write_text(json.dumps(inv), encoding="utf-8")
 
-    res = _validate_offline_receipt(tmp_path)
-    assert res["valid"] is False
-    assert res["classification"] == "blocked_source_bundle_digest_mismatch"
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "z" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    with patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
+        res = _validate_offline_receipt(tmp_path)
+        assert res["valid"] is False
+        assert res["classification"] == "blocked_source_bundle_digest_mismatch"
 
 
 def test_exact_call_counts_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -564,7 +578,17 @@ def test_exact_call_counts_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
     get_ord_mock = MagicMock(return_value=[])
     get_ast_mock = MagicMock(return_value=MockAsset("BTCUSD", True, True, "crypto"))
 
-    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient") as mock_sdk_class:
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "c" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient") as mock_sdk_class, \
+         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
         sdk_instance = MagicMock()
         sdk_instance.get_account = get_acc_mock
         sdk_instance.get_positions = get_pos_mock
@@ -709,7 +733,17 @@ def test_stage_failures_counters_and_short_circuiting(monkeypatch: pytest.Monkey
     # Account call throws
     sdk_instance.get_account.side_effect = RuntimeError("network timeout")
 
-    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance):
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "c" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance), \
+         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
         with pytest.raises(BrokerObservationError) as exc_info:
             perform_genuine_paper_observation(
                 paper_broker_read_authorized=True,
@@ -751,7 +785,17 @@ def test_positions_failure_counters_and_short_circuiting(monkeypatch: pytest.Mon
     sdk_instance.get_account.return_value = MockAlpacaClient()
     sdk_instance.get_positions.side_effect = RuntimeError("Connection refused")
 
-    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance):
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "c" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance), \
+         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
         with pytest.raises(BrokerObservationError) as exc_info:
             perform_genuine_paper_observation(
                 paper_broker_read_authorized=True,
@@ -781,7 +825,17 @@ def test_account_validation_failure_prevents_later_calls(monkeypatch: pytest.Mon
     sdk_instance = MagicMock()
     sdk_instance.get_account.return_value = MockAlpacaClient()
 
-    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance):
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "c" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance), \
+         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
         with pytest.raises(BrokerObservationError) as exc_info:
             perform_genuine_paper_observation(
                 paper_broker_read_authorized=True,
@@ -833,7 +887,17 @@ def test_raw_http_bodies_and_headers_are_absent_from_receipts(monkeypatch: pytes
 
     sdk_instance.get_account.side_effect = FakeAPIError()
 
-    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance):
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "c" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    with patch("algotrader.execution.alpaca_sdk_client.AlpacaSdkClient", return_value=sdk_instance), \
+         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
         with pytest.raises(BrokerObservationError) as exc_info:
             perform_genuine_paper_observation(
                 paper_broker_read_authorized=True,
@@ -885,7 +949,11 @@ def test_consumer_returns_nonzero_for_valid_blocked_evidence(tmp_path: Path) -> 
         "schema_version": "v5_33_production_invocation_receipt_v1",
         "invocation_id": "test-uuid",
         "adapter_version": "1.0",
-        "adapter_source_bundle_sha256": "a" * 64, # will mock compute_source_bundle_digest to return this
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_bundle_manifest": {},
+        "adapter_source_bundle_sha256": "a" * 64,
         "command_source_identity": "crypto-paper-broker-observation",
         "normalized_paper_endpoint": "https://paper-api.alpaca.markets",
         "preflight_booleans": {
@@ -945,8 +1013,17 @@ def test_consumer_returns_nonzero_for_valid_blocked_evidence(tmp_path: Path) -> 
     (tmp_path / "invocation_receipt.json").write_text(json.dumps(inv), encoding="utf-8")
     (tmp_path / "failure_receipt.json").write_text(json.dumps(fail), encoding="utf-8")
 
-    # Run validation under mock source bundle digest to match all-zeros
-    with patch("algotrader.execution.crypto_read_only_paper_observation_adapter.compute_source_bundle_digest", return_value=("a" * 64, {})):
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "main",
+        "adapter_source_bundle_sha256": "a" * 64,
+        "source_bundle_manifest": {},
+    }
+
+    # Run validation under mock get_source_provenance
+    with patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance", return_value=mock_prov):
         res = _validate_offline_receipt(tmp_path)
         assert res["valid"] is True
         assert res["is_failure_receipt"] is True

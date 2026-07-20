@@ -1143,18 +1143,29 @@ def _validate_offline_receipt(receipt_root: Path | str | None) -> dict[str, Any]
             if not bundle_digest or bundle_digest == "0" * 64:
                 return {"valid": False, "classification": "blocked_source_bundle_digest_invalid", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
-            repo_root = Path(".").resolve()
-            from algotrader.execution.crypto_read_only_paper_observation_adapter import compute_source_bundle_digest
-            try:
-                local_digest, local_manifest = compute_source_bundle_digest(repo_root)
-            except Exception:
-                return {"valid": False, "classification": "blocked_source_bundle_missing_files", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+            if inv_receipt.get("source_worktree_clean") is not True:
+                return {"valid": False, "classification": "blocked_source_dirty", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
-            if bundle_digest != local_digest:
+            repo_root = Path(".").resolve()
+            from algotrader.execution.crypto_read_only_paper_observation_adapter import get_source_provenance, PreflightCheckError
+            try:
+                local_prov = get_source_provenance(repo_root)
+            except PreflightCheckError as p_err:
+                return {"valid": False, "classification": f"blocked_{str(p_err)}", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+            except Exception:
+                return {"valid": False, "classification": "blocked_source_provenance_failed", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+            if inv_receipt.get("source_commit_sha") != local_prov["source_commit_sha"]:
+                return {"valid": False, "classification": "blocked_source_commit_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+            if inv_receipt.get("source_tree_sha") != local_prov["source_tree_sha"]:
+                return {"valid": False, "classification": "blocked_source_tree_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+            if bundle_digest != local_prov["adapter_source_bundle_sha256"]:
                 return {"valid": False, "classification": "blocked_source_bundle_digest_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
             stored_manifest = inv_receipt.get("source_bundle_manifest", {})
-            if local_manifest != stored_manifest:
+            if local_prov["source_bundle_manifest"] != stored_manifest:
                 return {"valid": False, "classification": "blocked_source_bundle_manifest_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
             if obs_receipt.get("paper_endpoint_classification") != "https://paper-api.alpaca.markets":
@@ -1162,7 +1173,7 @@ def _validate_offline_receipt(receipt_root: Path | str | None) -> dict[str, Any]
             if inv_receipt.get("normalized_paper_endpoint") != "https://paper-api.alpaca.markets":
                   return {"valid": False, "classification": "blocked_endpoint_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
-            if not obs_receipt.get("expected_account_match") or not inv_receipt.get("expected_account_match"):
+            if not obs_receipt.get("expected_account_match"):
                 return {"valid": False, "classification": "blocked_expected_account_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
             if obs_receipt.get("target_symbol") != "BTCUSD":
@@ -1284,18 +1295,29 @@ def _validate_offline_receipt(receipt_root: Path | str | None) -> dict[str, Any]
         if not bundle_digest or bundle_digest == "0" * 64:
             return {"valid": False, "classification": "blocked_source_bundle_digest_invalid", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
-        repo_root = Path(".").resolve()
-        from algotrader.execution.crypto_read_only_paper_observation_adapter import compute_source_bundle_digest
-        try:
-            local_digest, local_manifest = compute_source_bundle_digest(repo_root)
-        except Exception:
-            return {"valid": False, "classification": "blocked_source_bundle_missing_files", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+        if inv_receipt.get("source_worktree_clean") is not True:
+            return {"valid": False, "classification": "blocked_source_dirty", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
-        if bundle_digest != local_digest:
+        repo_root = Path(".").resolve()
+        from algotrader.execution.crypto_read_only_paper_observation_adapter import get_source_provenance, PreflightCheckError
+        try:
+            local_prov = get_source_provenance(repo_root)
+        except PreflightCheckError as p_err:
+            return {"valid": False, "classification": f"blocked_{str(p_err)}", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+        except Exception:
+            return {"valid": False, "classification": "blocked_source_provenance_failed", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+        if inv_receipt.get("source_commit_sha") != local_prov["source_commit_sha"]:
+            return {"valid": False, "classification": "blocked_source_commit_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+        if inv_receipt.get("source_tree_sha") != local_prov["source_tree_sha"]:
+            return {"valid": False, "classification": "blocked_source_tree_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
+
+        if bundle_digest != local_prov["adapter_source_bundle_sha256"]:
             return {"valid": False, "classification": "blocked_source_bundle_digest_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
         stored_manifest = inv_receipt.get("source_bundle_manifest", {})
-        if local_manifest != stored_manifest:
+        if local_prov["source_bundle_manifest"] != stored_manifest:
             return {"valid": False, "classification": "blocked_source_bundle_manifest_mismatch", "broker_state_observed": False, "network_used": False, "broker_read_occurred": False}
 
         if inv_receipt.get("normalized_paper_endpoint") != "https://paper-api.alpaca.markets":
