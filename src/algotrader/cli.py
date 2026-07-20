@@ -3975,7 +3975,7 @@ def build_parser() -> argparse.ArgumentParser:
         "crypto-paper-broker-observation",
         help="Perform one explicitly authorized real paper-broker observation and persist receipt.",
     )
-    crypto_observe_parser.add_argument("--output-root", default="runs/crypto_supervised_readiness_trial/latest")
+    crypto_observe_parser.add_argument("--receipt-root", required=True)
     crypto_observe_parser.add_argument("--broker-observed-readiness", action="store_true")
     crypto_observe_parser.add_argument("--allow-alpaca-paper-read", action="store_true")
 
@@ -3983,7 +3983,7 @@ def build_parser() -> argparse.ArgumentParser:
         "crypto-readiness-consume",
         help="Consume a sanitized observation receipt offline and run readiness trial.",
     )
-    crypto_consume_parser.add_argument("--receipt-path", required=True)
+    crypto_consume_parser.add_argument("--receipt-root", required=True)
     crypto_consume_parser.add_argument("--output-root", default="runs/crypto_supervised_readiness_trial/latest")
 
     return parser
@@ -13468,72 +13468,67 @@ def _run_crypto_paper_broker_observation(args: argparse.Namespace) -> int:
     import json
     from pathlib import Path
     from .execution.crypto_read_only_paper_observation_adapter import (
-        perform_crypto_observation,
+        perform_genuine_paper_observation,
         PreflightCheckError,
-        BrokerObservationError
+        BrokerObservationError,
+        get_production_preflight_inputs
     )
-    from .execution.alpaca_sdk_client import AlpacaSdkClient
-    from .config import AlpacaPaperConfig
 
-    out_dir = Path(args.output_root)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    receipt_file = out_dir / "observation_receipt.json"
+    receipt_root = Path(args.receipt_root)
+    receipt_root.mkdir(parents=True, exist_ok=True)
+    obs_file = receipt_root / "observation_receipt.json"
+    inv_file = receipt_root / "invocation_receipt.json"
 
-    env = os.environ
-    profile = env.get("APP_PROFILE", "").strip().lower()
-    credential_names = (
-        "ALPACA_API_KEY",
-        "ALPACA_API_SECRET_KEY",
-        "ALPACA_SECRET_KEY",
-        "APCA_API_KEY_ID",
-        "APCA_API_SECRET_KEY",
-    )
-    credentials_present = any(bool(env.get(name, "").strip()) for name in credential_names)
-    expected_account_id = env.get("ALPACA_EXPECTED_PAPER_ACCOUNT_ID")
+    inputs = get_production_preflight_inputs()
 
-    if not credentials_present or not expected_account_id or not expected_account_id.strip() or profile != "paper":
+    if (not inputs["app_profile"] or inputs["app_profile"].strip().lower() != "paper" or
+        not inputs["endpoint"] or
+        not inputs["key_id"] or not inputs["secret_key"] or
+        not inputs["expected_account_id"]):
+
         blocked_packet = {
             "classification": "blocked_credentials_or_expected_account_unavailable",
             "broker_state_observed": False,
             "reason": "Credentials or expected account configuration unavailable in the environment."
         }
-        receipt_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        if inv_file.is_file():
+            inv_file.unlink()
         print("crypto_observation_status=blocked_credentials_or_expected_account_unavailable")
         return 1
 
     try:
-        config = AlpacaPaperConfig(
-            app_profile=profile,
-            alpaca_api_key=env.get("ALPACA_API_KEY") or env.get("APCA_API_KEY_ID"),
-            alpaca_secret_key=env.get("ALPACA_SECRET_KEY") or env.get("ALPACA_API_SECRET_KEY") or env.get("APCA_API_SECRET_KEY"),
-            alpaca_paper_base_url=env.get("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
-        )
-        client = AlpacaSdkClient(config)
-        receipt = perform_crypto_observation(
-            client,
+        repo_root = Path(".").resolve()
+        obs_receipt, inv_receipt = perform_genuine_paper_observation(
             paper_broker_read_authorized=args.broker_observed_readiness,
-            allow_network=args.allow_alpaca_paper_read
+            allow_network=args.allow_alpaca_paper_read,
+            repo_root=repo_root
         )
-        receipt_file.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        obs_file.write_text(json.dumps(obs_receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        inv_file.write_text(json.dumps(inv_receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         print("crypto_observation_status=observation_receipt_created")
         return 0
     except (PreflightCheckError, BrokerObservationError) as exc:
         blocked_packet = {
             "classification": "blocked_observation_failed",
             "broker_state_observed": False,
-            "reason": str(exc)
+            "reason": "preflight_failed" if isinstance(exc, PreflightCheckError) else "broker_read_failed"
         }
-        receipt_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
-        print(f"crypto_observation_status=blocked_observation_failed: {exc}")
+        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        if inv_file.is_file():
+            inv_file.unlink()
+        print(f"crypto_observation_status=blocked_observation_failed")
         return 1
     except Exception as exc:
         blocked_packet = {
             "classification": "blocked_observation_failed",
             "broker_state_observed": False,
-            "reason": f"Unexpected error: {exc}"
+            "reason": "unexpected_error"
         }
-        receipt_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
-        print(f"crypto_observation_status=blocked_observation_failed: Unexpected error: {exc}")
+        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        if inv_file.is_file():
+            inv_file.unlink()
+        print(f"crypto_observation_status=blocked_observation_failed")
         return 1
 
 
@@ -13542,7 +13537,7 @@ def _run_crypto_readiness_consume(args: argparse.Namespace) -> int:
     packet = run_crypto_supervised_readiness_trial(
         output_root=args.output_root,
         write_artifacts=True,
-        receipt_path=args.receipt_path,
+        receipt_root=args.receipt_root,
     )
     print(f"crypto_consume_classification={packet['trial_classification']}")
     print(f"crypto_consume_current_readiness_rung={packet['current_readiness_rung_code']}")

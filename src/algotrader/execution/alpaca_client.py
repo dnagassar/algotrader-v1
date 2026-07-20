@@ -302,6 +302,22 @@ class AlpacaOrderSubmissionResponse:
     filled_avg_price: Optional[Decimal] = None
 
 
+class PaperObservationReader(Protocol):
+    """Narrow read-only protocol for paper broker observation."""
+
+    def get_account(self) -> Any:
+        ...
+
+    def get_positions(self) -> Sequence[Any]:
+        ...
+
+    def get_orders(self, query: Any | None = None) -> Sequence[Any]:
+        ...
+
+    def get_asset(self, symbol: str) -> Any:
+        ...
+
+
 class AlpacaClient(Protocol):
     """Minimal client protocol a future Alpaca adapter must satisfy."""
 
