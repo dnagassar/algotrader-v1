@@ -291,8 +291,8 @@ def _process_raw_observations(
     if status is None or trading_blocked is None or account_blocked is None:
         raise BrokerObservationError("broker_account_safety_fields_missing")
 
-    status_str = str(status).upper()
-    if status_str != "ACTIVE":
+    status_str = _to_string_value(status)
+    if not status_str or status_str.upper() != "ACTIVE":
         raise BrokerObservationError("broker_account_inactive")
     if trading_blocked is not False:
         raise BrokerObservationError("broker_account_trading_blocked")
@@ -352,7 +352,10 @@ def _process_raw_observations(
         o_notional = _get_attr_or_key(order, "notional")
         o_side = _get_attr_or_key(order, "side")
 
-        if not o_symbol or not o_status or not o_id or not o_client_id:
+        o_status_str = _to_string_value(o_status)
+        o_side_str = _to_string_value(o_side)
+
+        if not o_symbol or not o_status_str or not o_id or not o_client_id:
             raise BrokerObservationError("malformed_open_order_data")
 
         if o_client_id in seen_client_order_ids:
@@ -363,7 +366,7 @@ def _process_raw_observations(
         if normalized_sym != TARGET_SYMBOL:
             unexpected_exposure_classification = "unexpected_exposure_detected"
 
-        if o_status.lower() not in (
+        if o_status_str.lower() not in (
             "open", "new", "accepted", "partially_filled", "pending_new", "accepted_for_bidding", "held"
         ):
             raise BrokerObservationError("unsupported_open_order_status")
@@ -372,10 +375,10 @@ def _process_raw_observations(
             "order_id": o_id,
             "client_order_id": o_client_id,
             "symbol": normalized_sym,
-            "status": o_status.lower(),
+            "status": o_status_str.lower(),
             "quantity": str(Decimal(str(o_qty)).normalize()) if o_qty is not None else None,
             "notional": str(Decimal(str(o_notional)).normalize()) if o_notional is not None else None,
-            "side": o_side.lower() if o_side else None,
+            "side": o_side_str.lower() if o_side_str else None,
         })
 
     # Validate target asset metadata
@@ -385,10 +388,11 @@ def _process_raw_observations(
     a_tradable = _get_attr_or_key(raw_asset, "tradable")
     a_orderable = _get_attr_or_key(raw_asset, "orderable")
     a_class = _get_attr_or_key(raw_asset, "asset_class") or _get_attr_or_key(raw_asset, "class")
+    a_class_str = _to_string_value(a_class)
 
     if a_tradable is not True or a_orderable is not True:
         raise BrokerObservationError("target_asset_not_tradable_or_orderable")
-    if a_class and a_class.lower() != SUPPORTED_ASSET_CLASS:
+    if a_class_str and a_class_str.lower() != SUPPORTED_ASSET_CLASS:
         raise BrokerObservationError("target_asset_class_invalid")
 
     # Check for truncation/completeness
@@ -460,3 +464,13 @@ def _get_attr_or_key(obj: Any, key: str) -> Any:
         return getattr(obj, key)
     except AttributeError:
         return None
+
+
+def _to_string_value(val: Any) -> str | None:
+    if val is None:
+        return None
+    if hasattr(val, "value"):
+        return str(val.value)
+    if hasattr(val, "name"):
+        return str(val.name)
+    return str(val)
