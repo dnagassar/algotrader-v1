@@ -21,6 +21,7 @@ from algotrader.execution.crypto_read_only_paper_observation_adapter import (
     EXPECTED_PAPER_ENDPOINT,
     PreflightCheckError,
     _canonical_account_identity,
+    _validate_account,
     get_production_preflight_inputs,
     get_source_provenance,
     validate_preflight_gates,
@@ -104,30 +105,17 @@ def run_crypto_paper_account_cleanup(
 
         # 1. Verify account identity & safety before any mutation
         raw_account = client.get_account()
-        canon_obs_id = _canonical_account_identity(getattr(raw_account, "id", None) or getattr(raw_account, "account_id", None))
-        canon_obs_num = _canonical_account_identity(getattr(raw_account, "account_number", None))
-        canon_exp = _canonical_account_identity(inputs["expected_account_id"])
-
-        account_matched = (canon_exp is not None) and (
-            (canon_obs_id is not None and canon_obs_id == canon_exp)
-            or (canon_obs_num is not None and canon_obs_num == canon_exp)
-        )
-        if not account_matched:
+        acc_err = _validate_account(raw_account, inputs["expected_account_id"])
+        if acc_err == "account_mismatch":
             result["classification"] = "account_mismatch"
+            _write_receipt(receipt_path, result)
+            return result
+        elif acc_err is not None:
+            result["classification"] = f"account_validation_failed_{acc_err}"
             _write_receipt(receipt_path, result)
             return result
 
         result["expected_account_matched"] = True
-
-        status_str = str(getattr(raw_account, "status", "")).upper()
-        trading_blocked = getattr(raw_account, "trading_blocked", True)
-        account_blocked = getattr(raw_account, "account_blocked", True)
-
-        if status_str != "ACTIVE" or trading_blocked or account_blocked:
-            result["classification"] = "account_safety_check_failed"
-            _write_receipt(receipt_path, result)
-            return result
-
         result["account_active_unblocked"] = True
 
         # 2. Inventory pre-cleanup state
