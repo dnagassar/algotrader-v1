@@ -13463,6 +13463,24 @@ def _run_crypto_readiness_preflight(args: argparse.Namespace) -> int:
     return 0
 
 
+def _write_receipt_atomically(path: Path, data: dict[str, Any]) -> None:
+    import tempfile
+    # Create temp file in the same directory to make os.replace atomic
+    parent = path.parent
+    temp_fd, temp_path_str = tempfile.mkstemp(dir=parent, prefix=f"tmp_{path.name}_", suffix=".tmp")
+    try:
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, sort_keys=True, indent=2) + "\n")
+        os.replace(temp_path_str, path)
+    except Exception as exc:
+        if os.path.exists(temp_path_str):
+            try:
+                os.unlink(temp_path_str)
+            except OSError:
+                pass
+        raise RuntimeError("receipt_persistence_failed") from exc
+
+
 def _run_crypto_paper_broker_observation(args: argparse.Namespace) -> int:
     import os
     import json
@@ -13471,30 +13489,37 @@ def _run_crypto_paper_broker_observation(args: argparse.Namespace) -> int:
         perform_genuine_paper_observation,
         PreflightCheckError,
         BrokerObservationError,
-        get_production_preflight_inputs
+        get_production_preflight_inputs,
+        validate_preflight_gates
     )
 
     receipt_root = Path(args.receipt_root)
+    # The supplied receipt root must be unique and either nonexistent or empty of canonical receipts
+    for name in ("observation_receipt.json", "invocation_receipt.json", "failure_receipt.json"):
+        if (receipt_root / name).is_file():
+            print("crypto_observation_status=receipt_root_not_empty")
+            return 1
+
     receipt_root.mkdir(parents=True, exist_ok=True)
     obs_file = receipt_root / "observation_receipt.json"
     inv_file = receipt_root / "invocation_receipt.json"
+    fail_file = receipt_root / "failure_receipt.json"
 
     inputs = get_production_preflight_inputs()
 
-    if (not inputs["app_profile"] or inputs["app_profile"].strip().lower() != "paper" or
-        not inputs["endpoint"] or
-        not inputs["key_id"] or not inputs["secret_key"] or
-        not inputs["expected_account_id"]):
-
-        blocked_packet = {
-            "classification": "blocked_credentials_or_expected_account_unavailable",
-            "broker_state_observed": False,
-            "reason": "Credentials or expected account configuration unavailable in the environment."
-        }
-        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
-        if inv_file.is_file():
-            inv_file.unlink()
-        print("crypto_observation_status=blocked_credentials_or_expected_account_unavailable")
+    try:
+        # Preflight gates check
+        validate_preflight_gates(
+            app_profile=inputs["app_profile"],
+            endpoint=inputs["endpoint"],
+            key_id=inputs["key_id"],
+            secret_key=inputs["secret_key"],
+            expected_account_id=inputs["expected_account_id"],
+            paper_broker_read_authorized=args.broker_observed_readiness,
+            allow_network=args.allow_alpaca_paper_read,
+        )
+    except PreflightCheckError as exc:
+        print(f"crypto_observation_status={str(exc)}")
         return 1
 
     try:
@@ -13504,31 +13529,33 @@ def _run_crypto_paper_broker_observation(args: argparse.Namespace) -> int:
             allow_network=args.allow_alpaca_paper_read,
             repo_root=repo_root
         )
-        obs_file.write_text(json.dumps(obs_receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        inv_file.write_text(json.dumps(inv_receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        try:
+            _write_receipt_atomically(obs_file, obs_receipt)
+            _write_receipt_atomically(inv_file, inv_receipt)
+        except Exception:
+            print("receipt_persistence_failed")
+            return 1
+
         print("crypto_observation_status=observation_receipt_created")
         return 0
-    except (PreflightCheckError, BrokerObservationError) as exc:
-        blocked_packet = {
-            "classification": "blocked_observation_failed",
-            "broker_state_observed": False,
-            "reason": "preflight_failed" if isinstance(exc, PreflightCheckError) else "broker_read_failed"
-        }
-        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
-        if inv_file.is_file():
-            inv_file.unlink()
-        print(f"crypto_observation_status=blocked_observation_failed")
+    except PreflightCheckError as exc:
+        print(f"crypto_observation_status={str(exc)}")
         return 1
-    except Exception as exc:
-        blocked_packet = {
-            "classification": "blocked_observation_failed",
-            "broker_state_observed": False,
-            "reason": "unexpected_error"
-        }
-        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
-        if inv_file.is_file():
-            inv_file.unlink()
-        print(f"crypto_observation_status=blocked_observation_failed")
+    except BrokerObservationError as exc:
+        if exc.invocation_receipt is not None and exc.failure_receipt is not None:
+            try:
+                _write_receipt_atomically(inv_file, exc.invocation_receipt)
+                _write_receipt_atomically(fail_file, exc.failure_receipt)
+            except Exception:
+                print("receipt_persistence_failed")
+                return 1
+            print("crypto_observation_status=blocked_observation_failed")
+            return 1
+        else:
+            print("crypto_observation_status=blocked_observation_failed")
+            return 1
+    except Exception:
+        print("crypto_observation_status=blocked_observation_failed")
         return 1
 
 

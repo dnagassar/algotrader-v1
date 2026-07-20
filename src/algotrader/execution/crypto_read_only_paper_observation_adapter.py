@@ -1,4 +1,4 @@
-"""V5.33 Bounded read-only paper broker observation adapter.
+"""V5.33.1 Bounded read-only paper broker observation adapter.
 
 This module performs a single, bounded, explicitly authorized, read-only paper
 account observation for BTCUSD, producing cross-bound receipts.
@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_client import PaperObservationReader
@@ -32,7 +32,25 @@ class PreflightCheckError(ValidationError):
 
 class BrokerObservationError(ValidationError):
     """Raised when broker state cannot be observed or fails checks."""
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        invocation_receipt: dict[str, Any] | None = None,
+        failure_receipt: dict[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        self._invocation_receipt = invocation_receipt
+        self._failure_receipt = failure_receipt
+
+    @property
+    def invocation_receipt(self) -> dict[str, Any] | None:
+        return self._invocation_receipt
+
+    @property
+    def failure_receipt(self) -> dict[str, Any] | None:
+        return self._failure_receipt
+
 
 def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
     relative_paths = [
@@ -59,6 +77,7 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         h.update(f"{rel_path}:{file_hash}\n".encode("utf-8"))
 
     return h.hexdigest(), manifest
+
 
 def validate_preflight_gates(
     *,
@@ -91,6 +110,7 @@ def validate_preflight_gates(
     if not allow_network:
         raise PreflightCheckError("preflight_failed_network_blocked")
 
+
 def get_production_preflight_inputs() -> dict[str, Any]:
     env = os.environ
     app_profile = env.get("APP_PROFILE")
@@ -120,6 +140,226 @@ def get_production_preflight_inputs() -> dict[str, Any]:
         "expected_account_id": expected_account_id,
     }
 
+
+def classify_transport_category(exc: Exception) -> str:
+    cause = exc.__cause__
+    target = cause if cause is not None else exc
+
+    # Check status code properties
+    status_code = None
+    for attr in ("status_code", "code"):
+        val = getattr(target, attr, None)
+        if isinstance(val, int):
+            status_code = val
+            break
+        elif val is not None:
+            try:
+                status_code = int(val)
+                break
+            except (ValueError, TypeError):
+                pass
+
+    if status_code is None:
+        response = getattr(target, "response", None)
+        if response is not None:
+            val = getattr(response, "status_code", None)
+            if isinstance(val, int):
+                status_code = val
+            elif val is not None:
+                try:
+                    status_code = int(val)
+                except (ValueError, TypeError):
+                    pass
+
+    if status_code is not None:
+        if status_code == 401:
+            return "authentication_rejected"
+        if status_code == 403:
+            return "authorization_rejected"
+        if status_code == 429:
+            return "rate_limited"
+        if 500 <= status_code <= 599:
+            return "upstream_server_error"
+
+    # Check exception class name (NEVER inspecting str(exc))
+    class_name = target.__class__.__name__
+
+    if class_name in (
+        "TimeoutError",
+        "Timeout",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "SocketTimeout",
+    ) or "timeout" in class_name.lower():
+        return "timeout"
+
+    if class_name != "ValidationError":
+        if class_name in (
+            "ConnectionError",
+            "ConnectionRefusedError",
+            "ConnectionResetError",
+            "ConnectionAbortedError",
+            "ConnectError",
+            "NewConnectionError",
+            "MaxRetryError",
+            "SSLError",
+        ) or "connection" in class_name.lower() or "connect" in class_name.lower() or "ssl" in class_name.lower():
+            return "connection_failed"
+
+    if class_name in (
+        "JSONDecodeError",
+        "DecodeError",
+        "ParseError",
+        "ContentDecodingError",
+    ) or "decode" in class_name.lower() or "parse" in class_name.lower():
+        return "malformed_response"
+
+    if class_name in ("KeyError", "AttributeError", "TypeError", "IndexError"):
+        return "malformed_response"
+
+    if class_name in ("APIError", "APIRequestError", "AlpacaSdkClientReadError"):
+        return "unknown_sdk_failure"
+
+    return "unknown_sdk_failure"
+
+
+def _validate_account(raw_account: Any, expected_account_id: str | None) -> str | None:
+    account_id = _get_attr_or_key(raw_account, "account_id") or _get_attr_or_key(raw_account, "id")
+    account_number = _get_attr_or_key(raw_account, "account_number")
+    if not account_id and not account_number:
+        return "account_id_missing"
+    if expected_account_id:
+        account_matched = (account_id == expected_account_id) or (account_number == expected_account_id)
+        if not account_matched:
+            return "account_mismatch"
+
+    status = _get_attr_or_key(raw_account, "status")
+    status_str = _to_string_value(status)
+    if not status_str or status_str.upper() != "ACTIVE":
+        return "account_inactive"
+
+    if _get_attr_or_key(raw_account, "trading_blocked") is not False:
+        return "trading_blocked"
+
+    if _get_attr_or_key(raw_account, "account_blocked") is not False:
+        return "account_blocked"
+
+    for suspended_key in ("suspended", "transact_blocked"):
+        val = _get_attr_or_key(raw_account, suspended_key)
+        if val is not None and val is not False:
+            return f"account_{suspended_key}"
+
+    return None
+
+
+def _validate_positions(raw_positions: Any) -> str | None:
+    if not isinstance(raw_positions, Sequence) or isinstance(raw_positions, (str, bytes)):
+        return "positions_not_sequence"
+
+    seen_symbols = set()
+    for pos in raw_positions:
+        p_symbol = _get_attr_or_key(pos, "symbol")
+        p_qty = _get_attr_or_key(pos, "qty")
+        p_avg_price = _get_attr_or_key(pos, "average_entry_price") or _get_attr_or_key(pos, "avg_entry_price")
+        p_market_value = _get_attr_or_key(pos, "market_value")
+
+        if not p_symbol:
+            return "position_symbol_missing"
+        if p_qty is None:
+            return "position_qty_missing"
+
+        try:
+            Decimal(str(p_qty))
+            Decimal(str(p_avg_price or 0))
+            Decimal(str(p_market_value or 0))
+        except (ValueError, TypeError):
+            return "position_numeric_field_invalid"
+
+        norm_symbol = p_symbol.replace("/", "").upper()
+        if norm_symbol in seen_symbols:
+            return "position_duplicate_symbol"
+        seen_symbols.add(norm_symbol)
+
+        if norm_symbol != TARGET_SYMBOL:
+            return "position_unexpected_exposure"
+
+    return None
+
+
+def _validate_orders(raw_orders: Any) -> str | None:
+    if not isinstance(raw_orders, Sequence) or isinstance(raw_orders, (str, bytes)):
+        return "orders_not_sequence"
+
+    seen_order_ids = set()
+    seen_client_order_ids = set()
+    for order in raw_orders:
+        o_id = _get_attr_or_key(order, "order_id") or _get_attr_or_key(order, "id")
+        o_client_id = _get_attr_or_key(order, "client_order_id")
+        o_symbol = _get_attr_or_key(order, "symbol")
+        o_status = _get_attr_or_key(order, "status")
+        o_qty = _get_attr_or_key(order, "qty")
+        o_side = _get_attr_or_key(order, "side")
+
+        o_status_str = _to_string_value(o_status)
+        o_side_str = _to_string_value(o_side)
+
+        if not o_id:
+            return "order_id_missing"
+        if not o_client_id:
+            return "order_client_id_missing"
+        if not o_symbol:
+            return "order_symbol_missing"
+        if not o_status_str:
+            return "order_status_missing"
+        if not o_side_str:
+            return "order_side_missing"
+
+        if o_status_str.lower() not in (
+            "open", "new", "accepted", "partially_filled", "pending_new", "accepted_for_bidding", "held"
+        ):
+            return "order_status_not_open"
+
+        norm_symbol = o_symbol.replace("/", "").upper()
+        if norm_symbol != TARGET_SYMBOL:
+            return "order_unexpected_symbol"
+
+        if o_side_str.lower() not in ("buy", "sell"):
+            return "order_side_invalid"
+
+        if o_id in seen_order_ids:
+            return "order_duplicate_id"
+        if o_client_id in seen_client_order_ids:
+            return "order_duplicate_client_id"
+        seen_order_ids.add(o_id)
+        seen_client_order_ids.add(o_client_id)
+
+    return None
+
+
+def _validate_asset(raw_asset: Any) -> str | None:
+    if raw_asset is None:
+        return "asset_missing"
+
+    a_symbol = _get_attr_or_key(raw_asset, "symbol")
+    a_tradable = _get_attr_or_key(raw_asset, "tradable")
+    a_orderable = _get_attr_or_key(raw_asset, "orderable")
+    a_class = _get_attr_or_key(raw_asset, "asset_class") or _get_attr_or_key(raw_asset, "class")
+    a_class_str = _to_string_value(a_class)
+
+    if not a_symbol or a_symbol.replace("/", "").upper() != TARGET_SYMBOL:
+        return "asset_symbol_mismatch"
+
+    if not a_class_str or a_class_str.lower() != SUPPORTED_ASSET_CLASS:
+        return "asset_class_invalid"
+
+    if a_tradable is not True:
+        return "asset_not_tradable"
+    if a_orderable is not True:
+        return "asset_not_orderable"
+
+    return None
+
+
 def perform_genuine_paper_observation(
     *,
     paper_broker_read_authorized: bool,
@@ -140,6 +380,12 @@ def perform_genuine_paper_observation(
         allow_network=allow_network,
     )
 
+    # Compute source-bundle digest before SDK construction
+    try:
+        bundle_digest, bundle_manifest = compute_source_bundle_digest(repo_root)
+    except Exception as exc:
+        raise PreflightCheckError("source_bundle_validation_failed") from exc
+
     # Initialize client locally after gates pass
     from algotrader.config import AlpacaPaperConfig
     from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
@@ -152,48 +398,243 @@ def perform_genuine_paper_observation(
     )
     client: PaperObservationReader = AlpacaSdkClient(config)
 
+    invocation_id = str(uuid.uuid4())
     observation_start_utc = datetime.now(UTC)
 
-    call_counters = {
-        "account_read_count": 0,
-        "positions_read_count": 0,
-        "orders_read_count": 0,
-        "target_asset_read_count": 0
+    stage_records = {
+        "account": {
+            "attempt_count": 0,
+            "completion_count": 0,
+            "started_at_utc": None,
+            "completed_at_utc": None,
+            "read_classification": None,
+            "validation_classification": None,
+            "validation_subcode": None
+        },
+        "positions": {
+            "attempt_count": 0,
+            "completion_count": 0,
+            "started_at_utc": None,
+            "completed_at_utc": None,
+            "read_classification": None,
+            "validation_classification": None,
+            "validation_subcode": None
+        },
+        "open_orders": {
+            "attempt_count": 0,
+            "completion_count": 0,
+            "started_at_utc": None,
+            "completed_at_utc": None,
+            "read_classification": None,
+            "validation_classification": None,
+            "validation_subcode": None
+        },
+        "target_asset": {
+            "attempt_count": 0,
+            "completion_count": 0,
+            "started_at_utc": None,
+            "completed_at_utc": None,
+            "read_classification": None,
+            "validation_classification": None,
+            "validation_subcode": None
+        }
     }
 
+    raw_account = None
+    raw_positions = None
+    raw_orders = None
+    raw_asset = None
+
+    terminal_failure_stage = None
+    terminal_stable_classification = None
+    sanitized_transport_category = "not_applicable"
+
+    def fmt_time(dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt is not None else None
+
     try:
-        # 1. Account read
-        raw_account = client.get_account()
-        call_counters["account_read_count"] += 1
+        # 1. Account
+        stage_records["account"]["attempt_count"] += 1
+        stage_records["account"]["started_at_utc"] = fmt_time(datetime.now(UTC))
+        try:
+            raw_account = client.get_account()
+            stage_records["account"]["completion_count"] += 1
+            stage_records["account"]["completed_at_utc"] = fmt_time(datetime.now(UTC))
+            stage_records["account"]["read_classification"] = "success"
+        except Exception as exc:
+            stage_records["account"]["read_classification"] = "account_read_failed"
+            terminal_failure_stage = "account"
+            terminal_stable_classification = "account_read_failed"
+            sanitized_transport_category = classify_transport_category(exc)
+            raise BrokerObservationError("account_read_failed") from exc
 
-        # 2. Positions read
-        raw_positions = client.get_positions()
-        call_counters["positions_read_count"] += 1
+        acc_err = _validate_account(raw_account, inputs["expected_account_id"])
+        if acc_err is not None:
+            stage_records["account"]["validation_classification"] = "account_validation_failed"
+            stage_records["account"]["validation_subcode"] = acc_err
+            terminal_failure_stage = "account"
+            terminal_stable_classification = "account_validation_failed"
+            raise BrokerObservationError("account_validation_failed")
+        stage_records["account"]["validation_classification"] = "success"
 
-        # 3. Bounded orders read
-        from algotrader.execution.alpaca_client import AlpacaRecentOrderQuery
-        recent_query = AlpacaRecentOrderQuery(
-            status_filter="open",
-            limit=100,
-            direction="desc",
+        # 2. Positions
+        stage_records["positions"]["attempt_count"] += 1
+        stage_records["positions"]["started_at_utc"] = fmt_time(datetime.now(UTC))
+        try:
+            raw_positions = client.get_positions()
+            stage_records["positions"]["completion_count"] += 1
+            stage_records["positions"]["completed_at_utc"] = fmt_time(datetime.now(UTC))
+            stage_records["positions"]["read_classification"] = "success"
+        except Exception as exc:
+            stage_records["positions"]["read_classification"] = "positions_read_failed"
+            terminal_failure_stage = "positions"
+            terminal_stable_classification = "positions_read_failed"
+            sanitized_transport_category = classify_transport_category(exc)
+            raise BrokerObservationError("positions_read_failed") from exc
+
+        pos_err = _validate_positions(raw_positions)
+        if pos_err is not None:
+            stage_records["positions"]["validation_classification"] = "positions_validation_failed"
+            stage_records["positions"]["validation_subcode"] = pos_err
+            terminal_failure_stage = "positions"
+            terminal_stable_classification = "positions_validation_failed"
+            raise BrokerObservationError("positions_validation_failed")
+        stage_records["positions"]["validation_classification"] = "success"
+
+        # 3. Open Orders
+        stage_records["open_orders"]["attempt_count"] += 1
+        stage_records["open_orders"]["started_at_utc"] = fmt_time(datetime.now(UTC))
+        try:
+            from algotrader.execution.alpaca_client import AlpacaRecentOrderQuery
+            recent_query = AlpacaRecentOrderQuery(
+                status_filter="open",
+                limit=100,
+                direction="desc",
+            )
+            raw_orders = client.get_orders(recent_query)
+            stage_records["open_orders"]["completion_count"] += 1
+            stage_records["open_orders"]["completed_at_utc"] = fmt_time(datetime.now(UTC))
+            stage_records["open_orders"]["read_classification"] = "success"
+        except Exception as exc:
+            stage_records["open_orders"]["read_classification"] = "open_orders_read_failed"
+            terminal_failure_stage = "open_orders"
+            terminal_stable_classification = "open_orders_read_failed"
+            sanitized_transport_category = classify_transport_category(exc)
+            raise BrokerObservationError("open_orders_read_failed") from exc
+
+        orders_err = _validate_orders(raw_orders)
+        if orders_err is not None:
+            stage_records["open_orders"]["validation_classification"] = "open_orders_validation_failed"
+            stage_records["open_orders"]["validation_subcode"] = orders_err
+            terminal_failure_stage = "open_orders"
+            terminal_stable_classification = "open_orders_validation_failed"
+            raise BrokerObservationError("open_orders_validation_failed")
+        stage_records["open_orders"]["validation_classification"] = "success"
+
+        # 4. Target Asset
+        stage_records["target_asset"]["attempt_count"] += 1
+        stage_records["target_asset"]["started_at_utc"] = fmt_time(datetime.now(UTC))
+        try:
+            raw_asset = client.get_asset(TARGET_SYMBOL)
+            stage_records["target_asset"]["completion_count"] += 1
+            stage_records["target_asset"]["completed_at_utc"] = fmt_time(datetime.now(UTC))
+            stage_records["target_asset"]["read_classification"] = "success"
+        except Exception as exc:
+            stage_records["target_asset"]["read_classification"] = "target_asset_read_failed"
+            terminal_failure_stage = "target_asset"
+            terminal_stable_classification = "target_asset_read_failed"
+            sanitized_transport_category = classify_transport_category(exc)
+            raise BrokerObservationError("target_asset_read_failed") from exc
+
+        asset_err = _validate_asset(raw_asset)
+        if asset_err is not None:
+            stage_records["target_asset"]["validation_classification"] = "target_asset_validation_failed"
+            stage_records["target_asset"]["validation_subcode"] = asset_err
+            terminal_failure_stage = "target_asset"
+            terminal_stable_classification = "target_asset_validation_failed"
+            raise BrokerObservationError("target_asset_validation_failed")
+        stage_records["target_asset"]["validation_classification"] = "success"
+
+    except BrokerObservationError as bo_exc:
+        observation_completion_utc = datetime.now(UTC)
+        any_attempts = (
+            stage_records["account"]["attempt_count"] > 0 or
+            stage_records["positions"]["attempt_count"] > 0 or
+            stage_records["open_orders"]["attempt_count"] > 0 or
+            stage_records["target_asset"]["attempt_count"] > 0
         )
-        raw_orders = client.get_orders(recent_query)
-        call_counters["orders_read_count"] += 1
+        inv_receipt = {
+            "schema_version": PRODUCTION_INVOCATION_SCHEMA,
+            "invocation_id": invocation_id,
+            "adapter_version": ADAPTER_VERSION,
+            "adapter_source_bundle_sha256": bundle_digest,
+            "source_bundle_manifest": bundle_manifest,
+            "command_source_identity": "crypto-paper-broker-observation",
+            "normalized_paper_endpoint": EXPECTED_PAPER_ENDPOINT,
+            "preflight_booleans": {
+                "app_profile_present": bool(inputs.get("app_profile")),
+                "endpoint_present": bool(inputs.get("endpoint")),
+                "key_id_present": bool(inputs.get("key_id")),
+                "secret_key_present": bool(inputs.get("secret_key")),
+                "expected_account_id_present": bool(inputs.get("expected_account_id")),
+                "paper_broker_read_authorized": paper_broker_read_authorized,
+                "allow_network": allow_network,
+            },
+            "observation_start_utc": fmt_time(observation_start_utc),
+            "observation_completion_utc": fmt_time(observation_completion_utc),
+            "call_counters": {
+                "account_read_count": stage_records["account"]["completion_count"],
+                "positions_read_count": stage_records["positions"]["completion_count"],
+                "orders_read_count": stage_records["open_orders"]["completion_count"],
+                "target_asset_read_count": stage_records["target_asset"]["completion_count"]
+            },
+            "stage_records": stage_records,
+            "terminal_failure_stage": terminal_failure_stage,
+            "terminal_stable_classification": terminal_stable_classification,
+            "sanitized_transport_category": sanitized_transport_category,
+            "safety_booleans": {
+                "broker_read_completed": False,
+                "network_access_attempted": any_attempts,
+                "broker_mutation_performed": False,
+                "paper_submit_performed": False,
+                "live_authorized": False,
+                "network_authorization_present": paper_broker_read_authorized,
+                "network_access_authorized": allow_network,
+            }
+        }
+        # Finalize and hash invocation receipt
+        canonical_inv_str = json.dumps(inv_receipt, sort_keys=True, separators=(",", ":"))
+        inv_receipt["canonical_invocation_sha256"] = hashlib.sha256(canonical_inv_str.encode("utf-8")).hexdigest()
 
-        # 4. Target asset read
-        raw_asset = client.get_asset(TARGET_SYMBOL)
-        call_counters["target_asset_read_count"] += 1
-    except Exception as exc:
-        raise BrokerObservationError("broker_read_failed") from None
+        # Build failure receipt
+        fail_receipt = {
+            "schema_version": "v5_33_production_failure_receipt_v1",
+            "invocation_id": invocation_id,
+            "stable_blocked_classification": "blocked_observation_failed",
+            "terminal_failure_stage": terminal_failure_stage,
+            "terminal_stable_classification": terminal_stable_classification,
+            "sanitized_transport_category": sanitized_transport_category,
+            "invocation_receipt_sha256": inv_receipt["canonical_invocation_sha256"],
+            "safety_booleans": {
+                "broker_read_completed": False,
+                "network_access_attempted": any_attempts,
+                "broker_mutation_performed": False,
+                "paper_submit_performed": False,
+                "live_authorized": False
+            }
+        }
+        # Hash failure receipt
+        canonical_fail_str = json.dumps(fail_receipt, sort_keys=True, separators=(",", ":"))
+        fail_receipt["canonical_receipt_sha256"] = hashlib.sha256(canonical_fail_str.encode("utf-8")).hexdigest()
 
-    observation_completion_utc = datetime.now(UTC)
-
-    # Validate call counters exactly equal 1
-    for key, count in call_counters.items():
-        if count != 1:
-            raise BrokerObservationError("invalid_call_counts")
+        raise BrokerObservationError(
+            terminal_stable_classification,
+            invocation_receipt=inv_receipt,
+            failure_receipt=fail_receipt
+        ) from bo_exc
 
     # Process and sanitize observations
+    observation_completion_utc = datetime.now(UTC)
     observation_receipt = _process_raw_observations(
         raw_account=raw_account,
         raw_positions=raw_positions,
@@ -203,21 +644,33 @@ def perform_genuine_paper_observation(
         is_fixture=False,
     )
 
-    # Compute source-bundle digest
-    bundle_digest, bundle_manifest = compute_source_bundle_digest(repo_root)
-
-    # Build invocation receipt
-    invocation_receipt = {
+    # Build invocation receipt for success
+    inv_receipt = {
         "schema_version": PRODUCTION_INVOCATION_SCHEMA,
+        "invocation_id": invocation_id,
         "adapter_version": ADAPTER_VERSION,
         "adapter_source_bundle_sha256": bundle_digest,
         "source_bundle_manifest": bundle_manifest,
         "command_source_identity": "crypto-paper-broker-observation",
         "normalized_paper_endpoint": EXPECTED_PAPER_ENDPOINT,
-        "expected_account_match": observation_receipt["expected_account_match"],
-        "observation_start_utc": observation_start_utc.isoformat(),
-        "observation_completion_utc": observation_completion_utc.isoformat(),
-        "call_counters": call_counters,
+        "preflight_booleans": {
+            "app_profile_present": bool(inputs.get("app_profile")),
+            "endpoint_present": bool(inputs.get("endpoint")),
+            "key_id_present": bool(inputs.get("key_id")),
+            "secret_key_present": bool(inputs.get("secret_key")),
+            "expected_account_id_present": bool(inputs.get("expected_account_id")),
+            "paper_broker_read_authorized": paper_broker_read_authorized,
+            "allow_network": allow_network,
+        },
+        "observation_start_utc": fmt_time(observation_start_utc),
+        "observation_completion_utc": fmt_time(observation_completion_utc),
+        "call_counters": {
+            "account_read_count": 1,
+            "positions_read_count": 1,
+            "orders_read_count": 1,
+            "target_asset_read_count": 1
+        },
+        "stage_records": stage_records,
         "read_completion_status": {
             "account_read_completed": True,
             "positions_read_completed": True,
@@ -238,11 +691,10 @@ def perform_genuine_paper_observation(
     }
 
     # Hashing invocation receipt
-    inv_copy = dict(invocation_receipt)
-    canonical_inv_str = json.dumps(inv_copy, sort_keys=True, separators=(",", ":"))
-    invocation_receipt["canonical_invocation_sha256"] = hashlib.sha256(canonical_inv_str.encode("utf-8")).hexdigest()
+    canonical_inv_str = json.dumps(inv_receipt, sort_keys=True, separators=(",", ":"))
+    inv_receipt["canonical_invocation_sha256"] = hashlib.sha256(canonical_inv_str.encode("utf-8")).hexdigest()
 
-    return observation_receipt, invocation_receipt
+    return observation_receipt, inv_receipt
 
 
 def perform_fixture_observation_evaluation(
@@ -257,12 +709,46 @@ def perform_fixture_observation_evaluation(
         raise PreflightCheckError("preflight_failed_expected_account_missing")
 
     try:
-        raw_account = mock_client.get_account()
-        raw_positions = mock_client.get_positions()
-        raw_orders = mock_client.get_orders(None)
-        raw_asset = mock_client.get_asset(TARGET_SYMBOL)
-    except Exception:
-        raise BrokerObservationError("broker_read_failed") from None
+        try:
+            raw_account = mock_client.get_account()
+        except Exception as exc:
+            raise BrokerObservationError("account_read_failed") from exc
+
+        acc_err = _validate_account(raw_account, expected_account_id)
+        if acc_err is not None:
+            raise BrokerObservationError("account_validation_failed")
+
+        try:
+            raw_positions = mock_client.get_positions()
+        except Exception as exc:
+            raise BrokerObservationError("positions_read_failed") from exc
+
+        pos_err = _validate_positions(raw_positions)
+        if pos_err is not None:
+            raise BrokerObservationError("positions_validation_failed")
+
+        try:
+            raw_orders = mock_client.get_orders(None)
+        except Exception as exc:
+            raise BrokerObservationError("open_orders_read_failed") from exc
+
+        orders_err = _validate_orders(raw_orders)
+        if orders_err is not None:
+            raise BrokerObservationError("open_orders_validation_failed")
+
+        try:
+            raw_asset = mock_client.get_asset(TARGET_SYMBOL)
+        except Exception as exc:
+            raise BrokerObservationError("target_asset_read_failed") from exc
+
+        asset_err = _validate_asset(raw_asset)
+        if asset_err is not None:
+            raise BrokerObservationError("target_asset_validation_failed")
+
+    except BrokerObservationError:
+        raise
+    except Exception as exc:
+        raise BrokerObservationError("unknown_sdk_failure") from exc
 
     return _process_raw_observations(
         raw_account=raw_account,
@@ -283,39 +769,14 @@ def _process_raw_observations(
     expected_account_id: str,
     is_fixture: bool,
 ) -> dict[str, Any]:
-    # 1. Read and validate account safety fields
     status = _get_attr_or_key(raw_account, "status")
-    trading_blocked = _get_attr_or_key(raw_account, "trading_blocked")
-    account_blocked = _get_attr_or_key(raw_account, "account_blocked")
+    status_str = _to_string_value(status) or ""
+    currency = _get_attr_or_key(raw_account, "currency") or "USD"
 
-    if status is None or trading_blocked is None or account_blocked is None:
-        raise BrokerObservationError("broker_account_safety_fields_missing")
-
-    status_str = _to_string_value(status)
-    if not status_str or status_str.upper() != "ACTIVE":
-        raise BrokerObservationError("broker_account_inactive")
-    if trading_blocked is not False:
-        raise BrokerObservationError("broker_account_trading_blocked")
-    if account_blocked is not False:
-        raise BrokerObservationError("broker_account_blocked")
-
-    # Additional suspension checks
-    for suspended_key in ("suspended", "transact_blocked"):
-        val = _get_attr_or_key(raw_account, suspended_key)
-        if val is not None and val is not False:
-            raise BrokerObservationError(f"broker_account_{suspended_key}_active")
-
-    # Match expected account ID or number safely (without exposing raw values in errors)
     account_id = _get_attr_or_key(raw_account, "account_id") or _get_attr_or_key(raw_account, "id")
     account_number = _get_attr_or_key(raw_account, "account_number")
-    account_matched = (account_id == expected_account_id) or (account_number == expected_account_id)
-    if not account_matched:
-        raise BrokerObservationError("broker_account_mismatch")
-
-    # Sanitized account fingerprint
     fingerprint_input = f"{account_id or ''}:{account_number or ''}"
     account_fingerprint = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()
-    currency = _get_attr_or_key(raw_account, "currency") or "USD"
 
     # Normalize positions
     normalized_positions: list[dict[str, Any]] = []
@@ -325,9 +786,6 @@ def _process_raw_observations(
         p_qty = _get_attr_or_key(pos, "qty")
         p_avg_price = _get_attr_or_key(pos, "average_entry_price") or _get_attr_or_key(pos, "avg_entry_price")
         p_market_value = _get_attr_or_key(pos, "market_value")
-
-        if not p_symbol or p_qty is None:
-            raise BrokerObservationError("malformed_position_data")
 
         normalized_sym = p_symbol.replace("/", "").upper()
         if normalized_sym != TARGET_SYMBOL:
@@ -342,7 +800,6 @@ def _process_raw_observations(
 
     # Normalize open orders
     normalized_orders: list[dict[str, Any]] = []
-    seen_client_order_ids: set[str] = set()
     for order in raw_orders:
         o_id = _get_attr_or_key(order, "order_id") or _get_attr_or_key(order, "id")
         o_client_id = _get_attr_or_key(order, "client_order_id")
@@ -355,47 +812,20 @@ def _process_raw_observations(
         o_status_str = _to_string_value(o_status)
         o_side_str = _to_string_value(o_side)
 
-        if not o_symbol or not o_status_str or not o_id or not o_client_id:
-            raise BrokerObservationError("malformed_open_order_data")
-
-        if o_client_id in seen_client_order_ids:
-            raise BrokerObservationError("duplicate_client_order_id")
-        seen_client_order_ids.add(o_client_id)
-
         normalized_sym = o_symbol.replace("/", "").upper()
         if normalized_sym != TARGET_SYMBOL:
             unexpected_exposure_classification = "unexpected_exposure_detected"
-
-        if o_status_str.lower() not in (
-            "open", "new", "accepted", "partially_filled", "pending_new", "accepted_for_bidding", "held"
-        ):
-            raise BrokerObservationError("unsupported_open_order_status")
 
         normalized_orders.append({
             "order_id": o_id,
             "client_order_id": o_client_id,
             "symbol": normalized_sym,
-            "status": o_status_str.lower(),
+            "status": o_status_str.lower() if o_status_str else "",
             "quantity": str(Decimal(str(o_qty)).normalize()) if o_qty is not None else None,
             "notional": str(Decimal(str(o_notional)).normalize()) if o_notional is not None else None,
             "side": o_side_str.lower() if o_side_str else None,
         })
 
-    # Validate target asset metadata
-    if not raw_asset:
-        raise BrokerObservationError("target_asset_missing")
-
-    a_tradable = _get_attr_or_key(raw_asset, "tradable")
-    a_orderable = _get_attr_or_key(raw_asset, "orderable")
-    a_class = _get_attr_or_key(raw_asset, "asset_class") or _get_attr_or_key(raw_asset, "class")
-    a_class_str = _to_string_value(a_class)
-
-    if a_tradable is not True or a_orderable is not True:
-        raise BrokerObservationError("target_asset_not_tradable_or_orderable")
-    if a_class_str and a_class_str.lower() != SUPPORTED_ASSET_CLASS:
-        raise BrokerObservationError("target_asset_class_invalid")
-
-    # Check for truncation/completeness
     positions_truncated = len(normalized_positions) >= 100
     orders_truncated = len(normalized_orders) >= 100
 
