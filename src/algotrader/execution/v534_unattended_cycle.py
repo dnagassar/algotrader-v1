@@ -102,6 +102,20 @@ def run_v534_unattended_cycle(
         "next_autonomous_action": "await_next_scheduled_hourly_cycle",
     }
 
+    # Ensure V2 state is initialized at OOS accrual boundary if missing
+    state_file = sched_out_dir / "frozen_state.json"
+    if not state_file.is_file():
+        try:
+            from algotrader.research.crypto_tournament_v2_forward_oos import initialize_crypto_tournament_v2_forward_oos
+            initialize_crypto_tournament_v2_forward_oos(
+                output_root=sched_out_dir,
+                discovery_source_path=Path(discovery_source),
+                discovery_receipt_path=Path(discovery_receipt),
+                as_of="2026-07-15T00:00:00+00:00",
+            )
+        except Exception:
+            pass
+
     # 1. Market-data OOS Accrual via Scheduler
     dispatcher = RealCommandDispatcher(
         scheduler_enabled=scheduler_enabled,

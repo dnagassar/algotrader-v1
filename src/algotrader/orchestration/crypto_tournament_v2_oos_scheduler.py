@@ -946,10 +946,16 @@ class RealCommandDispatcher(CommandDispatcher):
                 env=env,
                 check=False,
             )
+            print(f"DEBUG RealCommandDispatcher cmd: {cmd}")
+            print(f"DEBUG RealCommandDispatcher RC: {result.returncode}")
+            print(f"DEBUG RealCommandDispatcher stdout: {result.stdout}")
+            print(f"DEBUG RealCommandDispatcher stderr: {result.stderr}")
             if result.returncode != 0:
+                sys.stderr.write(f"DISPATCH_FAIL_RC: {result.returncode}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}\n")
                 return {
                     "status": "failed",
                     "classification": "subprocess_error",
+                    "reason": (result.stderr or result.stdout or f"Subprocess exited with code {result.returncode}").strip(),
                     "dispatch_type": "real",
                     "exit_code": result.returncode,
                     "stdout": result.stdout,
@@ -1736,7 +1742,7 @@ class OneShotExecutor:
                     job=final_job,
                     mode="run_once",
                     duration=(datetime.now(UTC) - start_time).total_seconds(),
-                    reason=dispatch_result.get("reason", "Subprocess execution failed."),
+                    reason=dispatch_result.get("reason") or dispatch_result.get("stderr") or dispatch_result.get("stdout") or "Subprocess execution failed.",
                 )
             except ValidationError as exc:
                 return self._write_noop_receipt(
