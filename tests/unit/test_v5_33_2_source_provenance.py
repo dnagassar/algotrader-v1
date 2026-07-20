@@ -47,7 +47,7 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
         assert provenance["source_branch_or_detached"] == "feature-branch"
         assert len(provenance["adapter_source_bundle_sha256"]) == 64
         assert isinstance(provenance["source_bundle_manifest"], dict)
-        assert len(provenance["source_bundle_manifest"]) == 12
+        assert len(provenance["source_bundle_manifest"]) == 13
 
 
 def test_dirty_source_worktree_blocks_before_client_construction(tmp_path: Path) -> None:

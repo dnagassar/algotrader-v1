@@ -84,6 +84,7 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "src/algotrader/execution/v534_unattended_cycle.py",
         "scripts/run_crypto_paper_broker_observation.ps1",
         "scripts/consume_crypto_observation_receipt.ps1",
+        "scripts/run_v534_paper_broker_observation.ps1",
         "scripts/run_v534_unattended_cycle.ps1",
         "scripts/verify_crypto_preflight.ps1",
         "scripts/verify_crypto_readiness_replay.ps1"
