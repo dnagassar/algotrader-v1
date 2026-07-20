@@ -939,18 +939,21 @@ class RealCommandDispatcher(CommandDispatcher):
                     env[k] = v
 
         if self.market_data_read_authorized:
-            for k in (
-                "ALPACA_API_KEY",
-                "ALPACA_SECRET_KEY",
-                "ALPACA_API_SECRET_KEY",
-                "ALPACA_API_KEY_ID",
-                "ALPACA_PAPER_BASE_URL",
-                "APCA_API_KEY_ID",
-                "APCA_API_SECRET_KEY",
-                "APCA_API_BASE_URL",
-            ):
-                if k in os.environ:
-                    env[k] = os.environ[k]
+            env["APP_PROFILE"] = "paper"
+            env["ALPACA_PAPER_BASE_URL"] = os.environ.get("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
+            env["APCA_API_BASE_URL"] = os.environ.get("APCA_API_BASE_URL", "https://paper-api.alpaca.markets")
+
+            key_id = os.environ.get("ALPACA_API_KEY") or os.environ.get("ALPACA_API_KEY_ID") or os.environ.get("APCA_API_KEY_ID")
+            secret_key = os.environ.get("ALPACA_SECRET_KEY") or os.environ.get("ALPACA_API_SECRET_KEY") or os.environ.get("APCA_API_SECRET_KEY")
+
+            if key_id:
+                env["ALPACA_API_KEY"] = key_id
+                env["ALPACA_API_KEY_ID"] = key_id
+                env["APCA_API_KEY_ID"] = key_id
+            if secret_key:
+                env["ALPACA_SECRET_KEY"] = secret_key
+                env["ALPACA_API_SECRET_KEY"] = secret_key
+                env["APCA_API_SECRET_KEY"] = secret_key
 
         try:
             result = subprocess.run(
