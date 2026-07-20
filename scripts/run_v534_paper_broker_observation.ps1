@@ -15,14 +15,8 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 
-# Load process-scoped environment quietly if local or primary .env exists
+# Load process-scoped environment quietly if local .env exists
 $EnvFile = Join-Path $RepoRoot ".env"
-if (-not (Test-Path -LiteralPath $EnvFile)) {
-    $PrimaryEnv = "C:\Users\danie\Desktop\algo_trader\.env"
-    if (Test-Path -LiteralPath $PrimaryEnv) {
-        $EnvFile = $PrimaryEnv
-    }
-}
 if (Test-Path -LiteralPath $EnvFile) {
     . (Join-Path $PSScriptRoot "dev\load_env.ps1") -Path $EnvFile -Quiet
 }

@@ -898,11 +898,6 @@ def _process_raw_observations(
     status_str = _to_string_value(status) or ""
     currency = _get_attr_or_key(raw_account, "currency") or "USD"
 
-    account_id = _get_attr_or_key(raw_account, "account_id") or _get_attr_or_key(raw_account, "id")
-    account_number = _get_attr_or_key(raw_account, "account_number")
-    fingerprint_input = f"{account_id or ''}:{account_number or ''}"
-    account_fingerprint = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()
-
     # Normalize positions
     normalized_positions: list[dict[str, Any]] = []
     unexpected_exposure_classification = "clean"
@@ -968,7 +963,6 @@ def _process_raw_observations(
         "source_classification": source_classification,
         "paper_endpoint_classification": EXPECTED_PAPER_ENDPOINT,
         "expected_account_match": True,
-        "sanitized_account_fingerprint": account_fingerprint,
         "target_symbol": TARGET_SYMBOL,
         "target_asset_class": SUPPORTED_ASSET_CLASS,
         "target_tradability": True,

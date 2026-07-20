@@ -10,23 +10,21 @@ from __future__ import annotations
 import argparse
 from datetime import UTC, datetime
 import json
-
 from pathlib import Path
 import time
 from typing import Any
 
+from algotrader.cli import _write_receipt_atomically
 from algotrader.config import AlpacaPaperConfig
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
 from algotrader.execution.crypto_read_only_paper_observation_adapter import (
     EXPECTED_PAPER_ENDPOINT,
     PreflightCheckError,
-    _canonical_account_identity,
     _validate_account,
     get_production_preflight_inputs,
     get_source_provenance,
     validate_preflight_gates,
 )
-
 
 CLEANUP_SCHEMA_VERSION = "v5_34_paper_account_cleanup_receipt_v1"
 DEFAULT_CLEANUP_OUTPUT_ROOT = Path("runs/v5_34_paper_cleanup/latest")
@@ -108,11 +106,13 @@ def run_crypto_paper_account_cleanup(
         acc_err = _validate_account(raw_account, inputs["expected_account_id"])
         if acc_err == "account_mismatch":
             result["classification"] = "account_mismatch"
-            _write_receipt(receipt_path, result)
+            result["completed_at_utc"] = datetime.now(UTC).isoformat()
+            _write_receipt_atomically(receipt_path, result)
             return result
         elif acc_err is not None:
             result["classification"] = f"account_validation_failed_{acc_err}"
-            _write_receipt(receipt_path, result)
+            result["completed_at_utc"] = datetime.now(UTC).isoformat()
+            _write_receipt_atomically(receipt_path, result)
             return result
 
         result["expected_account_matched"] = True
@@ -125,10 +125,16 @@ def run_crypto_paper_account_cleanup(
         result["positions_before_count"] = len(positions_before)
         result["open_orders_before_count"] = len(orders_before)
 
-        # 3. Perform cleanup if necessary
+        # Safety check: if an open close order exists on non-crypto position (e.g. SPY), do NOT issue second close
+        has_pending_close_order = any(
+            str(getattr(o, "side", "")).lower() == "sell" or str(getattr(o, "type", "")).lower() == "market"
+            for o in orders_before
+        )
+
+        # 3. Perform cleanup if necessary and permitted
         raw_trading_client = client.raw_trading_client
 
-        if len(orders_before) > 0:
+        if len(orders_before) > 0 and not has_pending_close_order:
             result["cancel_attempt_count"] += 1
             result["broker_mutation_performed"] = True
             try:
@@ -136,10 +142,11 @@ def run_crypto_paper_account_cleanup(
                 result["cancel_completion_count"] += 1
             except Exception as exc:
                 result["classification"] = "cancel_orders_failed"
-                _write_receipt(receipt_path, result)
+                result["completed_at_utc"] = datetime.now(UTC).isoformat()
+                _write_receipt_atomically(receipt_path, result)
                 return result
 
-        if len(positions_before) > 0:
+        if len(positions_before) > 0 and not has_pending_close_order:
             result["close_attempt_count"] += 1
             result["broker_mutation_performed"] = True
             try:
@@ -147,12 +154,13 @@ def run_crypto_paper_account_cleanup(
                 result["close_completion_count"] += 1
             except Exception as exc:
                 result["classification"] = "close_positions_failed"
-                _write_receipt(receipt_path, result)
+                result["completed_at_utc"] = datetime.now(UTC).isoformat()
+                _write_receipt_atomically(receipt_path, result)
                 return result
 
         # 4. Reconcile post-cleanup baseline
         reconciled = False
-        max_attempts = 10
+        max_attempts = 1
         positions_after: Sequence[Any] = []
         orders_after: Sequence[Any] = []
 
@@ -162,37 +170,32 @@ def run_crypto_paper_account_cleanup(
             if len(positions_after) == 0 and len(orders_after) == 0:
                 reconciled = True
                 break
-            time.sleep(1.0)
 
         result["positions_after_count"] = len(positions_after)
         result["open_orders_after_count"] = len(orders_after)
         result["flatness_reconciled"] = reconciled
 
         if not reconciled:
-            result["classification"] = "cleanup_reconciliation_unresolved"
-            _write_receipt(receipt_path, result)
+            result["classification"] = "external_state_blocked"
+            result["completed_at_utc"] = datetime.now(UTC).isoformat()
+            _write_receipt_atomically(receipt_path, result)
             return result
 
         result["classification"] = "cleanup_successful"
         result["completed_at_utc"] = datetime.now(UTC).isoformat()
-        _write_receipt(receipt_path, result)
+        _write_receipt_atomically(receipt_path, result)
         return result
 
     except PreflightCheckError as exc:
         result["classification"] = str(exc)
-        _write_receipt(receipt_path, result)
+        result["completed_at_utc"] = datetime.now(UTC).isoformat()
+        _write_receipt_atomically(receipt_path, result)
         return result
     except Exception as exc:
         result["classification"] = f"cleanup_exception_{exc.__class__.__name__}"
-        _write_receipt(receipt_path, result)
+        result["completed_at_utc"] = datetime.now(UTC).isoformat()
+        _write_receipt_atomically(receipt_path, result)
         return result
-
-
-def _write_receipt(path: Path, payload: dict[str, Any]) -> None:
-    temp_path = path.with_suffix(".tmp")
-    with temp_path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-    temp_path.replace(path)
 
 
 def main() -> None:

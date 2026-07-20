@@ -35,7 +35,8 @@ def mock_paper_env(tmp_path, monkeypatch):
 @pytest.fixture
 def mock_clean_provenance():
     with patch("algotrader.execution.crypto_paper_account_cleanup.get_source_provenance") as m1, \
-         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance") as m2:
+         patch("algotrader.execution.crypto_read_only_paper_observation_adapter.get_source_provenance") as m2, \
+         patch("algotrader.execution.v534_unattended_cycle.get_source_provenance") as m3:
         prov = {
             "source_commit_sha": "9d40560052b2fb155586d5e978e25fd21f241cae",
             "source_tree_sha": "a9159fbfb3764914ab1a4d7cd94013b3bc41a455",
@@ -46,6 +47,7 @@ def mock_clean_provenance():
         }
         m1.return_value = prov
         m2.return_value = prov
+        m3.return_value = prov
         yield prov
 
 
@@ -119,11 +121,6 @@ def test_v534_unattended_cycle_successful(mock_paper_env, mock_clean_provenance)
 
         mock_obs.return_value = (
             {
-                "source_commit_sha": "9d40560052b2fb155586d5e978e25fd21f241cae",
-                "source_tree_sha": "a9159fbfb3764914ab1a4d7cd94013b3bc41a455",
-                "source_worktree_clean": True,
-            },
-            {
                 "classification": "broker_state_observed",
                 "account_validation": "success",
                 "positions_validation": "success",
@@ -138,6 +135,11 @@ def test_v534_unattended_cycle_successful(mock_paper_env, mock_clean_provenance)
                     "target_asset": {"attempt_count": 1, "completion_count": 1},
                 },
             },
+            {
+                "source_commit_sha": "9d40560052b2fb155586d5e978e25fd21f241cae",
+                "source_tree_sha": "a9159fbfb3764914ab1a4d7cd94013b3bc41a455",
+                "source_worktree_clean": True,
+            },
         )
 
         res = run_v534_unattended_cycle(
@@ -147,6 +149,7 @@ def test_v534_unattended_cycle_successful(mock_paper_env, mock_clean_provenance)
             paper_broker_read_authorized=True,
             allow_network=True,
             as_of=as_of,
+            repo_root=Path.cwd(),
         )
 
         assert res["classification"] == "cycle_completed_hold"
@@ -164,6 +167,7 @@ def test_v534_unattended_cycle_successful(mock_paper_env, mock_clean_provenance)
             paper_broker_read_authorized=True,
             allow_network=True,
             as_of=as_of,
+            repo_root=Path.cwd(),
         )
         assert res_replay["classification"] == "idempotent_same_window_replay"
         assert res_replay["idempotent_replay"] is True
@@ -181,11 +185,6 @@ def test_deterministic_24_cycle_frontier_progression(mock_paper_env, mock_clean_
 
         mock_obs.return_value = (
             {
-                "source_commit_sha": "9d40560052b2fb155586d5e978e25fd21f241cae",
-                "source_tree_sha": "a9159fbfb3764914ab1a4d7cd94013b3bc41a455",
-                "source_worktree_clean": True,
-            },
-            {
                 "classification": "broker_state_observed",
                 "account_validation": "success",
                 "positions_validation": "success",
@@ -199,6 +198,11 @@ def test_deterministic_24_cycle_frontier_progression(mock_paper_env, mock_clean_
                     "open_orders": {"attempt_count": 1, "completion_count": 1},
                     "target_asset": {"attempt_count": 1, "completion_count": 1},
                 },
+            },
+            {
+                "source_commit_sha": "9d40560052b2fb155586d5e978e25fd21f241cae",
+                "source_tree_sha": "a9159fbfb3764914ab1a4d7cd94013b3bc41a455",
+                "source_worktree_clean": True,
             },
         )
 
@@ -218,6 +222,7 @@ def test_deterministic_24_cycle_frontier_progression(mock_paper_env, mock_clean_
                 paper_broker_read_authorized=True,
                 allow_network=True,
                 as_of=tick_time,
+                repo_root=Path.cwd(),
             )
 
             assert res["classification"] == "cycle_completed_hold"
