@@ -597,3 +597,32 @@ def test_v532_simulated_mode_remains_deterministic() -> None:
     )
     assert res["trial_classification"] == "accepted"
     assert res["current_readiness_rung_code"] == "R1"
+
+
+from enum import Enum
+
+class MockEnum(Enum):
+    ACTIVE = "ACTIVE"
+    NEW = "new"
+    BUY = "buy"
+    CRYPTO = "crypto"
+
+def test_enum_handling_in_process_observations() -> None:
+    # Verify that process_raw_observations parses Enums successfully
+    client = MockAlpacaClient()
+    client.status = MockEnum.ACTIVE
+    client.orders = [
+        MockOrder("O1", "CO1", "BTCUSD", MockEnum.NEW, "0.1", MockEnum.BUY)
+    ]
+    client.asset = MockAsset("BTCUSD", True, True, MockEnum.CRYPTO)
+
+    receipt = perform_fixture_observation_evaluation(
+        client,
+        expected_account_id="PA12345",
+        paper_broker_read_authorized=True,
+        allow_network=True,
+    )
+
+    assert receipt["account_status_fields"]["status"] == "active"
+    assert receipt["open_orders"][0]["status"] == "new"
+    assert receipt["open_orders"][0]["side"] == "buy"
