@@ -64,6 +64,7 @@ EXPECTED_DIRECT_MUTATION_CALLS = frozenset(
         ("src/algotrader/execution/alpaca_broker.py", "submit_order", "submit_order"),
         ("src/algotrader/execution/alpaca_broker.py", "submit_order_request", "submit_order_request"),
         ("src/algotrader/execution/alpaca_sdk_client.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/crypto_paper_account_cleanup.py", "run_crypto_paper_account_cleanup", "close_all_positions"),
         ("src/algotrader/execution/crypto_paper_fill_exit_certification.py", "_submit_and_reconcile_once", "submit_order"),
         ("src/algotrader/execution/crypto_paper_mutation_drill.py", "_submit_cancel_reconcile", "submit_order"),
         ("src/algotrader/execution/crypto_paper_submit_cancel_certification.py", "_submit_cancel_reconcile", "submit_order"),
