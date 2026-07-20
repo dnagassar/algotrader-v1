@@ -52,7 +52,28 @@ class BrokerObservationError(ValidationError):
         return self._failure_receipt
 
 
+def _canonical_account_identity(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return str(value).lower()
+
+    val_str = str(value).strip()
+    if not val_str:
+        return None
+
+    try:
+        parsed = uuid.UUID(val_str)
+        return str(parsed).lower()
+    except (ValueError, TypeError, AttributeError):
+        pass
+
+    return val_str
+
+
 def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
+    import subprocess
+
     relative_paths = [
         "src/algotrader/execution/crypto_read_only_paper_observation_adapter.py",
         "src/algotrader/execution/alpaca_sdk_client.py",
@@ -69,14 +90,110 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
     for rel_path in sorted(relative_paths):
         full_path = repo_root / rel_path
         if not full_path.is_file():
-            raise FileNotFoundError(f"Missing manifest file: {rel_path}")
+            raise PreflightCheckError("required_manifest_file_missing")
+
         content = full_path.read_bytes()
         normalized_content = content.replace(b"\r\n", b"\n")
+
+        try:
+            res = subprocess.run(
+                ["git", "show", f"HEAD:{rel_path}"],
+                cwd=repo_root,
+                capture_output=True,
+                timeout=10,
+                check=False
+            )
+            if res.returncode == 0:
+                committed_bytes = res.stdout.replace(b"\r\n", b"\n")
+                if committed_bytes != normalized_content:
+                    raise PreflightCheckError("source_bundle_mismatch")
+        except PreflightCheckError:
+            raise
+        except Exception:
+            pass
+
         file_hash = hashlib.sha256(normalized_content).hexdigest()
         manifest[rel_path] = file_hash
         h.update(f"{rel_path}:{file_hash}\n".encode("utf-8"))
 
     return h.hexdigest(), manifest
+
+
+def get_source_provenance(repo_root: Path) -> dict[str, Any]:
+    import subprocess
+
+    def run_git(args: list[str]) -> str:
+        try:
+            res = subprocess.run(
+                ["git"] + args,
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False
+            )
+            if res.returncode != 0:
+                raise RuntimeError("git_cmd_failed")
+            return res.stdout.strip()
+        except FileNotFoundError as exc:
+            raise PreflightCheckError("repository_unavailable") from exc
+        except RuntimeError as exc:
+            raise exc
+
+    try:
+        commit_sha = run_git(["rev-parse", "HEAD"])
+    except PreflightCheckError:
+        raise
+    except Exception as exc:
+        raise PreflightCheckError("commit_unresolved") from exc
+
+    if not commit_sha or len(commit_sha) != 40:
+        raise PreflightCheckError("commit_unresolved")
+
+    try:
+        tree_sha = run_git(["rev-parse", "HEAD^{tree}"])
+    except PreflightCheckError:
+        raise
+    except Exception as exc:
+        raise PreflightCheckError("tree_unresolved") from exc
+
+    if not tree_sha or len(tree_sha) != 40:
+        raise PreflightCheckError("tree_unresolved")
+
+    try:
+        branch_ref = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+        branch_or_detached = "detached" if branch_ref == "HEAD" or not branch_ref else branch_ref
+    except Exception:
+        branch_or_detached = "detached"
+
+    try:
+        porcelain = run_git(["status", "--porcelain=v1", "--untracked-files=all"])
+    except PreflightCheckError:
+        raise
+    except Exception as exc:
+        raise PreflightCheckError("repository_unavailable") from exc
+
+    if porcelain:
+        raise PreflightCheckError("source_worktree_dirty")
+
+    try:
+        bundle_digest, bundle_manifest = compute_source_bundle_digest(repo_root)
+    except PreflightCheckError:
+        raise
+    except FileNotFoundError as exc:
+        raise PreflightCheckError("required_manifest_file_missing") from exc
+    except Exception as exc:
+        raise PreflightCheckError("source_bundle_mismatch") from exc
+
+    return {
+        "source_commit_sha": commit_sha,
+        "source_tree_sha": tree_sha,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": branch_or_detached,
+        "adapter_source_bundle_sha256": bundle_digest,
+        "source_bundle_manifest": bundle_manifest,
+    }
+
 
 
 def validate_preflight_gates(
@@ -224,12 +341,17 @@ def classify_transport_category(exc: Exception) -> str:
 
 
 def _validate_account(raw_account: Any, expected_account_id: str | None) -> str | None:
-    account_id = _get_attr_or_key(raw_account, "account_id") or _get_attr_or_key(raw_account, "id")
-    account_number = _get_attr_or_key(raw_account, "account_number")
-    if not account_id and not account_number:
+    canon_id = _canonical_account_identity(_get_attr_or_key(raw_account, "account_id") or _get_attr_or_key(raw_account, "id"))
+    canon_num = _canonical_account_identity(_get_attr_or_key(raw_account, "account_number"))
+
+    if not canon_id and not canon_num:
         return "account_id_missing"
+
     if expected_account_id:
-        account_matched = (account_id == expected_account_id) or (account_number == expected_account_id)
+        canon_expected = _canonical_account_identity(expected_account_id)
+        if not canon_expected:
+            return "account_id_missing"
+        account_matched = (canon_id is not None and canon_id == canon_expected) or (canon_num is not None and canon_num == canon_expected)
         if not account_matched:
             return "account_mismatch"
 
@@ -380,11 +502,8 @@ def perform_genuine_paper_observation(
         allow_network=allow_network,
     )
 
-    # Compute source-bundle digest before SDK construction
-    try:
-        bundle_digest, bundle_manifest = compute_source_bundle_digest(repo_root)
-    except Exception as exc:
-        raise PreflightCheckError("source_bundle_validation_failed") from exc
+    # Establish clean source provenance BEFORE SDK client construction
+    provenance = get_source_provenance(repo_root)
 
     # Initialize client locally after gates pass
     from algotrader.config import AlpacaPaperConfig
@@ -567,8 +686,12 @@ def perform_genuine_paper_observation(
             "schema_version": PRODUCTION_INVOCATION_SCHEMA,
             "invocation_id": invocation_id,
             "adapter_version": ADAPTER_VERSION,
-            "adapter_source_bundle_sha256": bundle_digest,
-            "source_bundle_manifest": bundle_manifest,
+            "source_commit_sha": provenance["source_commit_sha"],
+            "source_tree_sha": provenance["source_tree_sha"],
+            "source_worktree_clean": provenance["source_worktree_clean"],
+            "source_branch_or_detached": provenance["source_branch_or_detached"],
+            "adapter_source_bundle_sha256": provenance["adapter_source_bundle_sha256"],
+            "source_bundle_manifest": provenance["source_bundle_manifest"],
             "command_source_identity": "crypto-paper-broker-observation",
             "normalized_paper_endpoint": EXPECTED_PAPER_ENDPOINT,
             "preflight_booleans": {
@@ -649,8 +772,12 @@ def perform_genuine_paper_observation(
         "schema_version": PRODUCTION_INVOCATION_SCHEMA,
         "invocation_id": invocation_id,
         "adapter_version": ADAPTER_VERSION,
-        "adapter_source_bundle_sha256": bundle_digest,
-        "source_bundle_manifest": bundle_manifest,
+        "source_commit_sha": provenance["source_commit_sha"],
+        "source_tree_sha": provenance["source_tree_sha"],
+        "source_worktree_clean": provenance["source_worktree_clean"],
+        "source_branch_or_detached": provenance["source_branch_or_detached"],
+        "adapter_source_bundle_sha256": provenance["adapter_source_bundle_sha256"],
+        "source_bundle_manifest": provenance["source_bundle_manifest"],
         "command_source_identity": "crypto-paper-broker-observation",
         "normalized_paper_endpoint": EXPECTED_PAPER_ENDPOINT,
         "preflight_booleans": {
