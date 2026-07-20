@@ -46,7 +46,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_crypto_tournament_v2_oos_scheduler.ps1" -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork</Arguments>
+      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_v534_unattended_cycle.ps1" -SchedulerEnabled -MarketDataReadAuthorized -PaperBrokerReadAuthorized -AllowNetwork</Arguments>
       <WorkingDirectory>%REPO_ROOT%</WorkingDirectory>
     </Exec>
   </Actions>

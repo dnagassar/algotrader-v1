@@ -80,8 +80,11 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "src/algotrader/execution/alpaca_client.py",
         "src/algotrader/cli.py",
         "src/algotrader/execution/crypto_supervised_readiness_trial.py",
+        "src/algotrader/execution/crypto_paper_account_cleanup.py",
+        "src/algotrader/execution/v534_unattended_cycle.py",
         "scripts/run_crypto_paper_broker_observation.ps1",
         "scripts/consume_crypto_observation_receipt.ps1",
+        "scripts/run_v534_unattended_cycle.ps1",
         "scripts/verify_crypto_preflight.ps1",
         "scripts/verify_crypto_readiness_replay.ps1"
     ]
@@ -232,14 +235,8 @@ def get_production_preflight_inputs() -> dict[str, Any]:
     env = os.environ
     app_profile = env.get("APP_PROFILE")
 
-    key_id = None
-    secret_key = None
-    if env.get("ALPACA_API_KEY") and (env.get("ALPACA_SECRET_KEY") or env.get("ALPACA_API_SECRET_KEY")):
-        key_id = env.get("ALPACA_API_KEY")
-        secret_key = env.get("ALPACA_SECRET_KEY") or env.get("ALPACA_API_SECRET_KEY")
-    elif env.get("APCA_API_KEY_ID") and env.get("APCA_API_SECRET_KEY"):
-        key_id = env.get("APCA_API_KEY_ID")
-        secret_key = env.get("APCA_API_SECRET_KEY")
+    key_id = env.get("ALPACA_API_KEY") or env.get("ALPACA_API_KEY_ID") or env.get("APCA_API_KEY_ID")
+    secret_key = env.get("ALPACA_SECRET_KEY") or env.get("ALPACA_API_SECRET_KEY") or env.get("APCA_API_SECRET_KEY")
 
     expected_account_id = env.get("ALPACA_EXPECTED_PAPER_ACCOUNT_ID")
 

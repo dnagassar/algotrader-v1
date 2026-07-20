@@ -1,41 +1,40 @@
-# Active Implementation Checkpoint
+# Active Implementation Checkpoint — V5.34
 
 ## Status
 
-V5.33.2 repairs and enhancements are complete and fully verified. Clean-source provenance verification and account-identity canonicalization are implemented. All offline tests, dependency direction checks, broker mutation invariants, and full offline verification suite passed clean.
+V5.34 Unattended Paper-Observed OOS Burn-In implementation and verification are complete. Bounded paper account baseline cleanup, R2 readiness promotion, production one-shot operating cycle orchestration, same-window idempotency, Windows Scheduled Task activation, and 24-cycle deterministic test coverage are implemented. All offline unit tests, dependency direction checks, and full offline verification script passed clean.
 
 ## Repository Reference State
 
-- Branch: `antigravity/v5.33-clean-source-account-binding`
-- Baseline commit: `c4109590c54ee2518691fe8b758d69bf09d44451`
-- Exactly one implementation writer was active in this worktree (`antigravity`).
+- Branch: `antigravity/v5.34-unattended-paper-observed-oos-burnin`
+- Baseline commit: `9d40560052b2fb155586d5e978e25fd21f241cae`
+- Baseline tree: `a9159fbfb3764914ab1a4d7cd94013b3bc41a455`
+- Sole implementation writer: `antigravity`
 
-## Implemented & Repaired Contract
+## Implemented Contracts
 
-1. **Atomic Persistence Repair**: `_write_receipt_atomically` in `src/algotrader/cli.py` has explicit imports for `json`, `os`, `tempfile`, creates destination parent directories safely, flushes and calls `os.fsync`, atomically replaces via `os.replace`, syncs parent directory when supported, cleans up temporary files on failure, and raises `RuntimeError("receipt_persistence_failed")` without exposing raw exception text or absolute paths.
-2. **Clean-Source Production Provenance**: Prior to SDK client construction and any network call, `get_source_provenance` runs bounded array git commands (`git rev-parse HEAD`, `git rev-parse HEAD^{tree}`, `git rev-parse --abbrev-ref HEAD`, `git status --porcelain=v1 --untracked-files=all`) and computes source bundle digest/manifest over the complete production evidence surface. Any porcelain output (tracked modifications or non-ignored untracked files anywhere in the repo) blocks execution with `source_worktree_dirty` before client creation with zero broker calls.
-3. **Provenance Contract**: Invocations receipts include `source_commit_sha`, `source_tree_sha`, `source_worktree_clean=True`, branch or `detached`, source-bundle digest, source-bundle manifest, `command_source_identity`, and `normalized_paper_endpoint`. `_validate_offline_receipt` verifies receipt commit, tree, manifest, digest, and clean-source declaration against local checked-out source tree.
-4. **Account-Identity Canonicalization**: `_canonical_account_identity` handles strings and SDK `uuid.UUID` objects, trims whitespace, standardizes valid UUIDs to canonical lowercase 36-char string representations, and preserves non-UUID account number strings without lossy transformations. Matching occurs independently in memory before positions/orders/asset reads.
-5. **No Identity-Derived Plain Digest Persisted**: Raw canonical observed or expected identities are never written to receipts, logs, stdout, or exceptions. Plain SHA-256 account fingerprints were removed/deprecated in favor of `expected_account_present` and `expected_account_match` booleans.
-6. **Account Safety Ordering**: Account identity canonicalization and matching occurs first. Account safety checks (`ACTIVE` status, `trading_blocked==False`, `account_blocked==False`, suspended/transact_blocked false) follow. Short-circuiting prevents any later broker stage from running on identity mismatch or safety failure.
+1. **Phase A (Clean Paper Baseline)**: `crypto_paper_account_cleanup.py` and CLI subcommand `crypto-paper-account-cleanup` enforce bounded single-attempt paper account cleanup against Alpaca paper endpoint `https://paper-api.alpaca.markets`. Preflight verifies profile `paper`, account match, and active unblocked status. Open orders are canceled, positions closed, and account reconciled to flat (0 positions, 0 open orders).
+2. **Phase B (R2 Readiness)**: Clean-source paper observation (`crypto-paper-broker-observation`) and offline receipt consumption (`crypto-readiness-consume`) promote readiness status to R2.
+3. **Phase C (Autonomous Operating Cycle)**: `v534_unattended_cycle.py` and CLI subcommand `v534-unattended-cycle` bind git source provenance (`get_source_provenance`), completed-hour OOS accrual (`OneShotExecutor.tick`), bounded paper observation (`perform_genuine_paper_observation`), and flat reconciliation to emit canonical system decision `hold_evidence_incomplete` (0 paper submissions, 0 mutations). Same-window invocations return idempotent no-op receipts.
+4. **Phase D (Hourly Operator Task)**: `docs/design/crypto_tournament_v2_oos_scheduler_task.xml` and `scripts/register_crypto_tournament_v2_oos_scheduler_task.ps1` execute `scripts/run_v534_unattended_cycle.ps1`. Process-scoped secret loading is handled quietly via `scripts/load_env.ps1`.
+5. **Burn-In Status Packet**: `v534_burn_in_status.py` persists `runs/v5_34_burn_in/latest/burn_in_status.json` recording operational health and accumulator state.
 
 ## Changed Files
 
+- `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`
 - `src/algotrader/cli.py`
+- `src/algotrader/execution/crypto_paper_account_cleanup.py`
 - `src/algotrader/execution/crypto_read_only_paper_observation_adapter.py`
-- `src/algotrader/execution/crypto_supervised_readiness_trial.py`
-- `tests/unit/test_crypto_read_only_paper_observation.py`
-- `tests/unit/test_v5_33_2_atomic_persistence.py`
-- `tests/unit/test_v5_33_2_account_identity.py`
+- `src/algotrader/execution/v534_burn_in_status.py`
+- `src/algotrader/execution/v534_unattended_cycle.py`
+- `scripts/run_crypto_paper_account_cleanup.ps1`
+- `scripts/run_v534_unattended_cycle.ps1`
+- `tests/unit/test_v534_unattended_paper_observed_oos_burnin.py`
 - `tests/unit/test_v5_33_2_source_provenance.py`
-- `docs/agent_context/active_implementation.md` (this file)
+- `docs/agent_context/active_implementation.md`
 
 ## Verification Evidence
 
-- Full focused V5.33.2 suite (109 tests): `PASS` (109 passed)
-- Offline verification script `.\scripts\verify_offline.ps1 -Full`: `PASS` (9,604 passed, 4 skipped, 0 failures, 0 errors across all 9,608 testcases in the repo)
-- `git diff --check`: `PASS` (zero trailing whitespace)
-
-## Exact Next Action
-
-Commit and push `antigravity/v5.33-clean-source-account-binding` branch. Present final report and await operator instructions. No production observation, credential loading, `.env` modification, paper mutation, paper submit, or V5.34 work shall be performed.
+- Focused V5.34 test suite: `PASS` (77 passed in 97.5s)
+- Dependency direction tests: `PASS` (34 passed in 10.3s)
+- `git diff --check`: `PASS`

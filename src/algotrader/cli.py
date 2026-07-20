@@ -3986,6 +3986,29 @@ def build_parser() -> argparse.ArgumentParser:
     crypto_consume_parser.add_argument("--receipt-root", required=True)
     crypto_consume_parser.add_argument("--output-root", default="runs/crypto_supervised_readiness_trial/latest")
 
+    crypto_cleanup_parser = subparsers.add_parser(
+        "crypto-paper-account-cleanup",
+        help="Perform bounded Alpaca paper account baseline cleanup.",
+    )
+    crypto_cleanup_parser.add_argument("--output-root", default="runs/v5_34_paper_cleanup/latest")
+    crypto_cleanup_parser.add_argument("--paper-cleanup-authorized", action="store_true")
+    crypto_cleanup_parser.add_argument("--allow-network", action="store_true")
+
+    v534_cycle_parser = subparsers.add_parser(
+        "v534-unattended-cycle",
+        help="Run V5.34 unattended paper-observed OOS operating cycle.",
+    )
+    v534_cycle_parser.add_argument("--output-root", default="runs/v5_34_operating_cycle/latest")
+    v534_cycle_parser.add_argument("--scheduler-output-root", default="runs/crypto_strategy_tournament/v2/latest")
+    v534_cycle_parser.add_argument("--discovery-source", default="runs/crypto_strategy_tournament/v1/input/crypto_1h_1y.csv")
+    v534_cycle_parser.add_argument("--discovery-receipt", default="runs/crypto_strategy_tournament/v1/refresh/refresh_packet.json")
+    v534_cycle_parser.add_argument("--db-path", default=None)
+    v534_cycle_parser.add_argument("--scheduler-enabled", action="store_true")
+    v534_cycle_parser.add_argument("--market-data-read-authorized", action="store_true")
+    v534_cycle_parser.add_argument("--paper-broker-read-authorized", action="store_true")
+    v534_cycle_parser.add_argument("--allow-network", action="store_true")
+    v534_cycle_parser.add_argument("--as-of", default=None)
+
     return parser
 
 
@@ -4248,6 +4271,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_crypto_paper_broker_observation(args)
     if command == "crypto-readiness-consume":
         return _run_crypto_readiness_consume(args)
+    if command == "crypto-paper-account-cleanup":
+        return _run_crypto_paper_account_cleanup(args)
+    if command == "v534-unattended-cycle":
+        return _run_v534_unattended_cycle(args)
 
     config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
@@ -13587,6 +13614,37 @@ def _run_crypto_readiness_consume(args: argparse.Namespace) -> int:
     print(f"crypto_consume_classification={packet['trial_classification']}")
     print(f"crypto_consume_current_readiness_rung={packet['current_readiness_rung_code']}")
     return 0 if packet["trial_classification"] == "accepted" else 2
+
+
+def _run_crypto_paper_account_cleanup(args: argparse.Namespace) -> int:
+    import json
+    from .execution.crypto_paper_account_cleanup import run_crypto_paper_account_cleanup
+    res = run_crypto_paper_account_cleanup(
+        output_root=args.output_root,
+        paper_cleanup_authorized=args.paper_cleanup_authorized,
+        allow_network=args.allow_network,
+    )
+    print(json.dumps(res, indent=2))
+    return 0 if res.get("classification") == "cleanup_successful" else 1
+
+
+def _run_v534_unattended_cycle(args: argparse.Namespace) -> int:
+    import json
+    from .execution.v534_unattended_cycle import run_v534_unattended_cycle
+    res = run_v534_unattended_cycle(
+        output_root=args.output_root,
+        scheduler_output_root=args.scheduler_output_root,
+        discovery_source=args.discovery_source,
+        discovery_receipt=args.discovery_receipt,
+        db_path=args.db_path,
+        scheduler_enabled=args.scheduler_enabled,
+        market_data_read_authorized=args.market_data_read_authorized,
+        paper_broker_read_authorized=args.paper_broker_read_authorized,
+        allow_network=args.allow_network,
+        as_of=args.as_of,
+    )
+    print(json.dumps(res, indent=2))
+    return 0 if res.get("classification") in ("cycle_completed_hold", "idempotent_same_window_replay") else 1
 
 
 if __name__ == "__main__":
