@@ -151,6 +151,9 @@ class AlpacaSdkClient(AlpacaClient):
 
         return cast(Sequence[Any], self._sdk_client.get_assets())
 
+    def get_asset(self, symbol: str) -> Any:
+        return self._sdk_client.get_asset(symbol)
+
     def get_positions(self) -> Sequence[AlpacaPositionResponse]:
         if hasattr(self._sdk_client, "get_all_positions"):
             return cast(

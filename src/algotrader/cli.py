@@ -3958,6 +3958,34 @@ def build_parser() -> argparse.ArgumentParser:
         default="always",
         help="Policy for full pytest. Defaults to always.",
     )
+    # V5.33 subcommands
+    crypto_verify_parser = subparsers.add_parser(
+        "crypto-readiness-verify",
+        help="Run offline verification of mock fixture/replay data.",
+    )
+    crypto_verify_parser.add_argument("--output-root", default="runs/crypto_supervised_readiness_trial/latest")
+    crypto_verify_parser.add_argument("--cycle-count", type=int, default=24)
+
+    crypto_preflight_parser = subparsers.add_parser(
+        "crypto-readiness-preflight",
+        help="Run preflight check asserting profile and credentials are NOT present in offline mode.",
+    )
+
+    crypto_observe_parser = subparsers.add_parser(
+        "crypto-paper-broker-observation",
+        help="Perform one explicitly authorized real paper-broker observation and persist receipt.",
+    )
+    crypto_observe_parser.add_argument("--receipt-root", required=True)
+    crypto_observe_parser.add_argument("--broker-observed-readiness", action="store_true")
+    crypto_observe_parser.add_argument("--allow-alpaca-paper-read", action="store_true")
+
+    crypto_consume_parser = subparsers.add_parser(
+        "crypto-readiness-consume",
+        help="Consume a sanitized observation receipt offline and run readiness trial.",
+    )
+    crypto_consume_parser.add_argument("--receipt-root", required=True)
+    crypto_consume_parser.add_argument("--output-root", default="runs/crypto_supervised_readiness_trial/latest")
+
     return parser
 
 
@@ -4212,6 +4240,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_run_log=args.output_run_log,
             output_run_id=args.output_run_id,
         )
+    if command == "crypto-readiness-verify":
+        return _run_crypto_readiness_verify(args)
+    if command == "crypto-readiness-preflight":
+        return _run_crypto_readiness_preflight(args)
+    if command == "crypto-paper-broker-observation":
+        return _run_crypto_paper_broker_observation(args)
+    if command == "crypto-readiness-consume":
+        return _run_crypto_readiness_consume(args)
 
     config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
@@ -13396,6 +13432,116 @@ def _run_validate_artifacts(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"Unexpected operational error: {exc}", file=sys.stderr)
         return 2
+
+
+def _run_crypto_readiness_verify(args: argparse.Namespace) -> int:
+    from .execution.crypto_supervised_readiness_trial import run_crypto_supervised_readiness_trial
+    packet = run_crypto_supervised_readiness_trial(
+        output_root=args.output_root,
+        cycle_count=args.cycle_count,
+        write_artifacts=True,
+    )
+    print(f"crypto_verify_classification={packet['trial_classification']}")
+    return 0 if packet["trial_classification"] == "accepted" else 2
+
+
+def _run_crypto_readiness_preflight(args: argparse.Namespace) -> int:
+    import os
+    profile = os.environ.get("APP_PROFILE", "").strip().lower()
+    credential_names = (
+        "ALPACA_API_KEY",
+        "ALPACA_API_SECRET_KEY",
+        "ALPACA_SECRET_KEY",
+        "APCA_API_KEY_ID",
+        "APCA_API_SECRET_KEY",
+    )
+    credentials_present = any(bool(os.environ.get(name, "").strip()) for name in credential_names)
+    if profile == "paper" or credentials_present:
+        print("crypto_preflight_status=blocked_unsafe_offline_environment")
+        return 2
+    print("crypto_preflight_status=preflight_success")
+    return 0
+
+
+def _run_crypto_paper_broker_observation(args: argparse.Namespace) -> int:
+    import os
+    import json
+    from pathlib import Path
+    from .execution.crypto_read_only_paper_observation_adapter import (
+        perform_genuine_paper_observation,
+        PreflightCheckError,
+        BrokerObservationError,
+        get_production_preflight_inputs
+    )
+
+    receipt_root = Path(args.receipt_root)
+    receipt_root.mkdir(parents=True, exist_ok=True)
+    obs_file = receipt_root / "observation_receipt.json"
+    inv_file = receipt_root / "invocation_receipt.json"
+
+    inputs = get_production_preflight_inputs()
+
+    if (not inputs["app_profile"] or inputs["app_profile"].strip().lower() != "paper" or
+        not inputs["endpoint"] or
+        not inputs["key_id"] or not inputs["secret_key"] or
+        not inputs["expected_account_id"]):
+
+        blocked_packet = {
+            "classification": "blocked_credentials_or_expected_account_unavailable",
+            "broker_state_observed": False,
+            "reason": "Credentials or expected account configuration unavailable in the environment."
+        }
+        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        if inv_file.is_file():
+            inv_file.unlink()
+        print("crypto_observation_status=blocked_credentials_or_expected_account_unavailable")
+        return 1
+
+    try:
+        repo_root = Path(".").resolve()
+        obs_receipt, inv_receipt = perform_genuine_paper_observation(
+            paper_broker_read_authorized=args.broker_observed_readiness,
+            allow_network=args.allow_alpaca_paper_read,
+            repo_root=repo_root
+        )
+        obs_file.write_text(json.dumps(obs_receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        inv_file.write_text(json.dumps(inv_receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        print("crypto_observation_status=observation_receipt_created")
+        return 0
+    except (PreflightCheckError, BrokerObservationError) as exc:
+        blocked_packet = {
+            "classification": "blocked_observation_failed",
+            "broker_state_observed": False,
+            "reason": "preflight_failed" if isinstance(exc, PreflightCheckError) else "broker_read_failed"
+        }
+        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        if inv_file.is_file():
+            inv_file.unlink()
+        print(f"crypto_observation_status=blocked_observation_failed")
+        return 1
+    except Exception as exc:
+        blocked_packet = {
+            "classification": "blocked_observation_failed",
+            "broker_state_observed": False,
+            "reason": "unexpected_error"
+        }
+        obs_file.write_text(json.dumps(blocked_packet, indent=2) + "\n", encoding="utf-8")
+        if inv_file.is_file():
+            inv_file.unlink()
+        print(f"crypto_observation_status=blocked_observation_failed")
+        return 1
+
+
+def _run_crypto_readiness_consume(args: argparse.Namespace) -> int:
+    from .execution.crypto_supervised_readiness_trial import run_crypto_supervised_readiness_trial
+    packet = run_crypto_supervised_readiness_trial(
+        output_root=args.output_root,
+        write_artifacts=True,
+        receipt_root=args.receipt_root,
+    )
+    print(f"crypto_consume_classification={packet['trial_classification']}")
+    print(f"crypto_consume_current_readiness_rung={packet['current_readiness_rung_code']}")
+    return 0 if packet["trial_classification"] == "accepted" else 2
 
 
 if __name__ == "__main__":

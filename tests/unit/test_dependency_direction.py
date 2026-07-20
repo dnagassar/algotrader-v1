@@ -835,6 +835,26 @@ def test_paper_cancellation_observation_is_one_exact_read_only_boundary() -> Non
     assert not any(isinstance(node, (ast.For, ast.While)) for node in ast.walk(workflow))
 
 
+def test_crypto_read_only_paper_observation_adapter_does_not_import_downstream_layers() -> None:
+    path = _module_path("algotrader.execution.crypto_read_only_paper_observation_adapter")
+    rule = DependencyRule(
+        source="crypto read-only paper observation adapter",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.advisory",
+            "algotrader.governance",
+            "algotrader.orchestration",
+            "algotrader.portfolio",
+            "algotrader.risk",
+            "algotrader.screener",
+            "algotrader.signals",
+            "alpaca.trading",
+            "alpaca_trade_api",
+        ),
+    )
+    assert _dependency_violations(rule) == []
+
+
 def test_paper_cancellation_sdk_binding_is_one_shot_and_read_only() -> None:
     path = _module_path(
         "algotrader.execution.paper_cancellation_observation_sdk"
