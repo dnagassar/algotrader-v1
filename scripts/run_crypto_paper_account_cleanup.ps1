@@ -3,8 +3,11 @@
 Runs the bounded Alpaca paper account baseline cleanup wrapper.
 
 .DESCRIPTION
-Loads process-scoped local environment variables via scripts/dev/load_env.ps1
-and invokes the paper account cleanup module.
+Invokes the exact-order-bound paper account cleanup module using only the
+credentials already present in the invoking process environment. This wrapper
+never loads plaintext credential files, never falls back to another
+checkout's environment, and never duplicates secrets into alternate variable
+names.
 #>
 
 [CmdletBinding()]
@@ -19,31 +22,6 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-
-# Load process-scoped environment quietly if local or primary .env exists
-$EnvFile = Join-Path $RepoRoot ".env"
-if (-not (Test-Path -LiteralPath $EnvFile)) {
-    $PrimaryEnv = "C:\Users\danie\Desktop\algo_trader\.env"
-    if (Test-Path -LiteralPath $PrimaryEnv) {
-        $EnvFile = $PrimaryEnv
-    }
-}
-if (Test-Path -LiteralPath $EnvFile) {
-    . (Join-Path $PSScriptRoot "dev\load_env.ps1") -Path $EnvFile -Quiet
-}
-
-$env:APP_PROFILE = "paper"
-if (-not $env:ALPACA_PAPER_BASE_URL) {
-    $env:ALPACA_PAPER_BASE_URL = "https://paper-api.alpaca.markets"
-}
-if (-not $env:ALPACA_API_KEY) {
-    if ($env:ALPACA_API_KEY_ID) { $env:ALPACA_API_KEY = $env:ALPACA_API_KEY_ID }
-    elseif ($env:APCA_API_KEY_ID) { $env:ALPACA_API_KEY = $env:APCA_API_KEY_ID }
-}
-if (-not $env:ALPACA_SECRET_KEY) {
-    if ($env:ALPACA_API_SECRET_KEY) { $env:ALPACA_SECRET_KEY = $env:ALPACA_API_SECRET_KEY }
-    elseif ($env:APCA_API_SECRET_KEY) { $env:ALPACA_SECRET_KEY = $env:APCA_API_SECRET_KEY }
-}
 
 $Arguments = @(
     "-m",

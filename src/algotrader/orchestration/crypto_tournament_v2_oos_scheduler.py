@@ -938,23 +938,6 @@ class RealCommandDispatcher(CommandDispatcher):
                 if not k_upper.startswith(excluded_prefixes) and k_upper not in excluded_exact:
                     env[k] = v
 
-        if self.market_data_read_authorized:
-            env["APP_PROFILE"] = "paper"
-            env["ALPACA_PAPER_BASE_URL"] = os.environ.get("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
-            env["APCA_API_BASE_URL"] = os.environ.get("APCA_API_BASE_URL", "https://paper-api.alpaca.markets")
-
-            key_id = os.environ.get("ALPACA_API_KEY") or os.environ.get("ALPACA_API_KEY_ID") or os.environ.get("APCA_API_KEY_ID")
-            secret_key = os.environ.get("ALPACA_SECRET_KEY") or os.environ.get("ALPACA_API_SECRET_KEY") or os.environ.get("APCA_API_SECRET_KEY")
-
-            if key_id:
-                env["ALPACA_API_KEY"] = key_id
-                env["ALPACA_API_KEY_ID"] = key_id
-                env["APCA_API_KEY_ID"] = key_id
-            if secret_key:
-                env["ALPACA_SECRET_KEY"] = secret_key
-                env["ALPACA_API_SECRET_KEY"] = secret_key
-                env["APCA_API_SECRET_KEY"] = secret_key
-
         try:
             result = subprocess.run(
                 cmd,
@@ -967,7 +950,6 @@ class RealCommandDispatcher(CommandDispatcher):
                 return {
                     "status": "failed",
                     "classification": "subprocess_error",
-                    "reason": (result.stderr or result.stdout or f"Subprocess exited with code {result.returncode}").strip(),
                     "dispatch_type": "real",
                     "exit_code": result.returncode,
                     "stdout": result.stdout,
@@ -1754,7 +1736,7 @@ class OneShotExecutor:
                     job=final_job,
                     mode="run_once",
                     duration=(datetime.now(UTC) - start_time).total_seconds(),
-                    reason=dispatch_result.get("reason") or dispatch_result.get("stderr") or dispatch_result.get("stdout") or "Subprocess execution failed.",
+                    reason=dispatch_result.get("reason", "Subprocess execution failed."),
                 )
             except ValidationError as exc:
                 return self._write_noop_receipt(
