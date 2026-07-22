@@ -1,42 +1,67 @@
 # Active Implementation Checkpoint
 
 > Human-readable view generated from canonical `.agent_relay/active_task.json` (gitignored, secret-free).
-> Canonical packet wins on any disagreement. The superseded V5.34 completion-claim version of this
-> file is preserved in git at `7ad6120` and is treated as evidence, not as an accepted status.
+> Canonical packet wins on any disagreement.
 
 ## Status
 
-`partial` — Phase 0 containment audit complete; Phase 1 shared relay lane established. V5.34 classified `needs-repair` with one owner-led repair cycle remaining under the two-stage repair rule.
+`verified` — V5.34 repair cycle 1 is complete on the exact reported tree and awaits independent
+governance acceptance. Not `accepted`, not `activated`, not paper-proven. This checkpoint does
+not self-approve publication.
 
-## Operating model
+## Exact state
 
-Frozen Operating Charter (Claude Code Launch Directive, 2026-07-22). Shared relay lane:
+- Branch: `relay/v5.34-readiness-recovery`
+- Repair commit: `8d2cbcc82e2477223029c41c9da2cf866d7ce82c`
+- Repair tree: `d362d7fc1a8b15069845ae65da37f8affabdf168`
+- Base: `7ad6120` (pushed V5.34 tip); accepted baseline `main@9d40560`
+- Frozen contract: `docs/design/v5_34_acceptance_contract.md` (AC1–AC11, frozen before synthesis)
+- Synthesis record (selected/rejected with reasons): `docs/design/v5_34_repair_cycle1_synthesis.md`
+- Repair-cycle count: **1 of 1** — a further routine repair cycle for the same material
+  architectural weakness is prohibited; the next failure mode is truthful consolidation to
+  `9d40560`, component replacement, or milestone abandonment.
 
-- Worktree: `C:/Users/danie/Desktop/algo_trader_worktrees/relay-current`
-- Branch: `relay/v5.34-readiness-recovery` (base `7ad6120`)
-- Exclusive writer: `claude-code` (see `.agent_relay/lease.json`)
-- Protected primary checkout: `C:/Users/danie/Desktop/algo_trader` (on `antigravity/v5.33-clean-source-account-binding` @ `d17dc57`, clean — do not modify)
+## Verification evidence (exact tree `d362d7f`, worktree clean before and after)
 
-## Phase 0 audit result (2026-07-22T09:41Z)
+- Focused suites (`pytest tests/unit/test_v534_unattended_paper_observed_oos_burnin.py
+  test_broker_mutation_surface_invariant.py test_crypto_read_only_paper_observation.py
+  test_crypto_tournament_v2_oos_scheduler_task.py test_v5_33_2_source_provenance.py
+  test_v5_33_2_account_identity.py test_v5_33_2_atomic_persistence.py -q`, cwd relay-current):
+  **105 passed, 0 failed**, exit 0, 62s, finished 2026-07-22T09:58Z.
+- Full verifier (`.\scripts\verify_offline.ps1 -Full`, cwd relay-current): **PASS**, exit 0,
+  1172s, started ~2026-07-22T09:59Z, finished ~2026-07-22T10:19Z.
+  Aggregate: **tests 9,650 — passed 9,645, skipped 5, failures 0, errors 0.**
+  Repository hygiene checks (whitespace, staged files, tracked runs/) clean.
+- No secret or transient `runs/` artifact staged; `.agent_relay/` is gitignored.
 
-- `main` = `origin/main` = `9d40560052b2fb155586d5e978e25fd21f241cae` — **matches the frozen accepted baseline exactly**. No divergence.
-- No stashes. No git locks. 26 registered worktrees.
-- **Dirty state (preserved in place, no stash):** `algo_trader_worktrees/antigravity-current` (branch `antigravity/v5.34-unattended-paper-observed-oos-burnin` @ `3495dd8`, unpushed) has staged, uncommitted changes to `docs/agent_context/active_implementation.md` and `src/algotrader/execution/crypto_paper_account_cleanup.py`.
-- **Two competing unpushed V5.34 repair commits**, both children of pushed tip `7ad6120`:
-  - antigravity `3495dd8` — "repair clean-source admission, observation return tuple, identity privacy, composite evidence, idempotency, status packet derivation, and cleanup boundary" (+ staged WIP above);
-  - claude `50cb567` — "repair unattended paper-observed burn-in truthfully" (branch `claude/v5.34r-truthful-burnin-repair`, clean worktree).
-- **No V5.33/V5.34 design doc exists**; V5.34 intent is reconstructed from commits `913efac..7ad6120`, `tests/unit/test_v534_unattended_paper_observed_oos_burnin.py`, and the superseded checkpoint at `7ad6120`, which claimed: Phase A bounded paper-account cleanup, Phase B R2 clean-source observation, Phase C unattended cycle with idempotent same-window replay and `hold_evidence_incomplete` decision (0 submissions), Phase D hourly Windows Scheduled Task, and a burn-in status packet. Its verification evidence cites only the quick offline verifier (99 tests), **not** `verify_offline.ps1 -Full` (~9,600 tests) — one reason completion is not accepted.
-- Tournament V2: frozen state initialized 2026-07-15; 144 OOS rows accrued; terminal evidence fingerprint empty → genuinely accruing forward data, not terminal. **Scheduled task `crypto-tournament-v2-oos-scheduler` is now DISABLED**, though the `7ad6120` checkpoint recorded it `Ready` — the transition is unexplained and must be established before any change.
-- The `7ad6120` checkpoint records a **pre-existing SPY position** on the paper account (legacy exposure) — must be attributed and reconciled under charter §9 before any later paper mutation milestone.
-- Credentials (booleans only): `.env` present; `APP_PROFILE=paper`; paper endpoint indicator present; **no live endpoint indicator**; Alpaca key ids and expected paper account id present. No values inspected, no network calls made, zero broker operations this session.
-- Processes: one `codex` process (pid 30916) running since 05:36 local — left untouched.
-- Anomalies preserved for governance: stale cloud-session worktree (`/sessions/clever-blissful-hopper/...`, locked "initializing"); local/remote divergence on `antigravity/v5.30-bounded-paper-probe-lifecycle`; numerous detached V5.31A review worktrees (Phase 5 consolidation candidates only after acceptance).
+## Provenance truthfulness notes
 
-## V5.34 classification and chosen path
+- Phase 0 audit was network-free; subsequent `git push` operations are network actions to
+  `github.com/dnagassar/algotrader-v1` (repository publication lane only, no broker contact).
+- Zero broker/network observation activity this cycle: no order submitted or canceled, no
+  paper exposure mutated, no broker client constructed, no credential value read.
+- The SPY paper exposure is a **cached claim** from the superseded `7ad6120` checkpoint
+  (authored by Antigravity during V5.34), not re-observed; its broker-observed state is unknown
+  as of this checkpoint.
+- Tournament V2 evidence: **post-cutoff rows present** (144 OOS rows in frozen state as of
+  2026-07-22 audit); active unattended accrual is **not established** — the
+  `crypto-tournament-v2-oos-scheduler` task is `Disabled` (recorded `Ready` at `7ad6120`;
+  transition unexplained; unresolved anomaly, outside this repair).
 
-`needs-repair`. The two-stage repair rule applies: exactly one owner-led repair cycle on `relay/v5.34-readiness-recovery`, reconciling the two competing repair candidates into a single coherent repair, followed by focused tests and the full verifier on the exact tree, an additive commit, a truthful evidence report, and independent governance acceptance. If the same material architectural weakness persists after that cycle, consolidate to the accepted baseline `9d40560` truthfully — no further patching.
+## Unresolved anomalies (preserved, not repaired here)
 
-Paper observation, if performed, is **no-submit**, paper-endpoint-verified, receipt-bound to the exact commit/tree, and uses only existing locally configured credentials. If unavailable, the blocked gate is recorded and offline work continues.
+1. Scheduler task `Ready`→`Disabled` transition unexplained; unattended accrual path unproven.
+2. SPY paper exposure attribution/reconciliation (Charter §9) pending a later milestone.
+3. Stale cloud-session worktree registration (locked "initializing") — Phase 5 candidate.
+4. Local/remote divergence on `antigravity/v5.30-bounded-paper-probe-lifecycle` — preserved.
+5. Real broker observation gate for R2 remains **blocked on authorized unattended credential
+   mechanism / operator-run observation**; classified, not simulated.
+
+## Relay mechanism classification
+
+`implemented` only. Deterministic tests for exclusive acquisition, concurrent-acquisition
+rejection, heartbeat renewal, stale-lease takeover, checkpoint integrity, owner interruption,
+and safe recovery are required before any autonomous-failover claim.
 
 ## Operator action required
 
@@ -44,4 +69,7 @@ Paper observation, if performed, is **no-submit**, paper-endpoint-verified, rece
 
 ## Exact next action
 
-Diff-compare `3495dd8` (+ its staged WIP) against `50cb567` with respect to the reconstructed V5.34 acceptance criteria; select or synthesize one coherent repair onto `relay/v5.34-readiness-recovery`; run focused V5.34 tests, then `.\scripts\verify_offline.ps1 -Full` on the final tree; publish for independent governance acceptance without self-accepting.
+Submit `8d2cbcc` for independent governance review. On `accepted`: merge per repository method
+and begin Phase 5 consolidation inventory. On `needs-repair` for the same material weakness:
+truthful consolidation to `9d40560` (no second routine repair cycle). While awaiting review:
+implement the relay lease deterministic test battery as the next capability-coupled work item.
