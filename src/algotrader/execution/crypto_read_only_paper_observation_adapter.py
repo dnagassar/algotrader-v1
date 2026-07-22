@@ -80,10 +80,20 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "src/algotrader/execution/alpaca_client.py",
         "src/algotrader/cli.py",
         "src/algotrader/execution/crypto_supervised_readiness_trial.py",
+        "src/algotrader/execution/secure_credential_provider.py",
+        "src/algotrader/execution/v535_unattended_readonly.py",
+        "src/algotrader/execution/v535_burn_in_status.py",
+        "src/algotrader/execution/crypto_history_refresh_adapter.py",
+        "src/algotrader/orchestration/crypto_tournament_v2_forward_oos.py",
+        "src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py",
         "scripts/run_crypto_paper_broker_observation.ps1",
+        "scripts/run_v535_unattended_readonly.ps1",
         "scripts/consume_crypto_observation_receipt.ps1",
         "scripts/verify_crypto_preflight.ps1",
-        "scripts/verify_crypto_readiness_replay.ps1"
+        "scripts/verify_crypto_readiness_replay.ps1",
+        "docs/design/v5_35_secure_unattended_read_only_acceptance_contract.md",
+        "docs/design/v5_35_credential_provider_and_threat_boundary.md",
+        "docs/design/crypto_tournament_v2_oos_scheduler_task.xml"
     ]
     manifest = {}
     h = hashlib.sha256()

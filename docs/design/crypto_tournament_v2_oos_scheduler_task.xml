@@ -3,13 +3,13 @@
   <RegistrationInfo>
     <Date>2026-07-18T22:00:00</Date>
     <Author>Operator</Author>
-    <Description>One-shot tournament-v2 forward-OOS scheduler, running five minutes after each UTC hour boundary.</Description>
+    <Description>Disabled V5.35 secure unattended read-only market-data and paper-observation cycle.</Description>
     <URI>\crypto-tournament-v2-oos-scheduler</URI>
   </RegistrationInfo>
   <Triggers>
     <TimeTrigger>
       <StartBoundary>2026-07-18T00:05:00Z</StartBoundary>
-      <Enabled>true</Enabled>
+      <Enabled>false</Enabled>
       <Repetition>
         <Interval>PT1H</Interval>
         <StopAtDurationEnd>false</StopAtDurationEnd>
@@ -33,8 +33,8 @@
       <StopOnIdleEnd>true</StopOnIdleEnd>
       <RestartOnIdle>false</RestartOnIdle>
     </IdleSettings>
-    <AllowStartOnDemand>true</AllowStartOnDemand>
-    <Enabled>true</Enabled>
+    <AllowStartOnDemand>false</AllowStartOnDemand>
+    <Enabled>false</Enabled>
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
@@ -46,7 +46,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_crypto_tournament_v2_oos_scheduler.ps1" -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork</Arguments>
+      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_v535_unattended_readonly.ps1" -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -PaperBrokerReadAuthorized -AllowNetwork</Arguments>
       <WorkingDirectory>%REPO_ROOT%</WorkingDirectory>
     </Exec>
   </Actions>

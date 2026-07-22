@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import sys
@@ -22,13 +23,11 @@ from typing import Callable, Mapping, Sequence
 
 from algotrader.errors import ValidationError
 from algotrader.core.time import require_utc_datetime
-from algotrader.execution.secure_credential_provider import (
-    WINDOWS_PROVIDER_NAME,
-    CredentialFamily,
-    CredentialProvider,
-    CredentialProviderError,
-    CredentialReference,
-    provider_from_name,
+
+WINDOWS_PROVIDER_NAME = "windows-credential-manager"
+_V535_MARKET_CREDENTIAL_REFERENCE_RE = re.compile(
+    r"\Awincred:algotrader/v5[.]35/alpaca-market-data/"
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z"
 )
 
 SCHEDULER_VERSION = "v5.31a_v2"
@@ -863,8 +862,8 @@ class RealCommandDispatcher(CommandDispatcher):
         scheduler_enabled: bool,
         market_data_read_authorized: bool,
         *,
-        credential_reference: CredentialReference | str | None = None,
-        credential_provider: CredentialProvider | None = None,
+        credential_reference: object | None = None,
+        credential_provider: object | None = None,
         credential_provider_name: str = WINDOWS_PROVIDER_NAME,
         app_profile: str = "paper",
         paper_endpoint: str = "https://paper-api.alpaca.markets",
@@ -873,13 +872,13 @@ class RealCommandDispatcher(CommandDispatcher):
     ) -> None:
         self.scheduler_enabled = scheduler_enabled
         self.market_data_read_authorized = market_data_read_authorized
-        self.credential_reference = (
-            None
-            if credential_reference is None
-            else credential_reference
-            if isinstance(credential_reference, CredentialReference)
-            else CredentialReference(credential_reference)
-        )
+        if credential_reference is not None and not _V535_MARKET_CREDENTIAL_REFERENCE_RE.fullmatch(
+            str(credential_reference)
+        ):
+            raise ValidationError(
+                "Real dispatch rejected: malformed market-data credential reference."
+            )
+        self.credential_reference = credential_reference
         self.credential_provider = credential_provider
         self.credential_provider_name = credential_provider_name
         self.app_profile = app_profile
@@ -941,21 +940,26 @@ class RealCommandDispatcher(CommandDispatcher):
             raise ValidationError(
                 "Real dispatch rejected: secure credential reference required."
             )
-        if self.credential_reference.family is not CredentialFamily.ALPACA_MARKET_DATA:
-            raise ValidationError(
-                "Real dispatch rejected: market-data credential family required."
-            )
         try:
-            provider = self.credential_provider or provider_from_name(
-                self.credential_provider_name
-            )
-            provider.validate(
+            provider = self.credential_provider
+            if provider is None or not callable(getattr(provider, "validate", None)):
+                raise ValidationError(
+                    "Real dispatch rejected: secure credential provider required."
+                )
+            provider.validate(  # type: ignore[attr-defined]
                 self.credential_reference,
-                expected_family=CredentialFamily.ALPACA_MARKET_DATA,
+                expected_family="alpaca-market-data",
             )
-        except CredentialProviderError as exc:
+        except ValidationError:
+            raise
+        except Exception as exc:
+            classification = getattr(exc, "classification", "credential_provider_failed")
+            if type(classification) is not str or not re.fullmatch(
+                r"[a-z][a-z0-9_]{0,63}", classification
+            ):
+                classification = "credential_provider_failed"
             raise ValidationError(
-                f"Real dispatch rejected: {exc.classification}."
+                f"Real dispatch rejected: {classification}."
             ) from None
 
         cmd = [
@@ -1051,14 +1055,12 @@ class RealCommandDispatcher(CommandDispatcher):
                     "status": "failed",
                     "classification": "missing_operating_packet",
                     "dispatch_type": "real",
-                    "reason": f"Expected operating packet at {packet_path} was not created.",
                 }
             if not state_path.is_file():
                 return {
                     "status": "failed",
                     "classification": "missing_frozen_state",
                     "dispatch_type": "real",
-                    "reason": f"Expected frozen state at {state_path} was not created.",
                 }
 
             packet_hash = _file_sha256(packet_path)
@@ -1090,7 +1092,7 @@ class RealCommandDispatcher(CommandDispatcher):
                 "classification": "subprocess_exception",
                 "dispatch_type": "real",
                 "error_type": exc.__class__.__name__,
-                "reason": str(exc),
+                "output_discarded": True,
             }
 
 

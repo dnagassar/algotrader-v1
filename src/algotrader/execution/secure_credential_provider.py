@@ -143,17 +143,17 @@ class CredentialProvider(Protocol):
 
     def open(
         self,
-        reference: CredentialReference,
+        reference: CredentialReference | str,
         *,
-        expected_family: CredentialFamily,
+        expected_family: CredentialFamily | str,
     ) -> OpaqueCredentialLease:
         ...
 
     def validate(
         self,
-        reference: CredentialReference,
+        reference: CredentialReference | str,
         *,
-        expected_family: CredentialFamily,
+        expected_family: CredentialFamily | str,
     ) -> None:
         ...
 
@@ -171,19 +171,23 @@ class WindowsCredentialManagerProvider:
 
     def validate(
         self,
-        reference: CredentialReference,
+        reference: CredentialReference | str,
         *,
-        expected_family: CredentialFamily,
+        expected_family: CredentialFamily | str,
     ) -> None:
+        reference = _coerce_reference(reference)
+        expected_family = _coerce_family(expected_family)
         lease = self.open(reference, expected_family=expected_family)
         lease.use(lambda _key, _secret, _account: None)
 
     def open(
         self,
-        reference: CredentialReference,
+        reference: CredentialReference | str,
         *,
-        expected_family: CredentialFamily,
+        expected_family: CredentialFamily | str,
     ) -> OpaqueCredentialLease:
+        reference = _coerce_reference(reference)
+        expected_family = _coerce_family(expected_family)
         _require_reference_family(reference, expected_family)
         if os.name != "nt":
             raise CredentialProviderError("credential_provider_unavailable")
@@ -324,13 +328,26 @@ def _lease_from_record_bytes(
 
 
 def _require_reference_family(
-    reference: CredentialReference,
-    expected_family: CredentialFamily,
+    reference: CredentialReference | str,
+    expected_family: CredentialFamily | str,
 ) -> None:
-    if not isinstance(reference, CredentialReference):
-        raise CredentialProviderError("credential_reference_malformed")
+    reference = _coerce_reference(reference)
+    expected_family = _coerce_family(expected_family)
     if reference.family is not expected_family:
         raise CredentialProviderError("credential_family_mismatch")
+
+
+def _coerce_reference(reference: CredentialReference | str) -> CredentialReference:
+    if isinstance(reference, CredentialReference):
+        return reference
+    return CredentialReference(reference)
+
+
+def _coerce_family(family: CredentialFamily | str) -> CredentialFamily:
+    try:
+        return family if isinstance(family, CredentialFamily) else CredentialFamily(family)
+    except (TypeError, ValueError):
+        raise CredentialProviderError("credential_family_mismatch") from None
 
 
 def _required_secret_text(value: object) -> str:

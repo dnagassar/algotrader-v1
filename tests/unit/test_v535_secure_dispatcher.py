@@ -51,6 +51,7 @@ class RecordProvider:
         self.open_count = 0
 
     def _lease(self, expected_family: CredentialFamily):
+        expected_family = CredentialFamily(expected_family)
         if self.failure:
             raise CredentialProviderError(self.failure)
         record = {
@@ -69,7 +70,7 @@ class RecordProvider:
         self,
         reference: CredentialReference,
         *,
-        expected_family: CredentialFamily,
+        expected_family: CredentialFamily | str,
     ) -> None:
         assert reference is REFERENCE
         self.validate_count += 1
@@ -79,7 +80,7 @@ class RecordProvider:
         self,
         reference: CredentialReference,
         *,
-        expected_family: CredentialFamily,
+        expected_family: CredentialFamily | str,
     ):
         assert reference is REFERENCE
         self.open_count += 1
@@ -199,6 +200,30 @@ def test_real_dispatcher_passes_only_non_secret_child_configuration(
         for path in tmp_path.rglob("*")
         if path.is_file()
     )
+
+
+def test_process_exception_text_is_discarded(tmp_path: Path) -> None:
+    def fail(*_: object, **__: object) -> object:
+        raise RuntimeError(f"unsafe:{KEY_SENTINEL}:{SECRET_SENTINEL}")
+
+    result = RealCommandDispatcher(
+        scheduler_enabled=True,
+        market_data_read_authorized=True,
+        credential_reference=REFERENCE,
+        credential_provider=RecordProvider(),
+        process_runner=fail,
+    ).dispatch(
+        _job(),
+        tmp_path / "output",
+        tmp_path / "source.csv",
+        tmp_path / "source.json",
+        allow_network=True,
+    )
+    serialized = json.dumps(result, sort_keys=True)
+    assert result["classification"] == "subprocess_exception"
+    assert result["output_discarded"] is True
+    assert KEY_SENTINEL not in serialized
+    assert SECRET_SENTINEL not in serialized
 
 
 class _Response:

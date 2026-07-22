@@ -32,6 +32,8 @@ def test_task_xml_scheduler_settings() -> None:
     assert root.find(".//task:RestartOnFailure", NAMESPACE) is None
     assert _text(root, ".//task:ExecutionTimeLimit") == "PT15M"
     assert _text(root, ".//task:Priority") == "7"
+    assert _text(root, ".//task:Settings/task:Enabled") == "false"
+    assert _text(root, ".//task:AllowStartOnDemand") == "false"
 
     # Triggers
     assert _text(root, ".//task:StartBoundary") == "2026-07-18T00:05:00Z"
@@ -45,13 +47,16 @@ def test_task_xml_actions() -> None:
     working_dir = _text(root, ".//task:WorkingDirectory")
 
     assert command == "powershell.exe"
-    assert "run_crypto_tournament_v2_oos_scheduler.ps1" in arguments
+    assert "run_v535_unattended_readonly.ps1" in arguments
     assert "-Mode run_once" in arguments
     assert "-SchedulerEnabled" in arguments
     assert "-MarketDataReadAuthorized" in arguments
+    assert "-PaperBrokerReadAuthorized" in arguments
     assert "-AllowNetwork" in arguments
     assert "%REPO_ROOT%" in arguments
     assert working_dir == "%REPO_ROOT%"
+    assert "ALPACA_API_KEY" not in arguments
+    assert "ALPACA_SECRET_KEY" not in arguments
 
 
 def test_registration_helper_preview_runs_successfully() -> None:

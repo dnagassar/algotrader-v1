@@ -47,7 +47,18 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
         assert provenance["source_branch_or_detached"] == "feature-branch"
         assert len(provenance["adapter_source_bundle_sha256"]) == 64
         assert isinstance(provenance["source_bundle_manifest"], dict)
-        assert len(provenance["source_bundle_manifest"]) == 9
+        assert {
+            "src/algotrader/execution/secure_credential_provider.py",
+            "src/algotrader/execution/v535_unattended_readonly.py",
+            "src/algotrader/execution/v535_burn_in_status.py",
+            "src/algotrader/execution/crypto_history_refresh_adapter.py",
+            "src/algotrader/orchestration/crypto_tournament_v2_forward_oos.py",
+            "src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py",
+            "scripts/run_v535_unattended_readonly.ps1",
+            "docs/design/v5_35_secure_unattended_read_only_acceptance_contract.md",
+            "docs/design/v5_35_credential_provider_and_threat_boundary.md",
+            "docs/design/crypto_tournament_v2_oos_scheduler_task.xml",
+        }.issubset(provenance["source_bundle_manifest"])
 
 
 def test_dirty_source_worktree_blocks_before_client_construction(tmp_path: Path) -> None:
