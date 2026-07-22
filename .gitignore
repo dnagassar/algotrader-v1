@@ -21,3 +21,6 @@ docs/reviews/
 !.env.example
 
 runs/
+
+# Agent relay canonical state (secret-free, machine-owned)
+.agent_relay/

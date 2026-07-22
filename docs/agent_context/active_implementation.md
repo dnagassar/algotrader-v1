@@ -1,48 +1,47 @@
-# Active Implementation Checkpoint — V5.34
+# Active Implementation Checkpoint
+
+> Human-readable view generated from canonical `.agent_relay/active_task.json` (gitignored, secret-free).
+> Canonical packet wins on any disagreement. The superseded V5.34 completion-claim version of this
+> file is preserved in git at `7ad6120` and is treated as evidence, not as an accepted status.
 
 ## Status
 
-V5.34 Unattended Paper-Observed OOS Burn-In implementation and verification are complete. Bounded paper account baseline cleanup, R2 readiness promotion, production one-shot operating cycle orchestration, same-window idempotency, Windows Scheduled Task activation, and 24-cycle deterministic test coverage are implemented. All offline unit tests, dependency direction checks, and full offline verification script passed clean.
+`partial` — Phase 0 containment audit complete; Phase 1 shared relay lane established. V5.34 classified `needs-repair` with one owner-led repair cycle remaining under the two-stage repair rule.
 
-## Repository Reference State
+## Operating model
 
-- Branch: `antigravity/v5.34-unattended-paper-observed-oos-burnin`
-- HEAD commit: `2e864201f85e09dfa59158055179131cc65c8fb2`
-- HEAD tree: `ce6f98aa06b4a9924f9bf159140664660f21b4cb`
-- Baseline commit: `9d40560052b2fb155586d5e978e25fd21f241cae`
-- Sole implementation writer: `antigravity`
-- Windows Scheduled Task: `crypto-tournament-v2-oos-scheduler` (`Ready`)
+Frozen Operating Charter (Claude Code Launch Directive, 2026-07-22). Shared relay lane:
 
-## Implemented Contracts
+- Worktree: `C:/Users/danie/Desktop/algo_trader_worktrees/relay-current`
+- Branch: `relay/v5.34-readiness-recovery` (base `7ad6120`)
+- Exclusive writer: `claude-code` (see `.agent_relay/lease.json`)
+- Protected primary checkout: `C:/Users/danie/Desktop/algo_trader` (on `antigravity/v5.33-clean-source-account-binding` @ `d17dc57`, clean — do not modify)
 
-1. **Phase A (Clean Paper Baseline)**: `crypto_paper_account_cleanup.py` and CLI subcommand `crypto-paper-account-cleanup` enforce bounded single-attempt paper account cleanup against Alpaca paper endpoint `https://paper-api.alpaca.markets`. Preflight verifies profile `paper`, account match, and active unblocked status. Open orders are canceled, positions closed, and account reconciled to flat.
-2. **Phase B (R2 Readiness)**: Clean-source paper observation (`crypto-paper-broker-observation`) and offline receipt consumption (`crypto-readiness-consume`) confirm offline readiness status R1 (with paper account retaining 1 pre-existing SPY position pending regular US equity market open).
-3. **Phase C (Autonomous Operating Cycle)**: `v534_unattended_cycle.py` and CLI subcommand `v534-unattended-cycle` bind git source provenance (`get_source_provenance`), completed-hour OOS accrual (`OneShotExecutor.tick`), bounded paper observation (`perform_genuine_paper_observation`), and flat reconciliation to emit canonical system decision `hold_evidence_incomplete` (0 paper submissions, 0 mutations). Same-window invocations return idempotent no-op receipts (`idempotent_same_window_replay`).
-4. **Phase D (Hourly Operator Task)**: Registered and verified Windows Scheduled Task `crypto-tournament-v2-oos-scheduler` (`State: Ready`) targeting `scripts/run_v534_unattended_cycle.ps1`. Process-scoped secret loading is handled quietly via `scripts/load_env.ps1`.
-5. **Burn-In Status Packet**: `v534_burn_in_status.py` persists `runs/v5_34_burn_in/latest/burn_in_status.json` recording operational health and accumulator state.
+## Phase 0 audit result (2026-07-22T09:41Z)
 
-## Changed Files
+- `main` = `origin/main` = `9d40560052b2fb155586d5e978e25fd21f241cae` — **matches the frozen accepted baseline exactly**. No divergence.
+- No stashes. No git locks. 26 registered worktrees.
+- **Dirty state (preserved in place, no stash):** `algo_trader_worktrees/antigravity-current` (branch `antigravity/v5.34-unattended-paper-observed-oos-burnin` @ `3495dd8`, unpushed) has staged, uncommitted changes to `docs/agent_context/active_implementation.md` and `src/algotrader/execution/crypto_paper_account_cleanup.py`.
+- **Two competing unpushed V5.34 repair commits**, both children of pushed tip `7ad6120`:
+  - antigravity `3495dd8` — "repair clean-source admission, observation return tuple, identity privacy, composite evidence, idempotency, status packet derivation, and cleanup boundary" (+ staged WIP above);
+  - claude `50cb567` — "repair unattended paper-observed burn-in truthfully" (branch `claude/v5.34r-truthful-burnin-repair`, clean worktree).
+- **No V5.33/V5.34 design doc exists**; V5.34 intent is reconstructed from commits `913efac..7ad6120`, `tests/unit/test_v534_unattended_paper_observed_oos_burnin.py`, and the superseded checkpoint at `7ad6120`, which claimed: Phase A bounded paper-account cleanup, Phase B R2 clean-source observation, Phase C unattended cycle with idempotent same-window replay and `hold_evidence_incomplete` decision (0 submissions), Phase D hourly Windows Scheduled Task, and a burn-in status packet. Its verification evidence cites only the quick offline verifier (99 tests), **not** `verify_offline.ps1 -Full` (~9,600 tests) — one reason completion is not accepted.
+- Tournament V2: frozen state initialized 2026-07-15; 144 OOS rows accrued; terminal evidence fingerprint empty → genuinely accruing forward data, not terminal. **Scheduled task `crypto-tournament-v2-oos-scheduler` is now DISABLED**, though the `7ad6120` checkpoint recorded it `Ready` — the transition is unexplained and must be established before any change.
+- The `7ad6120` checkpoint records a **pre-existing SPY position** on the paper account (legacy exposure) — must be attributed and reconciled under charter §9 before any later paper mutation milestone.
+- Credentials (booleans only): `.env` present; `APP_PROFILE=paper`; paper endpoint indicator present; **no live endpoint indicator**; Alpaca key ids and expected paper account id present. No values inspected, no network calls made, zero broker operations this session.
+- Processes: one `codex` process (pid 30916) running since 05:36 local — left untouched.
+- Anomalies preserved for governance: stale cloud-session worktree (`/sessions/clever-blissful-hopper/...`, locked "initializing"); local/remote divergence on `antigravity/v5.30-bounded-paper-probe-lifecycle`; numerous detached V5.31A review worktrees (Phase 5 consolidation candidates only after acceptance).
 
-- `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`
-- `src/algotrader/cli.py`
-- `src/algotrader/execution/crypto_paper_account_cleanup.py`
-- `src/algotrader/execution/crypto_read_only_paper_observation_adapter.py`
-- `src/algotrader/execution/v534_burn_in_status.py`
-- `src/algotrader/execution/v534_unattended_cycle.py`
-- `src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py`
-- `scripts/run_crypto_paper_account_cleanup.ps1`
-- `scripts/run_v534_unattended_cycle.ps1`
-- `scripts/run_v534_paper_broker_observation.ps1`
-- `tests/unit/test_v534_unattended_paper_observed_oos_burnin.py`
-- `tests/unit/test_v5_33_2_source_provenance.py`
-- `tests/unit/test_broker_mutation_surface_invariant.py`
-- `docs/agent_context/active_implementation.md`
+## V5.34 classification and chosen path
 
-## Verification Evidence
+`needs-repair`. The two-stage repair rule applies: exactly one owner-led repair cycle on `relay/v5.34-readiness-recovery`, reconciling the two competing repair candidates into a single coherent repair, followed by focused tests and the full verifier on the exact tree, an additive commit, a truthful evidence report, and independent governance acceptance. If the same material architectural weakness persists after that cycle, consolidate to the accepted baseline `9d40560` truthfully — no further patching.
 
-- Focused unit test suite: `PASS` (77 passed in 67.6s)
-- Dependency direction tests: `PASS` (34 passed in 5.1s)
-- Offline verification script (`.\scripts\verify_offline.ps1`): `PASS` (99 passed in 70.3s)
-- Git diff check (`git diff --check`): `PASS` (no whitespace errors)
-- Staged / unstaged diffs: clean (0 dirty files)
-- Remote branch push (`antigravity/v5.34-unattended-paper-observed-oos-burnin`): `SUCCESS`
+Paper observation, if performed, is **no-submit**, paper-endpoint-verified, receipt-bound to the exact commit/tree, and uses only existing locally configured credentials. If unavailable, the blocked gate is recorded and offline work continues.
+
+## Operator action required
+
+`operator_action_required: false`
+
+## Exact next action
+
+Diff-compare `3495dd8` (+ its staged WIP) against `50cb567` with respect to the reconstructed V5.34 acceptance criteria; select or synthesize one coherent repair onto `relay/v5.34-readiness-recovery`; run focused V5.34 tests, then `.\scripts\verify_offline.ps1 -Full` on the final tree; publish for independent governance acceptance without self-accepting.
