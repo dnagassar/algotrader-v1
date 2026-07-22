@@ -1098,6 +1098,107 @@ task mutation remains outside the milestone authorization.
 
 No real credentials, live endpoints, or trading actions are permitted or stored in the task configuration.
 
+## V5.36 Independent-Review And One-Canary Route
+
+V5.36 adds a generated, one-time Windows task around the V5.35 production
+read-only dispatcher. It does not use the recurring V5.35 review template and
+never calls `Start-ScheduledTask`. The task is installed disabled, attested,
+armed for exactly one UTC trigger, and disarmed after its first attempt. Final
+commissioning requires a later credential-free terminal attestation.
+
+The implementation milestone performs none of those host operations. The
+authorization template containing `<EXACT_CLOSED_WINDOW>`,
+`<NON_SECRET_REFERENCE>`, `<VERIFIED_V5_36_COMMIT>`, or `<EXACT_UTC_TIME>` is
+not executable. First obtain independent review of the exact clean V5.36
+commit. Then create one strict, non-secret
+`v5_36_scheduled_canary_authorization_v1` artifact outside generated output,
+using the exact field contract in
+`docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md`.
+Never put credential values or a raw account identity in that artifact or in
+chat.
+
+From a normal credential-free shell owned by the exact task principal, preview
+the resolved task definition:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode preview `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH>
+```
+
+If preview blocks, stop. Do not edit around the validator. If both exact vault
+records already exist for the same Windows principal, proceed to disabled
+installation only under the independently reviewed authorization:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode install-disabled `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH> `
+  -TaskMutationAuthorized
+
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode attest-disabled `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH>
+```
+
+Review the disabled attestation before arming. Arm no earlier than 15 minutes
+before the exact scheduled start and before that start:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode arm-exact-window `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH> `
+  -TaskMutationAuthorized `
+  -CredentialReadAuthorized
+```
+
+Do not manually start the task and do not invoke `-Mode execute` from the
+operator console. Task Scheduler owns the single trigger. The registered
+action supplies only the absolute non-secret authorization path and the three
+required switches. It resolves credentials inside the production boundary,
+performs at most the exact market-data GET and paper account/position/order/
+asset reads, then attempts disarm regardless of result.
+
+If emergency disarm is needed before or after the trigger, this credential-free
+operation constructs neither a vault provider nor a broker client:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode disarm `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH> `
+  -TaskMutationAuthorized
+```
+
+After the task has exited, run terminal attestation from a credential-free
+shell:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode post-run-attest `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH>
+```
+
+Only `scheduled_read_only_canary_commissioning_complete` records a successful
+one-attempt commissioning packet. Any `blocked_*` result is terminal for that
+authorization: do not retry, reset, extend the deadline, or schedule another
+window without a new milestone and new exact authorization.
+
+Credential writes are not included in the canary read authority. If either
+vault record is absent, stop and obtain a separate, one-family, at-most-one-hour
+`v5_36_windows_credential_provisioning_authorization_v1` grant. Only then may
+the exact principal use an interactive no-echo console:
+
+```powershell
+.\scripts\provision_v536_windows_credential.ps1 `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_PROVISIONING_AUTHORIZATION_PATH> `
+  -ProvisionAuthorized
+```
+
+Run that command once per separately authorized family. Never redirect input,
+record the console, load credential aliases, or pass secrets as arguments.
+Provisioning does not authorize task mutation, network access, broker reads,
+or canary execution.
+
 ## V5.32 End-to-End Supervised Crypto Readiness Trial
 
 Run the complete 24-cycle deterministic proof from a normal credential-free
