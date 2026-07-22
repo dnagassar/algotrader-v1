@@ -1,6 +1,13 @@
 <#
 .SYNOPSIS
-Wrapper for running crypto paper broker observation with process-scoped env loading.
+Wrapper for running the crypto paper broker observation for V5.34 R2 evidence.
+
+.DESCRIPTION
+Delegates to scripts/run_crypto_paper_broker_observation.ps1 using only the
+credentials already present in the invoking process environment. This wrapper
+never loads plaintext credential files, never falls back to another
+checkout's environment, and never duplicates secrets into alternate variable
+names.
 #>
 
 [CmdletBinding()]
@@ -14,31 +21,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-
-# Load process-scoped environment quietly if local or primary .env exists
-$EnvFile = Join-Path $RepoRoot ".env"
-if (-not (Test-Path -LiteralPath $EnvFile)) {
-    $PrimaryEnv = "C:\Users\danie\Desktop\algo_trader\.env"
-    if (Test-Path -LiteralPath $PrimaryEnv) {
-        $EnvFile = $PrimaryEnv
-    }
-}
-if (Test-Path -LiteralPath $EnvFile) {
-    . (Join-Path $PSScriptRoot "dev\load_env.ps1") -Path $EnvFile -Quiet
-}
-
-$env:APP_PROFILE = "paper"
-if (-not $env:ALPACA_PAPER_BASE_URL) {
-    $env:ALPACA_PAPER_BASE_URL = "https://paper-api.alpaca.markets"
-}
-if (-not $env:ALPACA_API_KEY) {
-    if ($env:ALPACA_API_KEY_ID) { $env:ALPACA_API_KEY = $env:ALPACA_API_KEY_ID }
-    elseif ($env:APCA_API_KEY_ID) { $env:ALPACA_API_KEY = $env:APCA_API_KEY_ID }
-}
-if (-not $env:ALPACA_SECRET_KEY) {
-    if ($env:ALPACA_API_SECRET_KEY) { $env:ALPACA_SECRET_KEY = $env:ALPACA_API_SECRET_KEY }
-    elseif ($env:APCA_API_SECRET_KEY) { $env:ALPACA_SECRET_KEY = $env:APCA_API_SECRET_KEY }
-}
 
 $Arguments = @(
     (Join-Path $PSScriptRoot "run_crypto_paper_broker_observation.ps1"),

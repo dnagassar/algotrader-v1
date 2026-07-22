@@ -45,11 +45,12 @@ def test_task_xml_actions() -> None:
     working_dir = _text(root, ".//task:WorkingDirectory")
 
     assert command == "powershell.exe"
-    assert "run_crypto_tournament_v2_oos_scheduler.ps1" in arguments
-    assert "-Mode run_once" in arguments
+    assert "run_v534_unattended_cycle.ps1" in arguments
     assert "-SchedulerEnabled" in arguments
     assert "-MarketDataReadAuthorized" in arguments
+    assert "-PaperBrokerReadAuthorized" in arguments
     assert "-AllowNetwork" in arguments
+    assert "-InvocationSource scheduled" in arguments
     assert "%REPO_ROOT%" in arguments
     assert working_dir == "%REPO_ROOT%"
 

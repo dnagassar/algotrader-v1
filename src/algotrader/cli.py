@@ -4008,6 +4008,9 @@ def build_parser() -> argparse.ArgumentParser:
     v534_cycle_parser.add_argument("--paper-broker-read-authorized", action="store_true")
     v534_cycle_parser.add_argument("--allow-network", action="store_true")
     v534_cycle_parser.add_argument("--as-of", default=None)
+    v534_cycle_parser.add_argument(
+        "--invocation-source", choices=("manual", "scheduled"), default="manual"
+    )
 
     return parser
 
@@ -13630,7 +13633,10 @@ def _run_crypto_paper_account_cleanup(args: argparse.Namespace) -> int:
 
 def _run_v534_unattended_cycle(args: argparse.Namespace) -> int:
     import json
-    from .execution.v534_unattended_cycle import run_v534_unattended_cycle
+    from .execution.v534_unattended_cycle import (
+        COMPLETED_CYCLE_CLASSIFICATIONS,
+        run_v534_unattended_cycle,
+    )
     res = run_v534_unattended_cycle(
         output_root=args.output_root,
         scheduler_output_root=args.scheduler_output_root,
@@ -13642,9 +13648,11 @@ def _run_v534_unattended_cycle(args: argparse.Namespace) -> int:
         paper_broker_read_authorized=args.paper_broker_read_authorized,
         allow_network=args.allow_network,
         as_of=args.as_of,
+        invocation_source=args.invocation_source,
     )
     print(json.dumps(res, indent=2))
-    return 0 if res.get("classification") in ("cycle_completed_hold", "idempotent_same_window_replay") else 1
+    accepted = COMPLETED_CYCLE_CLASSIFICATIONS | {"duplicate_window_no_op"}
+    return 0 if res.get("classification") in accepted else 1
 
 
 if __name__ == "__main__":

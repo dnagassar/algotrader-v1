@@ -332,7 +332,7 @@ def test_manually_created_genuine_rejected(tmp_path: Path) -> None:
         "source_classification": "genuine_alpaca_paper_observation",
         "paper_endpoint_classification": "https://paper-api.alpaca.markets",
         "expected_account_match": True,
-        "sanitized_account_fingerprint": "abc",
+        "expected_account_configured": True,
         "target_symbol": "BTCUSD",
         "target_asset_class": "crypto",
         "target_tradability": True,
