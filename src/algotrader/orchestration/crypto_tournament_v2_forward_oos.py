@@ -14,12 +14,17 @@ from dataclasses import replace
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+from functools import partial
 
 from algotrader.errors import ValidationError
 from algotrader.execution.crypto_history_refresh_adapter import (
     CryptoHistoryRefreshConfig,
     crypto_history_refresh_preflight,
     run_crypto_history_refresh,
+)
+from algotrader.execution.secure_credential_provider import (
+    CredentialReference,
+    provider_from_name,
 )
 from algotrader.research.crypto_preregistered_tournament_v2 import (
     TOURNAMENT_V2_SYMBOLS,
@@ -407,6 +412,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument("--allow-network", action="store_true")
+    parser.add_argument("--credential-provider", default="")
+    parser.add_argument("--credential-reference", default="")
+    parser.add_argument("--app-profile", default="")
+    parser.add_argument("--paper-endpoint", default="")
+    parser.add_argument("--market-data-endpoint", default="")
     return parser
 
 
@@ -428,7 +438,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             "market_data_fetch requires both explicit authorization flags."
         )
     refresh_config = None
+    refresh_runner: RefreshRunner = run_crypto_history_refresh
     if args.mode == "market_data_fetch":
+        if not args.credential_provider or not args.credential_reference:
+            parser.error(
+                "market_data_fetch requires a secure credential provider reference."
+            )
+        provider = provider_from_name(args.credential_provider)
+        reference = CredentialReference(args.credential_reference)
+        refresh_runner = partial(
+            run_crypto_history_refresh,
+            credential_provider=provider,
+            credential_reference=reference,
+            app_profile=args.app_profile,
+            paper_endpoint=args.paper_endpoint,
+            market_data_endpoint=args.market_data_endpoint,
+        )
         refresh_config = CryptoHistoryRefreshConfig(
             mode="market_data_fetch",
             symbols=tuple(TOURNAMENT_V2_SYMBOLS),
@@ -454,6 +479,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         discovery_source_path=args.discovery_source_path,
         discovery_receipt_path=args.discovery_receipt_path,
         refresh_config=refresh_config,
+        refresh_runner=refresh_runner,
     )
     print(json.dumps(packet, indent=2, sort_keys=True))
     return 0

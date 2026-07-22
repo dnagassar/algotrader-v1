@@ -22,6 +22,14 @@ from typing import Callable, Mapping, Sequence
 
 from algotrader.errors import ValidationError
 from algotrader.core.time import require_utc_datetime
+from algotrader.execution.secure_credential_provider import (
+    WINDOWS_PROVIDER_NAME,
+    CredentialFamily,
+    CredentialProvider,
+    CredentialProviderError,
+    CredentialReference,
+    provider_from_name,
+)
 
 SCHEDULER_VERSION = "v5.31a_v2"
 SCHEDULER_SCHEMA_VERSION = "v5_31a_scheduler_schema_v2"
@@ -851,10 +859,33 @@ class PreviewDispatcher(CommandDispatcher):
 
 class RealCommandDispatcher(CommandDispatcher):
     def __init__(
-        self, scheduler_enabled: bool, market_data_read_authorized: bool
+        self,
+        scheduler_enabled: bool,
+        market_data_read_authorized: bool,
+        *,
+        credential_reference: CredentialReference | str | None = None,
+        credential_provider: CredentialProvider | None = None,
+        credential_provider_name: str = WINDOWS_PROVIDER_NAME,
+        app_profile: str = "paper",
+        paper_endpoint: str = "https://paper-api.alpaca.markets",
+        market_data_endpoint: str = "https://data.alpaca.markets",
+        process_runner: Callable[..., object] | None = None,
     ) -> None:
         self.scheduler_enabled = scheduler_enabled
         self.market_data_read_authorized = market_data_read_authorized
+        self.credential_reference = (
+            None
+            if credential_reference is None
+            else credential_reference
+            if isinstance(credential_reference, CredentialReference)
+            else CredentialReference(credential_reference)
+        )
+        self.credential_provider = credential_provider
+        self.credential_provider_name = credential_provider_name
+        self.app_profile = app_profile
+        self.paper_endpoint = paper_endpoint
+        self.market_data_endpoint = market_data_endpoint
+        self.process_runner = process_runner
 
     def dispatch(
         self,
@@ -875,16 +906,57 @@ class RealCommandDispatcher(CommandDispatcher):
                 "Real dispatch rejected: AllowNetwork is false."
             )
 
-        # Active rejection for configured live or trading endpoints
-        app_profile = os.environ.get("APP_PROFILE", "").lower()
-        if app_profile == "live":
-            raise ValidationError("Real dispatch rejected: APP_PROFILE cannot be 'live'.")
+        if self.app_profile.strip().lower() != "paper":
+            raise ValidationError("Real dispatch rejected: exact paper profile required.")
+        if self.paper_endpoint.strip().lower().rstrip("/") != "https://paper-api.alpaca.markets":
+            raise ValidationError("Real dispatch rejected: exact paper endpoint required.")
+        if self.market_data_endpoint.strip().lower().rstrip("/") != "https://data.alpaca.markets":
+            raise ValidationError("Real dispatch rejected: exact market-data endpoint required.")
+
+        if str(os.environ.get("APP_PROFILE", "")).strip().lower() == "live":
+            raise ValidationError(
+                "Real dispatch rejected: APP_PROFILE cannot be 'live'."
+            )
+
+        credential_aliases = {
+            "ALPACA_API_KEY",
+            "ALPACA_API_KEY_ID",
+            "ALPACA_API_SECRET_KEY",
+            "ALPACA_SECRET_KEY",
+            "APCA_API_KEY_ID",
+            "APCA_API_SECRET_KEY",
+        }
+        if any(str(os.environ.get(name, "")).strip() for name in credential_aliases):
+            raise ValidationError(
+                "Real dispatch rejected: credential environment aliases are forbidden."
+            )
 
         for k, v in os.environ.items():
             if "alpaca.markets" in v.lower():
                 hostname = _extract_hostname(v)
                 if hostname == "api.alpaca.markets":
                     raise ValidationError(f"Real dispatch rejected: Live Alpaca endpoint found in environment variable {k}.")
+
+        if self.credential_reference is None:
+            raise ValidationError(
+                "Real dispatch rejected: secure credential reference required."
+            )
+        if self.credential_reference.family is not CredentialFamily.ALPACA_MARKET_DATA:
+            raise ValidationError(
+                "Real dispatch rejected: market-data credential family required."
+            )
+        try:
+            provider = self.credential_provider or provider_from_name(
+                self.credential_provider_name
+            )
+            provider.validate(
+                self.credential_reference,
+                expected_family=CredentialFamily.ALPACA_MARKET_DATA,
+            )
+        except CredentialProviderError as exc:
+            raise ValidationError(
+                f"Real dispatch rejected: {exc.classification}."
+            ) from None
 
         cmd = [
             sys.executable,
@@ -903,6 +975,16 @@ class RealCommandDispatcher(CommandDispatcher):
             "--allow-network",
             "--as-of",
             job.provider_as_of_boundary.isoformat(),
+            "--credential-provider",
+            self.credential_provider_name,
+            "--credential-reference",
+            str(self.credential_reference),
+            "--app-profile",
+            self.app_profile,
+            "--paper-endpoint",
+            self.paper_endpoint,
+            "--market-data-endpoint",
+            self.market_data_endpoint,
         ]
 
         # Minimal allowlisted child environment
@@ -939,7 +1021,8 @@ class RealCommandDispatcher(CommandDispatcher):
                     env[k] = v
 
         try:
-            result = subprocess.run(
+            run_process = self.process_runner or subprocess.run
+            result = run_process(
                 cmd,
                 capture_output=True,
                 text=True,
@@ -952,8 +1035,7 @@ class RealCommandDispatcher(CommandDispatcher):
                     "classification": "subprocess_error",
                     "dispatch_type": "real",
                     "exit_code": result.returncode,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "output_discarded": True,
                 }
             # Try to parse stdout as json
             try:

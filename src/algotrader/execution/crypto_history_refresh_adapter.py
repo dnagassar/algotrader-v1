@@ -21,6 +21,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from algotrader.errors import ValidationError
+from algotrader.execution.secure_credential_provider import (
+    CredentialFamily,
+    CredentialProvider,
+    CredentialReference,
+)
 from algotrader.research.crypto_strategy_evidence_battery import (
     DEFAULT_CRYPTO_EVIDENCE_SYMBOLS,
     build_crypto_strategy_real_data_evidence_packet,
@@ -241,12 +246,29 @@ def run_crypto_history_refresh(
     *,
     env: Mapping[str, str] | None = None,
     opener: UrlOpen | None = None,
+    credential_provider: CredentialProvider | None = None,
+    credential_reference: CredentialReference | None = None,
+    app_profile: str | None = None,
+    paper_endpoint: str | None = None,
+    market_data_endpoint: str | None = None,
 ) -> dict[str, object]:
     """Build a guarded refresh packet and, when allowed, local CSV artifacts."""
 
     checked_config = _config(config)
     source_env = os.environ if env is None else env
-    preflight = crypto_history_refresh_preflight(source_env)
+    secure_provider_mode = credential_provider is not None or credential_reference is not None
+    preflight = (
+        _secure_provider_preflight(
+            source_env,
+            credential_provider=credential_provider,
+            credential_reference=credential_reference,
+            app_profile=app_profile,
+            paper_endpoint=paper_endpoint,
+            market_data_endpoint=market_data_endpoint,
+        )
+        if secure_provider_mode
+        else crypto_history_refresh_preflight(source_env)
+    )
     as_of = _as_of_datetime(checked_config.as_of)
 
     if preflight["live_endpoint_indicator"]:
@@ -282,7 +304,58 @@ def run_crypto_history_refresh(
         as_of=as_of,
         env=source_env,
         opener=opener,
+        credential_provider=credential_provider,
+        credential_reference=credential_reference,
     )
+
+
+def _secure_provider_preflight(
+    env: Mapping[str, str],
+    *,
+    credential_provider: CredentialProvider | None,
+    credential_reference: CredentialReference | None,
+    app_profile: str | None,
+    paper_endpoint: str | None,
+    market_data_endpoint: str | None,
+) -> dict[str, bool]:
+    credential_names = tuple(dict.fromkeys(_KEY_ID_CANDIDATES + _SECRET_KEY_CANDIDATES))
+    aliases_absent = not any(_env_loaded(env, name) for name in credential_names)
+    profile_is_paper = type(app_profile) is str and app_profile.strip().lower() == "paper"
+    paper_is_exact = (
+        type(paper_endpoint) is str
+        and paper_endpoint.strip().lower().rstrip("/")
+        == "https://paper-api.alpaca.markets"
+    )
+    market_data_is_exact = (
+        type(market_data_endpoint) is str
+        and market_data_endpoint.strip().lower().rstrip("/")
+        == _DEFAULT_DATA_BASE_URL
+    )
+    reference_matches = (
+        isinstance(credential_reference, CredentialReference)
+        and credential_reference.family is CredentialFamily.ALPACA_MARKET_DATA
+    )
+    provider_configured = credential_provider is not None and reference_matches
+    return {
+        "APP_PROFILE_is_paper": profile_is_paper,
+        "APP_PROFILE_is_live": type(app_profile) is str
+        and app_profile.strip().lower() == "live",
+        "ALPACA_API_KEY_loaded": False,
+        "ALPACA_API_KEY_ID_loaded": False,
+        "ALPACA_API_SECRET_KEY_loaded": False,
+        "ALPACA_SECRET_KEY_loaded": False,
+        "APCA_API_KEY_ID_loaded": False,
+        "APCA_API_SECRET_KEY_loaded": False,
+        "APCA_API_BASE_URL_is_live": not paper_is_exact,
+        "APCA_API_BASE_URL_is_paper": paper_is_exact,
+        "paper_credentials_present": provider_configured,
+        "credential_aliases_absent": aliases_absent,
+        "secure_credential_provider_configured": provider_configured,
+        "market_data_endpoint_is_exact": market_data_is_exact,
+        "live_endpoint_indicator": not profile_is_paper
+        or not paper_is_exact
+        or not market_data_is_exact,
+    }
 
 
 def crypto_history_refresh_preflight(
@@ -675,6 +748,8 @@ def _run_market_data_fetch_mode(
     as_of: datetime,
     env: Mapping[str, str],
     opener: UrlOpen | None,
+    credential_provider: CredentialProvider | None,
+    credential_reference: CredentialReference | None,
 ) -> dict[str, object]:
     packet = _base_packet(config, preflight, as_of=as_of)
     readiness_errors = _market_data_readiness_errors(config, preflight)
@@ -698,18 +773,36 @@ def _run_market_data_fetch_mode(
         if config.start is not None
         else end - timedelta(hours=config.hours)
     )
-    credentials = read_market_data_credentials_from_env(env)
-    raw_payload = fetch_crypto_history_from_alpaca_market_data(
-        symbols=config.symbols,
-        start=start,
-        end=end,
-        credentials=credentials,
-        allow_network=config.allow_network,
-        market_data_fetch_authorized=config.market_data_fetch_authorized,
-        opener=opener,
-        timeframe=config.timeframe,
-        loc=config.loc,
-    )
+    def fetch_with_values(
+        api_key: str,
+        api_secret: str,
+        _expected_account: str | None,
+    ) -> dict[str, object]:
+        return fetch_crypto_history_from_alpaca_market_data(
+            symbols=config.symbols,
+            start=start,
+            end=end,
+            credentials=AlpacaMarketDataCredentials(api_key, api_secret),
+            allow_network=config.allow_network,
+            market_data_fetch_authorized=config.market_data_fetch_authorized,
+            opener=opener,
+            timeframe=config.timeframe,
+            loc=config.loc,
+        )
+
+    if credential_provider is not None and credential_reference is not None:
+        lease = credential_provider.open(
+            credential_reference,
+            expected_family=CredentialFamily.ALPACA_MARKET_DATA,
+        )
+        raw_payload = lease.use(fetch_with_values)
+    else:
+        credentials = read_market_data_credentials_from_env(env)
+        raw_payload = fetch_with_values(
+            credentials.api_key_id,
+            credentials.api_secret_key,
+            None,
+        )
     if config.raw_response_path is not None:
         _write_json(config.raw_response_path, raw_payload)
         packet["raw_response_sha256"] = _file_sha256(config.raw_response_path)
@@ -1016,6 +1109,18 @@ def _market_data_readiness_errors(
         errors.append("apca_live_base_url_rejected")
     if not preflight.get("APCA_API_BASE_URL_is_paper", False):
         errors.append("apca_paper_base_url_required")
+    if "credential_aliases_absent" in preflight and not preflight.get(
+        "credential_aliases_absent", False
+    ):
+        errors.append("credential_environment_alias_rejected")
+    if "secure_credential_provider_configured" in preflight and not preflight.get(
+        "secure_credential_provider_configured", False
+    ):
+        errors.append("secure_credential_provider_required")
+    if "market_data_endpoint_is_exact" in preflight and not preflight.get(
+        "market_data_endpoint_is_exact", False
+    ):
+        errors.append("market_data_endpoint_mismatch")
     if not config.market_data_fetch_authorized:
         errors.append("authorization_flag_required")
     if not config.allow_network:
