@@ -1273,7 +1273,7 @@ _WORK_ORDER_ARTIFACTS = (
         "gpt_next_action_handoff",
         _GPT_WORK_ORDER_FILENAME,
         "GPT",
-        "source_of_truth_next_action_routing",
+        "operator_facing_next_action_coordination",
     ),
     (
         "codex_work_order",
@@ -9554,6 +9554,22 @@ def _mission_control_work_orders(
         "Normal pytest remains offline, deterministic, credential-free, "
         "broker-free, and network-free."
     )
+    authority_contract = {
+        "repository_authority": "AGENTS.md",
+        "checkout_state_priority": (
+            "Current branch, HEAD, status, diffs, and test results outrank "
+            "narrative reports and generated handoff artifacts."
+        ),
+        "generated_state_is_authority": False,
+        "selected_agent_is_fixed_role": False,
+        "implementation_writer_policy": (
+            "Exactly one implementation writer may be active in a working tree."
+        ),
+        "operator_hard_gates": (
+            "The operator retains credential, broker, paper/live mode, capital, "
+            "and order-action authorization gates."
+        ),
+    }
     common = {
         "project_path": _normalize_path(Path.cwd()),
         "phase": _PHASE_NAME,
@@ -9630,6 +9646,7 @@ def _mission_control_work_orders(
         "required_tests_or_review_checks": required_checks,
         "expected_report_format": expected_report_format,
         "normal_pytest_safety_reminder": safety_reminder,
+        "authority_contract": authority_contract,
     }
     codex_order = {
         **common,
@@ -9645,7 +9662,7 @@ def _mission_control_work_orders(
         "expected_outputs": [
             "updated local deterministic tests",
             "updated Mission Control artifacts if needed",
-            "implementation report for GPT classification",
+            "implementation report for operator or coordinating-chat review",
         ],
     }
     antigravity_order = {
@@ -9683,11 +9700,13 @@ def _mission_control_work_orders(
     gpt_context = {
         **common,
         "audience": "GPT",
-        "work_order_type": "source_of_truth_report_classification",
+        "workflow_role": "optional_operator_facing_coordination_bridge",
+        "work_order_type": "operator_facing_report_classification",
         "allowed_files": [],
         "review_scope": (
             "Classify the implementation report against the Mission Control "
-            "phase goal, safety constraints, command results, and git hygiene."
+            "phase goal, safety constraints, command results, and git hygiene. "
+            "Treat the result as advice to the operator, not repository authority."
         ),
         "classification_options": [
             "accepted",
@@ -9722,6 +9741,7 @@ def _mission_control_work_orders(
 
 def _render_agent_prompt(audience: str, order: Mapping[str, Any]) -> str:
     allowed_files = list(order.get("allowed_files", []))
+    authority = order["authority_contract"]
     if allowed_files:
         scope_lines = ["Allowed files:", *[f"- `{item}`" for item in allowed_files]]
     else:
@@ -9736,6 +9756,16 @@ def _render_agent_prompt(audience: str, order: Mapping[str, Any]) -> str:
             f"Project path: `{order['project_path']}`",
             f"Phase: `{order['phase']}`",
             f"Goal: {order['goal']}",
+            "",
+            "Authority and collaboration contract:",
+            f"- Repository authority: `{authority['repository_authority']}`.",
+            f"- {authority['checkout_state_priority']}",
+            "- Generated `runs/`, `.agent_inbox/`, and `docs/reviews/` "
+            "artifacts are coordination evidence, never authority.",
+            "- The selected agent is a packet-specific routing hint, not a "
+            "durable model role.",
+            f"- {authority['implementation_writer_policy']}",
+            f"- {authority['operator_hard_gates']}",
             "",
             f"Active state status: `{order['active_state_status']}`",
             f"Selected next safe action: `{order['selected_next_safe_action']}`",
@@ -22083,8 +22113,8 @@ def _build_next_action_selector(
             selected_work_order="gpt_next_action_handoff",
             selected_owner="GPT",
             rationale=(
-                "A P0 executive action is present, so GPT/Daniel source-of-truth "
-                "review must happen before any implementation work."
+                "A P0 executive action is present, so operator review under "
+                "AGENTS.md must happen before any implementation work."
             ),
             reason_codes=["p0_safety_stop_wins", *_selector_action_reasons(p0_action)],
             blocks_offline_build=True,
@@ -31478,9 +31508,10 @@ def _render_gpt_next_action_handoff(payload: Mapping[str, Any]) -> str:
         title="GPT Next Action Handoff",
         audience="GPT",
         orientation=(
-            "Source-of-truth routing handoff. Classify the packet state and decide "
-            "whether the selected next action should proceed, be repaired, or be "
-            "sent back for more offline review input."
+            "Optional operator-facing coordination handoff. Compare the packet "
+            "with AGENTS.md, the current checkout, and verification evidence; then "
+            "recommend whether the selected next action should proceed, be "
+            "repaired, or be sent back for more offline review input."
         ),
         payload=payload,
         extra_sections=f"""## GPT classification focus
@@ -31498,7 +31529,7 @@ def _render_gpt_next_action_handoff(payload: Mapping[str, Any]) -> str:
 * **Work-order exports**: `{exports["status"]}` in `{exports["directory"]}`.
 
 ## What GPT should classify next
-Classify whether the current packet and selected next action are `accepted`, `accepted-with-minor-note`, `needs-repair`, or `rejected`. If repair is needed, return concrete offline repair items only.
+Classify whether the current packet and selected next action are `accepted`, `accepted-with-minor-note`, `needs-repair`, or `rejected`. Treat the classification as operator-facing advice, not repository authority. If repair is needed, return concrete offline repair items only.
 """,
     )
 
@@ -31544,7 +31575,7 @@ def _render_antigravity_review_order(payload: Mapping[str, Any]) -> str:
 * Confirm the selected action `{selector["selected_next_action_id"]}` follows the deterministic priority rules.
 * Inspect repo-health risks, dependency direction, default-pytest network safety, and generated artifact consistency.
 * Review whether any implementation would broaden broker, network, SDK, LLM, browser, notebook, paid-service, credential, paper-submit, or live-trading surfaces.
-* Return actionable findings only; GPT remains source of truth for final classification.
+* Return actionable findings only for operator or coordinating-chat review; `AGENTS.md` and verified checkout state remain authoritative.
 """,
     )
 
@@ -31556,15 +31587,15 @@ def _render_claude_critique_order(payload: Mapping[str, Any]) -> str:
         audience="Claude",
         orientation=(
             "Independent critique/audit order. Challenge assumptions, identify "
-            "safety regressions, and evaluate packet clarity without acting as "
-            "source of truth."
+            "safety regressions, and evaluate packet clarity without claiming "
+            "repository authority."
         ),
         payload=payload,
         extra_sections=f"""## Critique focus
 * Audit the selected action `{selector["selected_next_action_id"]}` and explain whether the selector should have chosen a higher-priority safety, repair, review-ingest, or offline build action.
 * Check safety wording, broker-state wording, quality-gate claims, decision-ledger handling, executive action queue order, and research-board claims.
 * Do not approve live trading, paper submits, broker reads, capital actions, credential use, or runtime LLM/agent calls.
-* Return critique findings for GPT/Daniel review; Claude is not the source of truth.
+* Return critique findings for operator or coordinating-chat review; model names identify packet audiences, not fixed authority roles.
 """,
     )
 

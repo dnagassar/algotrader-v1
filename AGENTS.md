@@ -38,6 +38,8 @@ SPY SMA 50/200 is an initial paper-lab strategy path, not an exhaustive statemen
 * `AGENTS.md`: authority and permissions.
 * `docs/deterministic_core.md`: technical architecture and trading safety.
 * `docs/agent_context/codex_operating_context.md`: compact subordinate implementation context.
+* `docs/agent_context/chatgpt_workflow_settings.md`: optional, subordinate
+  operator-facing ChatGPT coordination settings.
 * `docs/OPERATOR_RUNBOOK.md`: procedures.
 * `docs/project_checkpoint.md`: non-authoritative historical ledger.
 

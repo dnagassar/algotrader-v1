@@ -4435,6 +4435,20 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
             encoding="utf-8"
         ),
     ]
+    gpt_handoff = work_order_texts[0]
+    antigravity_handoff = work_order_texts[2]
+    claude_handoff = work_order_texts[3]
+    assert "Optional operator-facing coordination handoff." in gpt_handoff
+    assert "Treat the classification as operator-facing advice" in gpt_handoff
+    assert "Source-of-truth routing handoff." not in gpt_handoff
+    assert "GPT remains source of truth" not in antigravity_handoff
+    assert "`AGENTS.md` and verified checkout state remain authoritative" in (
+        antigravity_handoff
+    )
+    assert "model names identify packet audiences, not fixed authority roles" in (
+        claude_handoff
+    )
+    assert "without claiming repository authority" in claude_handoff
     for work_order in work_order_texts:
         assert (
             "Assistant v1.40 - Offline Data Refresh Intake Dry-Run UX"
@@ -8280,6 +8294,20 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
             in prompt
         )
         assert "Goal:" in prompt
+        assert "Authority and collaboration contract:" in prompt
+        assert "Repository authority: `AGENTS.md`." in prompt
+        assert (
+            "Current branch, HEAD, status, diffs, and test results outrank "
+            "narrative reports and generated handoff artifacts."
+        ) in prompt
+        assert (
+            "The selected agent is a packet-specific routing hint, not a "
+            "durable model role."
+        ) in prompt
+        assert (
+            "Exactly one implementation writer may be active in a working tree."
+        ) in prompt
+        assert "The operator retains credential, broker, paper/live mode" in prompt
         assert "Start-here artifacts:" in prompt
         assert "Start with latest-run summary:" in prompt
         assert "latest_run.json" in prompt
@@ -8320,6 +8348,32 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
     assert "src/algotrader/execution/etf_sma_daily_paper_lab.py" in codex_prompt
     for review_prompt_path in prompt_paths[1:]:
         assert "Review scope:" in review_prompt_path.read_text(encoding="utf-8")
+
+    gpt_context = _read_json_artifact(
+        output_root / "work_orders" / "gpt_next_decision_context.json"
+    )
+    assert gpt_context["workflow_role"] == (
+        "optional_operator_facing_coordination_bridge"
+    )
+    assert gpt_context["work_order_type"] == (
+        "operator_facing_report_classification"
+    )
+    assert gpt_context["authority_contract"] == {
+        "repository_authority": "AGENTS.md",
+        "checkout_state_priority": (
+            "Current branch, HEAD, status, diffs, and test results outrank "
+            "narrative reports and generated handoff artifacts."
+        ),
+        "generated_state_is_authority": False,
+        "selected_agent_is_fixed_role": False,
+        "implementation_writer_policy": (
+            "Exactly one implementation writer may be active in a working tree."
+        ),
+        "operator_hard_gates": (
+            "The operator retains credential, broker, paper/live mode, capital, "
+            "and order-action authorization gates."
+        ),
+    }
 
 
 def test_mission_control_contract_validator_fails_missing_required_artifacts(

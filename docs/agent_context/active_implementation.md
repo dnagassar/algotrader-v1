@@ -2,40 +2,79 @@
 
 ## Status
 
-V5.33.2 repairs and enhancements are complete and fully verified. Clean-source provenance verification and account-identity canonicalization are implemented. All offline tests, dependency direction checks, broker mutation invariants, and full offline verification suite passed clean.
+The optional ChatGPT coordination-bridge settings update is complete and fully
+verified. Durable repository authority remains in `AGENTS.md`; generated GPT
+handoffs now present ChatGPT as operator-facing coordination rather than a
+fixed source-of-truth role.
 
 ## Repository Reference State
 
-- Branch: `antigravity/v5.33-clean-source-account-binding`
-- Baseline commit: `c4109590c54ee2518691fe8b758d69bf09d44451`
-- Exactly one implementation writer was active in this worktree (`antigravity`).
+- Branch: `main`
+- Baseline HEAD and `origin/main` at preflight:
+  `9d40560052b2fb155586d5e978e25fd21f241cae`
+- Exactly one implementation writer was active in this worktree (`Codex`).
+- No reset, clean, stash, rebase, restore, branch switch, broker command, or
+  generated-artifact staging occurred.
 
-## Implemented & Repaired Contract
+## Implemented Contract
 
-1. **Atomic Persistence Repair**: `_write_receipt_atomically` in `src/algotrader/cli.py` has explicit imports for `json`, `os`, `tempfile`, creates destination parent directories safely, flushes and calls `os.fsync`, atomically replaces via `os.replace`, syncs parent directory when supported, cleans up temporary files on failure, and raises `RuntimeError("receipt_persistence_failed")` without exposing raw exception text or absolute paths.
-2. **Clean-Source Production Provenance**: Prior to SDK client construction and any network call, `get_source_provenance` runs bounded array git commands (`git rev-parse HEAD`, `git rev-parse HEAD^{tree}`, `git rev-parse --abbrev-ref HEAD`, `git status --porcelain=v1 --untracked-files=all`) and computes source bundle digest/manifest over the complete production evidence surface. Any porcelain output (tracked modifications or non-ignored untracked files anywhere in the repo) blocks execution with `source_worktree_dirty` before client creation with zero broker calls.
-3. **Provenance Contract**: Invocations receipts include `source_commit_sha`, `source_tree_sha`, `source_worktree_clean=True`, branch or `detached`, source-bundle digest, source-bundle manifest, `command_source_identity`, and `normalized_paper_endpoint`. `_validate_offline_receipt` verifies receipt commit, tree, manifest, digest, and clean-source declaration against local checked-out source tree.
-4. **Account-Identity Canonicalization**: `_canonical_account_identity` handles strings and SDK `uuid.UUID` objects, trims whitespace, standardizes valid UUIDs to canonical lowercase 36-char string representations, and preserves non-UUID account number strings without lossy transformations. Matching occurs independently in memory before positions/orders/asset reads.
-5. **No Identity-Derived Plain Digest Persisted**: Raw canonical observed or expected identities are never written to receipts, logs, stdout, or exceptions. Plain SHA-256 account fingerprints were removed/deprecated in favor of `expected_account_present` and `expected_account_match` booleans.
-6. **Account Safety Ordering**: Account identity canonicalization and matching occurs first. Account safety checks (`ACTIVE` status, `trading_blocked==False`, `account_blocked==False`, suspended/transact_blocked false) follow. Short-circuiting prevents any later broker stage from running on identity mismatch or safety failure.
+1. **Copy-ready ChatGPT settings**:
+   `docs/agent_context/chatgpt_workflow_settings.md` defines the optional
+   operator-facing bridge, evidence hierarchy, dynamic agent roles,
+   single-writer rule, handoff fields, report-classification behavior, and hard
+   safety gates.
+2. **Authority alignment**: `AGENTS.md` remains the sole repository authority.
+   Current branch, HEAD, status, diffs, and verification evidence outrank
+   narrative reports and generated handoffs.
+3. **Generated prompt contract**: Mission Control work-order prompts and GPT
+   decision JSON now include an explicit authority/collaboration contract.
+   GPT classification is operator-facing advice, not repository authority.
+4. **Compatibility without fixed roles**: Existing `.agent_inbox/gpt` and GPT
+   work-order names remain compatibility routing labels. Human-facing
+   source-of-truth claims were removed, and selected model names are described
+   as packet-specific routing hints.
+5. **Compact context refresh**: The compact agent context now covers ChatGPT
+   bridge sessions and reflects the merged V5.33.2 operational baseline rather
+   than the stale V5.28 implementation slice.
+6. **Regression coverage**: Tests pin the new prompt wording, JSON role and
+   work-order type, authority fields, single-writer policy, operator gates, and
+   absence of the stale fixed-authority wording.
 
 ## Changed Files
 
-- `src/algotrader/cli.py`
-- `src/algotrader/execution/crypto_read_only_paper_observation_adapter.py`
-- `src/algotrader/execution/crypto_supervised_readiness_trial.py`
-- `tests/unit/test_crypto_read_only_paper_observation.py`
-- `tests/unit/test_v5_33_2_atomic_persistence.py`
-- `tests/unit/test_v5_33_2_account_identity.py`
-- `tests/unit/test_v5_33_2_source_provenance.py`
+- `AGENTS.md`
+- `task.md`
+- `docs/agent_context/chatgpt_workflow_settings.md`
+- `docs/agent_context/codex_operating_context.md`
 - `docs/agent_context/active_implementation.md` (this file)
+- `src/algotrader/execution/etf_sma_daily_paper_lab.py`
+- `tests/unit/test_etf_sma_daily_paper_lab.py`
 
 ## Verification Evidence
 
-- Full focused V5.33.2 suite (109 tests): `PASS` (109 passed)
-- Offline verification script `.\scripts\verify_offline.ps1 -Full`: `PASS` (9,604 passed, 4 skipped, 0 failures, 0 errors across all 9,608 testcases in the repo)
-- `git diff --check`: `PASS` (zero trailing whitespace)
+- Credential/profile preflight: `APP_PROFILE_is_paper=False`; all checked
+  `ALPACA_*` and `APCA_*` credential-presence booleans `False`; network and
+  paper-integration escape hatches `False`. No values were printed.
+- Focused prompt-contract tests: `PASS` (2 passed, 141 deselected).
+- Full paper-lab unit file: `PASS` (143 passed in 696.29 seconds).
+- Dependency-direction guard: `PASS` (34 passed).
+- Default offline verifier: `PASS` (99 safety-guard tests passed).
+- Full offline verifier: `PASS` (9,608 tests collected exactly once; 9,604
+  passed, 4 skipped, 0 failures, 0 errors).
+- Broker/network access: none.
+- Broker mutation, paper submit, mode change, capital action, or live action:
+  none.
+- `git diff --check`: `PASS` before checkpoint finalization; rerun before
+  commit.
+- `git diff --name-only HEAD -- src`:
+  `src/algotrader/execution/etf_sma_daily_paper_lab.py`.
+- `git ls-files --others --exclude-standard src tests`: no output.
 
 ## Exact Next Action
 
-Commit and push `antigravity/v5.33-clean-source-account-binding` branch. Present final report and await operator instructions. No production observation, credential loading, `.env` modification, paper mutation, paper submit, or V5.34 work shall be performed.
+Review the local settings commit and decide whether to push it or open a pull
+request. For a plain ChatGPT session, copy the settings from
+`docs/agent_context/chatgpt_workflow_settings.md` into the repo-specific chat
+context. Do not perform broker reads, broker mutation, credential loading,
+paper submit, live trading, capital allocation, or mode changes as part of that
+review.

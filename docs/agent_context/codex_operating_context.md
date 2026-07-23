@@ -66,12 +66,14 @@ Going forward:
 - Prefer fewer, higher-quality research/design phases over many tiny doc-only
   phases.
 
-## 6. Codex Prompt Compression Policy
+## 6. Agent Prompt Compression Policy
 
-Future Codex prompts should reference this file instead of repeating the full
-project history.
+Future implementation-agent prompts should reference this file instead of
+repeating the full project history. When ChatGPT is used as an operator-facing
+coordination bridge, also use
+`docs/agent_context/chatgpt_workflow_settings.md`.
 
-A normal future Codex prompt should include only:
+A normal implementation prompt should include only:
 
 - phase name
 - goal
@@ -83,13 +85,18 @@ A normal future Codex prompt should include only:
 
 ## 7. Standard Files To Read First
 
-Future Codex sessions should usually start with:
+Future implementation-agent sessions should usually start with:
 
 - `AGENTS.md`
 - `docs/deterministic_core.md`
 - `docs/agent_context/codex_operating_context.md`
 - `docs/agent_context/active_implementation.md`
 - relevant phase or design docs only
+
+ChatGPT coordination sessions should also read
+`docs/agent_context/chatgpt_workflow_settings.md`. Agent roles are dynamic;
+model names in generated work orders are packet audiences, not fixed authority
+roles.
 
 `docs/project_checkpoint.md` is a non-authoritative historical ledger. Avoid
 reading every historical design document unless the current phase depends on
@@ -125,47 +132,29 @@ For documentation-only phases, `git diff --name-only HEAD -- src` should return
 no production source files. If full pytest is deferred, the final report must
 state that clearly and preserve the latest known full-suite checkpoint.
 
-## 10. Current Crypto Tournament V2 Operational Baseline
+## 10. Current Operational Baseline
 
-V5.28 is the current delegated implementation slice. It builds on V5.27's
-source-bound capability production and pinned replay with exact target-scoped
-read-only visibility for BTCUSD, ETHUSD, and SOLUSD. Every output remains
-no-submit, no-paper-mutation, no-capital, and no-live-authority.
+As of 2026-07-23, `main` includes V5.33.2 clean-source provenance and account
+identity canonicalization for the bounded read-only paper observation path.
+The path verifies a clean production source before SDK client construction or
+network access, binds receipts to source identity, canonicalizes account
+identity in memory, persists no raw account identifier, and preserves
+stage-specific failure evidence.
 
-A nonempty target must be an exact frozen symbol and is validated before client
-construction or broker reads. It becomes the supervisor's sole preference, with
-no fallback when absent. Runtime receipts expose the target and scope; V5.27
-normalization and the sealed review require an exact target/selected-symbol/
-winner match for operational venue eligibility.
+This capability remains read-only, target-scoped, paper-only, and behind exact
+operator authorization. It adds no submit, cancel, replace, close, liquidate,
+capital, paper-mode-change, or live authority. Default tests remain offline and
+broker-free.
 
-Lifecycle admission still requires V5.8 zero fill and empty residual state, the
-exact canonical V5.9 packet/manifest and operator phrase, positive cross-bound
-V5.10 entry and exit fills, and a flat observation no earlier than the exit
-order's broker-reported `filled_at`.
+Crypto tournament V2 still follows its frozen preregistration, untouched
+OOS/forward-shadow calendar, and terminal decision gates. Consult the latest
+validated sealed artifacts for accrued counts and classification; do not copy a
+dated count into prompts or infer a winner before the fixed gate.
 
-The verified real offline classification remains
-`candidate_deferred_pending_terminal_winner`: V5.25 has not sealed an accepted
-winner, so no subject-bound capability bundle may be emitted. The next evidence
-dependency is winner-specific lifecycle and independent-flat evidence,
-especially if ETHUSD or SOLUSD wins because the legacy chain is BTCUSD-only.
-New LLM APIs, retrieval services, QuantConnect, or additional strategy
-tournaments are not the principal constraint.
+Before changing this path, read the relevant V5.23 through V5.33 design,
+architecture, and active-handoff material selected by the current task.
+Preserve source provenance, account binding, frozen fingerprints, the
+untouched calendar, and every operator gate.
 
-V5.29 adds the missing canonical independent-flat broker collector. It binds an
-exact supported target to either the historical BTC lifecycle or the new
-target-lifecycle schema, requires a filled exit and post-exit observation,
-reads the account plus all positions and open orders, persists no raw account
-identifier, and has no mutation seam. A failed newer read supersedes any prior
-mutable-latest flat receipt.
-
-The current real V2 state was refreshed through 2026-07-17T23:00:00Z: 48 of
-672 untouched-OOS hours per symbol are sealed, candidate metrics remain empty,
-and the fixed terminal endpoint remains 2026-08-13T00:00:00Z. Do not score,
-rank, retune, or infer a winner before that gate.
-
-Read `docs/design/v5_27_crypto_tournament_v2_capability_production_and_replay.md`,
-`docs/design/v5_28_crypto_target_scoped_read_only_venue_visibility.md`, and
-`docs/design/v5_29_crypto_target_scoped_independent_flat_collection.md` before
-changing this path. Preserve the exact V5.26 preregistration and V5.27
-safety-policy fingerprints, the untouched OOS/shadow calendar, immutable
-source provenance, account binding, and all operator gates.
+The current branch, HEAD, status, diffs, and verification results outrank this
+compact narrative if they ever disagree.
