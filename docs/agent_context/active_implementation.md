@@ -6,7 +6,7 @@
 - Amendments:
   - `V5.36.4a — native buffer-view lifetime repair`.
   - `V5.36.4b — direct bytearray address repair`.
-- Classification: `implemented_pending_commit_bound_full_verification`.
+- Classification: `implemented`.
 - Operator action required: `false`.
 - Final disposition belongs to an independent reviewer. This checkpoint is not
   credential, canary, paper, activation, or operational-readiness evidence.
@@ -26,10 +26,14 @@
   `df38bfe78929ce0c6ed6df9ba605bd2aef84e897`.
 - Frozen V5.36.4b direct-address contract commit:
   `7d44e772bcdaa13f3c754852466cddbb4a69b1a6`.
-- All current dirty files belong to Codex `/root` and this implementation
-  slice. No unrelated staged, unstaged, or untracked user work was inherited.
-- Next implementation action: validate the complete diff, commit the coherent
-  implementation slice, then run the full offline verifier on a clean commit.
+- Implementation commit:
+  `4b0a5bc010b76afd9af08b42f149150ad879752a`.
+- Implementation tree: `2f7c10b4aa336661539ee9b81f9299286c63a5ee`.
+- The implementation commit was clean for commit-bound full verification.
+- This handoff is the sole intended dirty file. No unrelated staged,
+  unstaged, or untracked user work was inherited.
+- Next implementation action: commit this handoff-only update, run final Git
+  hygiene on the resulting clean branch, and yield for independent review.
 
 ## Credential And External-Effect State
 
@@ -152,7 +156,33 @@ python -m pytest tests/unit/test_dependency_direction.py -q
 
 ### Full Offline Verifier
 
-- Pending on the exact clean implementation commit.
+Command:
+
+```powershell
+.\scripts\verify_offline.ps1 -Full
+```
+
+- Verified commit:
+  `4b0a5bc010b76afd9af08b42f149150ad879752a`
+- Verified tree: `2f7c10b4aa336661539ee9b81f9299286c63a5ee`
+- Exit code: `0`
+- Targeted safety guards: `99 passed`
+- Guard elapsed: `97.61s`
+- Canonical collection: `9,809` node IDs across `488` files
+- Shards: `4`; assigned counts `2453`, `2452`, `2452`, `2452`
+- Collection equivalence: `PASS`
+- Execution equivalence: `PASS`
+- Aggregate: `9,809` tests; `9,804` passed; `5` skipped; `0` failures;
+  `0` errors
+- Shard wall times: `1231.75s`, `1177.20s`, `1055.93s`, `1138.16s`
+- Bounded full suite: `PASS`
+- Final repository hygiene: `PASS`
+- Overall offline verification: `PASS`
+
+An earlier invocation exceeded its 20-minute controller window and its result
+was treated as unavailable. No duplicate was started while that process
+remained active. The authoritative rerun above completed with a captured exit
+code and full summary.
 
 ## Residual Risks
 
@@ -170,16 +200,12 @@ python -m pytest tests/unit/test_dependency_direction.py -q
 
 ## Exact Next Review And Operator Route
 
-1. Commit this coherent implementation slice.
-2. Run `scripts\verify_offline.ps1 -Full` and required Git hygiene on the exact
-   clean commit.
-3. Update this checkpoint with commit-bound results and leave a clean final
-   handoff commit.
-4. Push only if separately requested or needed for independent review.
-5. An independent reviewer verifies contract chronology, direct-address
+1. Commit this handoff-only update and run final Git hygiene.
+2. Push only if separately requested or needed for independent review.
+3. An independent reviewer verifies contract chronology, direct-address
    lifetime, exact one-call behavior, record-layout preservation, stage
    mappings, redaction, zeroization, provenance, and full offline evidence.
-6. Only after independent review may the operator authorize fresh, separate,
+4. Only after independent review may the operator authorize fresh, separate,
    non-reusable, one-hour grants and one new attempt per family.
-7. No Task Scheduler, network, broker, paper, canary, or trading action follows
+5. No Task Scheduler, network, broker, paper, canary, or trading action follows
    automatically.
