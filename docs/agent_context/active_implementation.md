@@ -30,10 +30,13 @@
   `4b0a5bc010b76afd9af08b42f149150ad879752a`.
 - Implementation tree: `2f7c10b4aa336661539ee9b81f9299286c63a5ee`.
 - The implementation commit was clean for commit-bound full verification.
-- This handoff is the sole intended dirty file. No unrelated staged,
-  unstaged, or untracked user work was inherited.
-- Next implementation action: commit this handoff-only update, run final Git
-  hygiene on the resulting clean branch, and yield for independent review.
+- The first handoff commit
+  `dba831a3b1b10034925480e9cc0f2127b9d8ceaf` was clean for exact-final full
+  verification.
+- This final evidence update is the sole intended dirty file. No unrelated
+  staged, unstaged, or untracked user work was inherited.
+- Next implementation action: none. Yield the clean final evidence commit for
+  independent review.
 
 ## Credential And External-Effect State
 
@@ -184,6 +187,28 @@ was treated as unavailable. No duplicate was started while that process
 remained active. The authoritative rerun above completed with a captured exit
 code and full summary.
 
+### Exact-Final Handoff Verification
+
+The full verifier was repeated after the first handoff commit so repository
+policy was exercised on the exact clean handoff state:
+
+- Verified commit:
+  `dba831a3b1b10034925480e9cc0f2127b9d8ceaf`
+- Verified tree: `326d7d3de71f762e25be74995ec90a6727eb516e`
+- Exit code: `0`
+- Targeted safety guards: `99 passed`
+- Guard elapsed: `120.07s`
+- Canonical collection: `9,809` node IDs across `488` files
+- Collection equivalence: `PASS`
+- Shard results: all `4` exited `0`; no timeout
+- Shard wall times: `1171.01s`, `1145.35s`, `1059.67s`, `1104.59s`
+- Execution equivalence: `PASS`
+- Aggregate: `9,809` tests; `9,804` passed; `5` skipped; `0` failures;
+  `0` errors
+- Bounded full suite: `PASS`
+- Final repository hygiene: `PASS`
+- Overall offline verification: `PASS`
+
 ## Residual Risks
 
 - Real Windows Credential Manager behavior remains untested and unauthorized.
@@ -200,9 +225,9 @@ code and full summary.
 
 ## Exact Next Review And Operator Route
 
-1. Commit this handoff-only update and run final Git hygiene.
-2. Push only if separately requested or needed for independent review.
-3. An independent reviewer verifies contract chronology, direct-address
+1. Yield the clean final evidence commit for independent review.
+2. Push only if separately requested or needed for that review.
+3. The independent reviewer verifies contract chronology, direct-address
    lifetime, exact one-call behavior, record-layout preservation, stage
    mappings, redaction, zeroization, provenance, and full offline evidence.
 4. Only after independent review may the operator authorize fresh, separate,
