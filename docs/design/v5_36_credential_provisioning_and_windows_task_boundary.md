@@ -74,6 +74,26 @@ contain the expected account identity. Cross-family references, missing
 account binding, extra account binding, malformed payloads, denial, expiry, or
 source/principal mismatch fail before any other boundary.
 
+### V5.36.1 diagnostic amendment
+
+The two initial interactive attempts produced only
+`credential_writer_failed`. That result does not establish whether native API
+setup failed or `CredWriteW` returned false. V5.36.1 therefore places the
+unchanged native write call behind an injected boundary and maps only supported
+Windows error codes to fixed, sanitized categories: denied, invalid parameter,
+invalid flags, unavailable logon session, bad username, and missing preserved
+target. Native setup exceptions, unknown codes, and malformed boundary results
+remain `credential_writer_failed`.
+
+The diagnostic exposes neither raw error numbers nor operating-system text and
+does not change the target, credential fields, persistence, flags, record
+bytes, input path, or zeroization behavior. Implementation and review perform
+no credential operation. The observed generic failures authorize no retry and
+identify no adapter correction. After independent review, diagnosis requires
+fresh one-hour provisioning grants and a new explicit operator action. Any
+behavioral correction identified by that attempt requires a separately frozen
+contract and review.
+
 ## Canary Authorization Gate
 
 The exact schema is `v5_36_scheduled_canary_authorization_v1`. It rejects

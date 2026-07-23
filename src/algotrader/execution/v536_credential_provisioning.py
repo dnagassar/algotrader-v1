@@ -1,7 +1,8 @@
 """Operator-gated native credential provisioning for V5.36.
 
-The production writer calls ``CredWriteW`` directly. Default tests inject a
-credential-free writer and never access Windows Credential Manager.
+The production writer calls ``CredWriteW`` through an injectable native
+boundary. Default tests inject credential-free boundaries and never access
+Windows Credential Manager.
 """
 
 from __future__ import annotations
@@ -67,6 +68,15 @@ _AUTHORIZATION_FIELDS = {
     "operator_approved",
     "canonical_authorization_sha256",
 }
+_CREDENTIAL_WRITER_FAILURE_CLASSIFICATIONS = {
+    5: "credential_writer_denied",  # ERROR_ACCESS_DENIED
+    87: "credential_writer_invalid_parameter",  # ERROR_INVALID_PARAMETER
+    1004: "credential_writer_invalid_flags",  # ERROR_INVALID_FLAGS
+    1168: "credential_writer_preserved_target_missing",  # ERROR_NOT_FOUND
+    # ERROR_NO_SUCH_LOGON_SESSION
+    1312: "credential_writer_logon_session_unavailable",
+    2202: "credential_writer_bad_username",  # ERROR_BAD_USERNAME
+}
 _T = TypeVar("_T")
 
 
@@ -93,6 +103,17 @@ class V536ProvisioningAuthorization:
 
 class CredentialRecordWriter(Protocol):
     def write(self, reference: CredentialReference, record: bytearray) -> None:
+        ...
+
+
+class NativeCredentialWriteBoundary(Protocol):
+    """Minimal native write boundary; ``None`` means success."""
+
+    def write(
+        self,
+        reference: CredentialReference,
+        record: bytearray,
+    ) -> int | None:
         ...
 
 
@@ -178,17 +199,14 @@ class OpaqueProvisioningMaterial:
     __str__ = __repr__
 
 
-class WindowsCredentialManagerWriter:
-    """Native generic-credential writer with no helper process or temp file."""
+class WindowsCredWriteNativeBoundary:
+    """Exact ``CredWriteW`` adapter with no logging or persistence capability."""
 
-    def write(self, reference: CredentialReference, record: bytearray) -> None:
-        if os.name != "nt":
-            raise V536ProvisioningError("credential_writer_unavailable")
-        if not isinstance(reference, CredentialReference):
-            raise V536ProvisioningError("credential_reference_malformed")
-        if not isinstance(record, bytearray) or not record:
-            raise V536ProvisioningError("credential_record_malformed")
-
+    def write(
+        self,
+        reference: CredentialReference,
+        record: bytearray,
+    ) -> int | None:
         class CREDENTIAL_ATTRIBUTEW(ctypes.Structure):
             _fields_ = [
                 ("Keyword", wintypes.LPWSTR),
@@ -234,10 +252,44 @@ class WindowsCredentialManagerWriter:
         cred_write.argtypes = [ctypes.POINTER(CREDENTIALW), wintypes.DWORD]
         cred_write.restype = wintypes.BOOL
         if not cred_write(ctypes.byref(credential), 0):
-            error_code = ctypes.get_last_error()
-            if error_code == 5:
-                raise V536ProvisioningError("credential_writer_denied")
-            raise V536ProvisioningError("credential_writer_failed")
+            return int(ctypes.get_last_error())
+        return None
+
+
+class WindowsCredentialManagerWriter:
+    """Sanitizing generic-credential writer with injectable native I/O."""
+
+    __slots__ = ("_native_boundary",)
+
+    def __init__(
+        self,
+        *,
+        native_boundary: NativeCredentialWriteBoundary | None = None,
+    ) -> None:
+        self._native_boundary = native_boundary
+
+    def write(self, reference: CredentialReference, record: bytearray) -> None:
+        if self._native_boundary is None and os.name != "nt":
+            raise V536ProvisioningError("credential_writer_unavailable")
+        if not isinstance(reference, CredentialReference):
+            raise V536ProvisioningError("credential_reference_malformed")
+        if not isinstance(record, bytearray) or not record:
+            raise V536ProvisioningError("credential_record_malformed")
+        native_boundary = self._native_boundary or WindowsCredWriteNativeBoundary()
+        try:
+            error_code = native_boundary.write(reference, record)
+        except Exception:
+            raise V536ProvisioningError("credential_writer_failed") from None
+        if error_code is None:
+            return
+        classification = (
+            _CREDENTIAL_WRITER_FAILURE_CLASSIFICATIONS.get(error_code)
+            if type(error_code) is int
+            else None
+        )
+        raise V536ProvisioningError(
+            classification or "credential_writer_failed"
+        ) from None
 
 
 def load_v536_provisioning_authorization(
@@ -575,10 +627,12 @@ if __name__ == "__main__":  # pragma: no cover
 
 __all__ = [
     "CredentialRecordWriter",
+    "NativeCredentialWriteBoundary",
     "OpaqueProvisioningMaterial",
     "V536_PROVISIONING_AUTHORIZATION_SCHEMA",
     "V536ProvisioningAuthorization",
     "V536ProvisioningError",
+    "WindowsCredWriteNativeBoundary",
     "WindowsCredentialManagerWriter",
     "canonical_provisioning_authorization_sha256",
     "current_windows_identity",

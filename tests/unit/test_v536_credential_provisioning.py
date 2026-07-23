@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import inspect
 import json
+import os
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -12,6 +14,7 @@ from algotrader.execution.v536_credential_provisioning import (
     OpaqueProvisioningMaterial,
     V536_PROVISIONING_AUTHORIZATION_SCHEMA,
     V536ProvisioningError,
+    WindowsCredWriteNativeBoundary,
     WindowsCredentialManagerWriter,
     canonical_provisioning_authorization_sha256,
     main,
@@ -36,6 +39,37 @@ class FakeWriter:
         if self.failure is not None:
             raise self.failure
         self.calls.append((str(reference), bytes(record)))
+
+
+class FakeNativeCredentialWriteBoundary:
+    def __init__(
+        self,
+        *,
+        error_code: int | None = None,
+        failure: Exception | None = None,
+    ) -> None:
+        self.error_code = error_code
+        self.failure = failure
+        self.calls = 0
+        self.references: list[str] = []
+        self.saw_mutable_nonempty_record = False
+        self.record_family: object = None
+        self.record_field_names: tuple[str, ...] = ()
+        self.record_schema: object = None
+
+    def write(self, reference: object, record: bytearray) -> int | None:
+        self.calls += 1
+        self.references.append(str(reference))
+        self.saw_mutable_nonempty_record = isinstance(record, bytearray) and bool(
+            record
+        )
+        payload = json.loads(record)
+        self.record_family = payload.get("family")
+        self.record_field_names = tuple(sorted(payload))
+        self.record_schema = payload.get("schema_version")
+        if self.failure is not None:
+            raise self.failure
+        return self.error_code
 
 
 def _payload(
@@ -212,6 +246,142 @@ def test_provisioning_calls_only_writer_and_returns_secret_free_receipt(
     assert receipt["broker_access_occurred"] is False
 
 
+def test_production_writer_accepts_injected_native_success_and_preserves_receipt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    native = FakeNativeCredentialWriteBoundary()
+    material = _material()
+    receipt = provision_v536_credential(
+        authorization=parse_v536_provisioning_authorization(_payload()),
+        material_source=lambda: material,
+        writer=WindowsCredentialManagerWriter(native_boundary=native),
+        current_identity="DOMAIN\\canary-user",
+        provenance=_provenance(),
+        clock=lambda: NOW,
+    )
+    assert native.calls == 1
+    assert native.saw_mutable_nonempty_record
+    assert native.references == [
+        "wincred:algotrader/v5.35/alpaca-paper-observation/production"
+    ]
+    assert native.record_schema == "v5_35_credential_record_v1"
+    assert native.record_family == "alpaca-paper-observation"
+    assert native.record_field_names == (
+        "api_key_id",
+        "api_secret_key",
+        "expected_account_id",
+        "family",
+        "schema_version",
+    )
+    assert material.closed
+    assert receipt["classification"] == "credential_record_provisioned"
+    assert receipt["secret_values_exposed"] is False
+    output = capsys.readouterr().out + capsys.readouterr().err
+    serialized = json.dumps(receipt, sort_keys=True)
+    for sentinel in (KEY_SENTINEL, SECRET_SENTINEL, ACCOUNT_SENTINEL):
+        assert sentinel not in output
+        assert sentinel not in serialized
+
+
+@pytest.mark.parametrize(
+    ("error_code", "classification"),
+    (
+        (5, "credential_writer_denied"),
+        (87, "credential_writer_invalid_parameter"),
+        (1004, "credential_writer_invalid_flags"),
+        (1168, "credential_writer_preserved_target_missing"),
+        (1312, "credential_writer_logon_session_unavailable"),
+        (2202, "credential_writer_bad_username"),
+    ),
+)
+def test_native_credwrite_failure_is_classified_without_disclosure(
+    error_code: int,
+    classification: str,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    native = FakeNativeCredentialWriteBoundary(error_code=error_code)
+    material = _material()
+    with pytest.raises(V536ProvisioningError) as captured:
+        provision_v536_credential(
+            authorization=parse_v536_provisioning_authorization(_payload()),
+            material_source=lambda: material,
+            writer=WindowsCredentialManagerWriter(native_boundary=native),
+            current_identity="DOMAIN\\canary-user",
+            provenance=_provenance(),
+            clock=lambda: NOW,
+        )
+    assert str(captured.value) == classification
+    assert captured.value.classification == classification
+    assert str(error_code) not in str(captured.value)
+    assert native.calls == 1
+    assert material.closed
+    output = capsys.readouterr().out + capsys.readouterr().err
+    observables = (output, caplog.text, repr(captured.value))
+    for sentinel in (KEY_SENTINEL, SECRET_SENTINEL, ACCOUNT_SENTINEL):
+        assert all(sentinel not in observable for observable in observables)
+        assert sentinel not in sys.argv
+        assert all(sentinel not in value for value in os.environ.values())
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("error_code", (0, 999_999, True, "87"))
+def test_unknown_or_malformed_native_failure_is_generic(
+    error_code: object,
+) -> None:
+    native = FakeNativeCredentialWriteBoundary()
+    native.error_code = error_code  # type: ignore[assignment]
+    with pytest.raises(V536ProvisioningError) as captured:
+        _material().use(
+            lambda record: WindowsCredentialManagerWriter(
+                native_boundary=native
+            ).write(
+                parse_v536_provisioning_authorization(_payload()).reference,
+                record,
+            )
+        )
+    assert str(captured.value) == "credential_writer_failed"
+    assert str(error_code) not in str(captured.value)
+    assert native.calls == 1
+
+
+def test_native_boundary_exception_is_generic_and_secret_free(
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    native = FakeNativeCredentialWriteBoundary(
+        failure=OSError(f"[WinError 5] {SECRET_SENTINEL}")
+    )
+    material = _material()
+    with pytest.raises(V536ProvisioningError) as captured:
+        material.use(
+            lambda record: WindowsCredentialManagerWriter(
+                native_boundary=native
+            ).write(
+                parse_v536_provisioning_authorization(_payload()).reference,
+                record,
+            )
+        )
+    assert str(captured.value) == "credential_writer_failed"
+    output = capsys.readouterr().out + capsys.readouterr().err
+    assert SECRET_SENTINEL not in output
+    assert SECRET_SENTINEL not in caplog.text
+    assert SECRET_SENTINEL not in repr(captured.value)
+    assert material.closed
+
+
+def test_writer_validation_precedes_injected_native_boundary() -> None:
+    native = FakeNativeCredentialWriteBoundary()
+    writer = WindowsCredentialManagerWriter(native_boundary=native)
+    with pytest.raises(V536ProvisioningError, match="credential_reference_malformed"):
+        writer.write(object(), bytearray(b"opaque"))  # type: ignore[arg-type]
+    authorization = parse_v536_provisioning_authorization(_payload())
+    with pytest.raises(V536ProvisioningError, match="credential_record_malformed"):
+        writer.write(authorization.reference, bytearray())
+    assert native.calls == 0
+
+
 @pytest.mark.parametrize(
     ("change", "classification"),
     (
@@ -323,12 +493,18 @@ def test_interactive_reader_uses_no_echo_prompt_and_never_prints_values(
 
 
 def test_native_writer_uses_credwrite_directly_without_helpers_or_tempfiles() -> None:
-    source = inspect.getsource(WindowsCredentialManagerWriter).lower()
+    source = (
+        inspect.getsource(WindowsCredWriteNativeBoundary)
+        + inspect.getsource(WindowsCredentialManagerWriter)
+    ).lower()
     assert "credwritew" in source
     assert "subprocess" not in source
     assert "powershell" not in source
     assert "tempfile" not in source
     assert "cmdkey" not in source
+    forbidden_apis = ("credreadw", "credenumeratew", "creddeletew", "credrenamew")
+    for forbidden_api in forbidden_apis:
+        assert forbidden_api not in source
 
 
 def test_cli_without_explicit_write_gate_never_loads_artifact_or_prompts(
