@@ -130,6 +130,56 @@ GUI, or subprocess fallback exists. Native record layout, `CredWriteW`
 behavior, runtime-source binding, authorization, and single-attempt gates are
 unchanged.
 
+### V5.36.4 credential-writer stage diagnostic amendment
+
+The post-review V5.36.3 paper-observation attempt completed all three masked
+fields and returned `credential_writer_failed`. That result proves only that
+the request reached the writer boundary; it does not prove that `CredWriteW`
+was invoked or that a credential record exists.
+
+V5.36.4 preserves the existing supported Windows error mappings and adds three
+fixed distinctions. Native setup or pre-call construction failure reports
+`credential_writer_native_setup_failed`; an exception from the bound
+`CredWriteW` call reports `credential_writer_native_invocation_failed`; and a
+false native return with an unrecognized integer code reports
+`credential_writer_unknown_native_failure`. Raw codes, OS messages, exception
+text, structure contents, and credential material remain prohibited from
+output.
+
+The production library loader and last-error reader are injected in default
+tests. Those tests use fake callables, never load `Advapi32.dll`, and never
+access Credential Manager. Successful record layout, target, persistence,
+prompt behavior, exact-runtime binding, authorization, zeroization, and
+single-attempt governance are unchanged. A newly identified adapter defect
+still requires a later frozen repair and independent review before correction
+or retry.
+
+### V5.36.4a native buffer-view lifetime amendment
+
+Credential-free fake-native testing then reproduced a retained
+`ctypes.from_buffer` export. The export prevented mandatory record clearing
+after the native boundary returned or raised, causing `BufferError` to mask
+the underlying result as generic `credential_writer_failed`.
+
+V5.36.4a required deterministic release of only the temporary credential
+pointer, structure, and buffer view before one-use material cleanup. It
+prohibited copying the record, adding a native call, changing record bytes or
+structure fields, depending on garbage collection, or broadening credential
+authority. The prior real credential-record state remains unknown.
+
+### V5.36.4b direct bytearray address amendment
+
+Synthetic proof then showed that dropping Python references did not release
+the `ctypes.from_buffer` export without garbage collection. That mechanism was
+rejected before a production commit.
+
+V5.36.4b instead uses CPython's `PyByteArray_AsString` API to obtain the
+address of the original non-empty mutable record without copying it or
+creating an exported buffer. The record argument remains strongly referenced
+for the exact one native call. Address resolution fails as sanitized native
+setup failure, and immediate overwrite and clear must succeed without garbage
+collection after every return or exception. No fallback is permitted.
+
 ## Canary Authorization Gate
 
 The exact schema is `v5_36_scheduled_canary_authorization_v1`. It rejects

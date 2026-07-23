@@ -77,6 +77,12 @@ _CREDENTIAL_WRITER_FAILURE_CLASSIFICATIONS = {
     1312: "credential_writer_logon_session_unavailable",
     2202: "credential_writer_bad_username",  # ERROR_BAD_USERNAME
 }
+_NATIVE_STAGE_FAILURE_CLASSIFICATIONS = frozenset(
+    {
+        "credential_writer_native_setup_failed",
+        "credential_writer_native_invocation_failed",
+    }
+)
 _RUNTIME_MODULE_RELATIVE_PATH = (
     "src/algotrader/execution/v536_credential_provisioning.py"
 )
@@ -120,6 +126,20 @@ class NativeCredentialWriteBoundary(Protocol):
         record: bytearray,
     ) -> int | None:
         ...
+
+
+def _load_windows_credential_library() -> object:
+    return ctypes.WinDLL("Advapi32.dll", use_last_error=True)
+
+
+def _resolve_bytearray_address(record: bytearray) -> int:
+    address_api = ctypes.pythonapi.PyByteArray_AsString
+    address_api.argtypes = [ctypes.py_object]
+    address_api.restype = ctypes.c_void_p
+    address = address_api(record)
+    if type(address) is not int or address <= 0:
+        raise RuntimeError("bytearray_address_unavailable")
+    return address
 
 
 class OpaqueProvisioningMaterial:
@@ -207,58 +227,121 @@ class OpaqueProvisioningMaterial:
 class WindowsCredWriteNativeBoundary:
     """Exact ``CredWriteW`` adapter with no logging or persistence capability."""
 
+    __slots__ = (
+        "_bytearray_address_resolver",
+        "_last_error_reader",
+        "_native_library_loader",
+    )
+
+    def __init__(
+        self,
+        *,
+        native_library_loader: Callable[[], object] | None = None,
+        last_error_reader: Callable[[], object] | None = None,
+        bytearray_address_resolver: Callable[[bytearray], object] | None = None,
+    ) -> None:
+        self._native_library_loader = native_library_loader
+        self._last_error_reader = last_error_reader
+        self._bytearray_address_resolver = bytearray_address_resolver
+
     def write(
         self,
         reference: CredentialReference,
         record: bytearray,
     ) -> int | None:
-        class CREDENTIAL_ATTRIBUTEW(ctypes.Structure):
-            _fields_ = [
-                ("Keyword", wintypes.LPWSTR),
-                ("Flags", wintypes.DWORD),
-                ("ValueSize", wintypes.DWORD),
-                ("Value", ctypes.POINTER(ctypes.c_ubyte)),
-            ]
+        record_address = None
+        credential = None
+        credential_pointer = None
+        try:
+            try:
+                class CREDENTIAL_ATTRIBUTEW(ctypes.Structure):
+                    _fields_ = [
+                        ("Keyword", wintypes.LPWSTR),
+                        ("Flags", wintypes.DWORD),
+                        ("ValueSize", wintypes.DWORD),
+                        ("Value", ctypes.POINTER(ctypes.c_ubyte)),
+                    ]
 
-        class CREDENTIALW(ctypes.Structure):
-            _fields_ = [
-                ("Flags", wintypes.DWORD),
-                ("Type", wintypes.DWORD),
-                ("TargetName", wintypes.LPWSTR),
-                ("Comment", wintypes.LPWSTR),
-                ("LastWritten", wintypes.FILETIME),
-                ("CredentialBlobSize", wintypes.DWORD),
-                ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
-                ("Persist", wintypes.DWORD),
-                ("AttributeCount", wintypes.DWORD),
-                ("Attributes", ctypes.POINTER(CREDENTIAL_ATTRIBUTEW)),
-                ("TargetAlias", wintypes.LPWSTR),
-                ("UserName", wintypes.LPWSTR),
-            ]
+                class CREDENTIALW(ctypes.Structure):
+                    _fields_ = [
+                        ("Flags", wintypes.DWORD),
+                        ("Type", wintypes.DWORD),
+                        ("TargetName", wintypes.LPWSTR),
+                        ("Comment", wintypes.LPWSTR),
+                        ("LastWritten", wintypes.FILETIME),
+                        ("CredentialBlobSize", wintypes.DWORD),
+                        ("CredentialBlob", ctypes.POINTER(ctypes.c_ubyte)),
+                        ("Persist", wintypes.DWORD),
+                        ("AttributeCount", wintypes.DWORD),
+                        ("Attributes", ctypes.POINTER(CREDENTIAL_ATTRIBUTEW)),
+                        ("TargetAlias", wintypes.LPWSTR),
+                        ("UserName", wintypes.LPWSTR),
+                    ]
 
-        array_type = ctypes.c_ubyte * len(record)
-        record_view = array_type.from_buffer(record)
-        credential = CREDENTIALW()
-        credential.Flags = 0
-        credential.Type = 1  # CRED_TYPE_GENERIC
-        credential.TargetName = reference.target
-        credential.CredentialBlobSize = len(record)
-        credential.CredentialBlob = ctypes.cast(
-            record_view,
-            ctypes.POINTER(ctypes.c_ubyte),
-        )
-        credential.Persist = 2  # CRED_PERSIST_LOCAL_MACHINE
-        credential.AttributeCount = 0
-        credential.Attributes = None
-        credential.UserName = None
+                address_resolver = (
+                    self._bytearray_address_resolver
+                    or _resolve_bytearray_address
+                )
+                record_address = address_resolver(record)
+                if type(record_address) is not int or record_address <= 0:
+                    raise RuntimeError("bytearray_address_unavailable")
+                credential = CREDENTIALW()
+                credential.Flags = 0
+                credential.Type = 1  # CRED_TYPE_GENERIC
+                credential.TargetName = reference.target
+                credential.CredentialBlobSize = len(record)
+                credential.CredentialBlob = ctypes.cast(
+                    record_address,
+                    ctypes.POINTER(ctypes.c_ubyte),
+                )
+                credential.Persist = 2  # CRED_PERSIST_LOCAL_MACHINE
+                credential.AttributeCount = 0
+                credential.Attributes = None
+                credential.UserName = None
+                credential_pointer = ctypes.byref(credential)
 
-        advapi32 = ctypes.WinDLL("Advapi32.dll", use_last_error=True)
-        cred_write = advapi32.CredWriteW
-        cred_write.argtypes = [ctypes.POINTER(CREDENTIALW), wintypes.DWORD]
-        cred_write.restype = wintypes.BOOL
-        if not cred_write(ctypes.byref(credential), 0):
-            return int(ctypes.get_last_error())
-        return None
+                native_library_loader = (
+                    self._native_library_loader
+                    or _load_windows_credential_library
+                )
+                advapi32 = native_library_loader()
+                cred_write = getattr(advapi32, "CredWriteW")
+                cred_write.argtypes = [
+                    ctypes.POINTER(CREDENTIALW),
+                    wintypes.DWORD,
+                ]
+                cred_write.restype = wintypes.BOOL
+            except Exception:
+                raise V536ProvisioningError(
+                    "credential_writer_native_setup_failed"
+                ) from None
+
+            try:
+                result = cred_write(credential_pointer, 0)
+            except Exception:
+                raise V536ProvisioningError(
+                    "credential_writer_native_invocation_failed"
+                ) from None
+            if not result:
+                last_error_reader = (
+                    self._last_error_reader or ctypes.get_last_error
+                )
+                try:
+                    error_code = last_error_reader()
+                except Exception:
+                    raise V536ProvisioningError(
+                        "credential_writer_unknown_native_failure"
+                    ) from None
+                if type(error_code) is not int:
+                    raise V536ProvisioningError(
+                        "credential_writer_unknown_native_failure"
+                    )
+                return error_code
+            return None
+        finally:
+            credential_pointer = None
+            credential = None
+            record_address = None
 
 
 class WindowsCredentialManagerWriter:
@@ -283,15 +366,23 @@ class WindowsCredentialManagerWriter:
         native_boundary = self._native_boundary or WindowsCredWriteNativeBoundary()
         try:
             error_code = native_boundary.write(reference, record)
+        except V536ProvisioningError as exc:
+            classification = (
+                exc.classification
+                if exc.classification in _NATIVE_STAGE_FAILURE_CLASSIFICATIONS
+                else "credential_writer_failed"
+            )
+            raise V536ProvisioningError(classification) from None
         except Exception:
             raise V536ProvisioningError("credential_writer_failed") from None
         if error_code is None:
             return
-        classification = (
-            _CREDENTIAL_WRITER_FAILURE_CLASSIFICATIONS.get(error_code)
-            if type(error_code) is int
-            else None
-        )
+        classification = None
+        if type(error_code) is int:
+            classification = _CREDENTIAL_WRITER_FAILURE_CLASSIFICATIONS.get(
+                error_code,
+                "credential_writer_unknown_native_failure",
+            )
         raise V536ProvisioningError(
             classification or "credential_writer_failed"
         ) from None

@@ -1202,6 +1202,27 @@ current field is non-empty, regardless of field length. Backspace removes the
 marker only when the field becomes empty. The marker confirms input without
 echoing credential characters or length.
 
+V5.36.4 may additionally return
+`credential_writer_native_setup_failed`,
+`credential_writer_native_invocation_failed`, or
+`credential_writer_unknown_native_failure`. These are fixed diagnostic
+classifications only. They do not prove credential-record state and do not
+authorize inspection, retry, remediation, Task Scheduler work, network access,
+broker access, or canary execution. Preserve the grant as terminal and route
+any identified adapter defect through a new frozen repair contract and
+independent review.
+
+V5.36.4a isolated the temporary native buffer-view lifetime defect before
+mandatory zeroization. Its first release mechanism was rejected by synthetic
+proof before a production commit. This changes no operator command or
+authority. Earlier credential-record state remains unknown, and fresh grants
+remain prohibited until independent review.
+
+V5.36.4b avoids creating the exported native buffer view entirely by binding
+the original mutable record through CPython's direct bytearray address API.
+The record is still overwritten and cleared immediately, with no copy or
+operator-procedure change.
+
 ## V5.32 End-to-End Supervised Crypto Readiness Trial
 
 Run the complete 24-cycle deterministic proof from a normal credential-free

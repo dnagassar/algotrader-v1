@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 from datetime import UTC, datetime, timedelta
 import hashlib
 import inspect
@@ -76,6 +77,40 @@ class FakeNativeCredentialWriteBoundary:
         if self.failure is not None:
             raise self.failure
         return self.error_code
+
+
+class FakeCredWriteCallable:
+    def __init__(
+        self,
+        *,
+        result: int = 1,
+        failure: Exception | None = None,
+        capture_record: bool = False,
+    ) -> None:
+        self.result = result
+        self.failure = failure
+        self.capture_record = capture_record
+        self.calls = 0
+        self.argtypes: object = None
+        self.restype: object = None
+        self.observed_record: bytes | None = None
+
+    def __call__(self, *args: object) -> int:
+        self.calls += 1
+        if self.capture_record:
+            credential = getattr(args[0], "_obj")
+            self.observed_record = ctypes.string_at(
+                credential.CredentialBlob,
+                credential.CredentialBlobSize,
+            )
+        if self.failure is not None:
+            raise self.failure
+        return self.result
+
+
+class FakeWindowsCredentialLibrary:
+    def __init__(self, cred_write: FakeCredWriteCallable) -> None:
+        self.CredWriteW = cred_write
 
 
 def _payload(
@@ -289,6 +324,186 @@ def test_production_writer_accepts_injected_native_success_and_preserves_receipt
         assert sentinel not in serialized
 
 
+def test_production_native_boundary_accepts_fake_library_without_vault_access() -> None:
+    cred_write = FakeCredWriteCallable(result=1)
+    native = WindowsCredWriteNativeBoundary(
+        native_library_loader=lambda: FakeWindowsCredentialLibrary(cred_write),
+    )
+    material = _material()
+
+    receipt = provision_v536_credential(
+        authorization=parse_v536_provisioning_authorization(_payload()),
+        material_source=lambda: material,
+        writer=WindowsCredentialManagerWriter(native_boundary=native),
+        current_identity="DOMAIN\\canary-user",
+        provenance=_provenance(),
+        clock=lambda: NOW,
+    )
+
+    assert cred_write.calls == 1
+    assert cred_write.argtypes is not None
+    assert cred_write.restype is not None
+    assert material.closed
+    assert receipt["classification"] == "credential_record_provisioned"
+    assert receipt["secret_values_exposed"] is False
+
+
+def test_production_direct_address_allows_immediate_clear() -> None:
+    cred_write = FakeCredWriteCallable(result=1, capture_record=True)
+    native = WindowsCredWriteNativeBoundary(
+        native_library_loader=lambda: FakeWindowsCredentialLibrary(cred_write),
+    )
+    record = bytearray(b"synthetic-record")
+
+    native.write(
+        parse_v536_provisioning_authorization(_payload()).reference,
+        record,
+    )
+    for index in range(len(record)):
+        record[index] = 0
+    record.clear()
+
+    assert cred_write.calls == 1
+    assert cred_write.observed_record == b"synthetic-record"
+    assert record == bytearray()
+
+
+def test_production_native_setup_failure_is_fixed_and_precedes_credwrite(
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cred_write = FakeCredWriteCallable()
+    loader_calls = 0
+
+    def fail_loader() -> object:
+        nonlocal loader_calls
+        loader_calls += 1
+        raise OSError(f"native setup {SECRET_SENTINEL}")
+
+    native = WindowsCredWriteNativeBoundary(native_library_loader=fail_loader)
+    material = _material()
+    with pytest.raises(V536ProvisioningError) as captured:
+        provision_v536_credential(
+            authorization=parse_v536_provisioning_authorization(_payload()),
+            material_source=lambda: material,
+            writer=WindowsCredentialManagerWriter(native_boundary=native),
+            current_identity="DOMAIN\\canary-user",
+            provenance=_provenance(),
+            clock=lambda: NOW,
+        )
+
+    assert captured.value.classification == "credential_writer_native_setup_failed"
+    assert loader_calls == 1
+    assert cred_write.calls == 0
+    assert material.closed
+    captured_io = capsys.readouterr()
+    observables = (
+        captured_io.out,
+        captured_io.err,
+        caplog.text,
+        repr(captured.value),
+    )
+    assert all(SECRET_SENTINEL not in observable for observable in observables)
+
+
+def test_production_bytearray_address_failure_is_fixed_before_credwrite() -> None:
+    cred_write = FakeCredWriteCallable()
+    native = WindowsCredWriteNativeBoundary(
+        native_library_loader=lambda: FakeWindowsCredentialLibrary(cred_write),
+        bytearray_address_resolver=lambda _record: None,
+    )
+    material = _material()
+    with pytest.raises(V536ProvisioningError) as captured:
+        provision_v536_credential(
+            authorization=parse_v536_provisioning_authorization(_payload()),
+            material_source=lambda: material,
+            writer=WindowsCredentialManagerWriter(native_boundary=native),
+            current_identity="DOMAIN\\canary-user",
+            provenance=_provenance(),
+            clock=lambda: NOW,
+        )
+
+    assert captured.value.classification == "credential_writer_native_setup_failed"
+    assert cred_write.calls == 0
+    assert material.closed
+
+
+def test_production_native_invocation_failure_is_fixed_after_one_fake_call(
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cred_write = FakeCredWriteCallable(
+        failure=OSError(f"native invocation {SECRET_SENTINEL}")
+    )
+    native = WindowsCredWriteNativeBoundary(
+        native_library_loader=lambda: FakeWindowsCredentialLibrary(cred_write),
+    )
+    material = _material()
+    with pytest.raises(V536ProvisioningError) as captured:
+        provision_v536_credential(
+            authorization=parse_v536_provisioning_authorization(_payload()),
+            material_source=lambda: material,
+            writer=WindowsCredentialManagerWriter(native_boundary=native),
+            current_identity="DOMAIN\\canary-user",
+            provenance=_provenance(),
+            clock=lambda: NOW,
+        )
+
+    assert (
+        captured.value.classification
+        == "credential_writer_native_invocation_failed"
+    )
+    assert cred_write.calls == 1
+    assert material.closed
+    captured_io = capsys.readouterr()
+    observables = (
+        captured_io.out,
+        captured_io.err,
+        caplog.text,
+        repr(captured.value),
+    )
+    assert all(SECRET_SENTINEL not in observable for observable in observables)
+
+
+def test_production_unknown_native_error_is_fixed_without_raw_code(
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    unknown_code = 999_999
+    cred_write = FakeCredWriteCallable(result=0)
+    native = WindowsCredWriteNativeBoundary(
+        native_library_loader=lambda: FakeWindowsCredentialLibrary(cred_write),
+        last_error_reader=lambda: unknown_code,
+    )
+    material = _material()
+    with pytest.raises(V536ProvisioningError) as captured:
+        provision_v536_credential(
+            authorization=parse_v536_provisioning_authorization(_payload()),
+            material_source=lambda: material,
+            writer=WindowsCredentialManagerWriter(native_boundary=native),
+            current_identity="DOMAIN\\canary-user",
+            provenance=_provenance(),
+            clock=lambda: NOW,
+        )
+
+    assert (
+        captured.value.classification
+        == "credential_writer_unknown_native_failure"
+    )
+    assert str(unknown_code) not in str(captured.value)
+    assert cred_write.calls == 1
+    assert material.closed
+    captured_io = capsys.readouterr()
+    observables = (
+        captured_io.out,
+        captured_io.err,
+        caplog.text,
+        repr(captured.value),
+    )
+    for sentinel in (KEY_SENTINEL, SECRET_SENTINEL, ACCOUNT_SENTINEL):
+        assert all(sentinel not in observable for observable in observables)
+
+
 @pytest.mark.parametrize(
     ("error_code", "classification"),
     (
@@ -332,10 +547,28 @@ def test_native_credwrite_failure_is_classified_without_disclosure(
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("error_code", (0, 999_999, True, "87"))
-def test_unknown_or_malformed_native_failure_is_generic(
-    error_code: object,
+@pytest.mark.parametrize("error_code", (0, 999_999))
+def test_unknown_integer_native_failure_has_fixed_classification(
+    error_code: int,
 ) -> None:
+    native = FakeNativeCredentialWriteBoundary()
+    native.error_code = error_code
+    with pytest.raises(V536ProvisioningError) as captured:
+        _material().use(
+            lambda record: WindowsCredentialManagerWriter(
+                native_boundary=native
+            ).write(
+                parse_v536_provisioning_authorization(_payload()).reference,
+                record,
+            )
+        )
+    assert str(captured.value) == "credential_writer_unknown_native_failure"
+    assert str(error_code) not in str(captured.value)
+    assert native.calls == 1
+
+
+@pytest.mark.parametrize("error_code", (True, "87"))
+def test_malformed_native_failure_is_generic(error_code: object) -> None:
     native = FakeNativeCredentialWriteBoundary()
     native.error_code = error_code  # type: ignore[assignment]
     with pytest.raises(V536ProvisioningError) as captured:
@@ -375,6 +608,23 @@ def test_native_boundary_exception_is_generic_and_secret_free(
     assert SECRET_SENTINEL not in caplog.text
     assert SECRET_SENTINEL not in repr(captured.value)
     assert material.closed
+
+
+def test_unapproved_native_boundary_classification_is_generic() -> None:
+    native = FakeNativeCredentialWriteBoundary(
+        failure=V536ProvisioningError("credential_writer_denied")
+    )
+    with pytest.raises(V536ProvisioningError) as captured:
+        _material().use(
+            lambda record: WindowsCredentialManagerWriter(
+                native_boundary=native
+            ).write(
+                parse_v536_provisioning_authorization(_payload()).reference,
+                record,
+            )
+        )
+    assert captured.value.classification == "credential_writer_failed"
+    assert native.calls == 1
 
 
 def test_writer_validation_precedes_injected_native_boundary() -> None:
@@ -727,6 +977,7 @@ def test_native_writer_uses_credwrite_directly_without_helpers_or_tempfiles() ->
     assert "powershell" not in source
     assert "tempfile" not in source
     assert "cmdkey" not in source
+    assert "from_buffer" not in source
     forbidden_apis = ("credreadw", "credenumeratew", "creddeletew", "credrenamew")
     for forbidden_api in forbidden_apis:
         assert forbidden_api not in source
