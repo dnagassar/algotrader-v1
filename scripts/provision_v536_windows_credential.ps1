@@ -51,23 +51,31 @@ if (-not [System.IO.Path]::IsPathRooted($AuthorizationArtifact)) {
 }
 $ArtifactPath = [System.IO.Path]::GetFullPath($AuthorizationArtifact)
 
-$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$LauncherCandidate = Join-Path $PSScriptRoot "launch_v536_credential_provisioning.py"
+if (-not (Test-Path -LiteralPath $LauncherCandidate -PathType Leaf)) {
+    Write-Output '{"classification":"provisioning_runtime_source_unavailable"}'
+    exit 2
+}
+try {
+    $LauncherPath = (Resolve-Path -LiteralPath $LauncherCandidate).Path
+}
+catch {
+    Write-Output '{"classification":"provisioning_runtime_source_unavailable"}'
+    exit 2
+}
 $PythonCommand = Get-Command python -ErrorAction SilentlyContinue
 if ($null -eq $PythonCommand) {
     throw "Unable to locate python on PATH."
 }
 
-Push-Location -LiteralPath $RepoRoot
-try {
-    & $PythonCommand.Source `
-        -m algotrader.execution.v536_credential_provisioning `
-        --authorization-artifact $ArtifactPath `
-        --provision-authorized
-    $ExitCode = $LASTEXITCODE
-}
-finally {
-    Pop-Location
-}
+$ExitCode = $null
+& $PythonCommand.Source `
+    -I `
+    -B `
+    $LauncherPath `
+    --authorization-artifact $ArtifactPath `
+    --provision-authorized
+$ExitCode = $LASTEXITCODE
 if ($null -eq $ExitCode) {
     $ExitCode = 1
 }

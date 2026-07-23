@@ -77,6 +77,10 @@ _CREDENTIAL_WRITER_FAILURE_CLASSIFICATIONS = {
     1312: "credential_writer_logon_session_unavailable",
     2202: "credential_writer_bad_username",  # ERROR_BAD_USERNAME
 }
+_RUNTIME_MODULE_RELATIVE_PATH = (
+    "src/algotrader/execution/v536_credential_provisioning.py"
+)
+_RUNTIME_LAUNCHER_RELATIVE_PATH = "scripts/launch_v536_credential_provisioning.py"
 _T = TypeVar("_T")
 
 
@@ -502,20 +506,116 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def load_runtime_bound_source_provenance(
+    repo_root: Path | str,
+    *,
+    module_path: Path | str | None = None,
+    provenance_loader: Callable[[Path], Mapping[str, object]] | None = None,
+) -> dict[str, object]:
+    """Bind clean Git provenance to this exact executing module and launcher."""
+
+    try:
+        root = Path(repo_root).resolve(strict=True)
+        actual_module = Path(module_path or __file__).resolve(strict=True)
+        expected_module = (root / _RUNTIME_MODULE_RELATIVE_PATH).resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        raise V536ProvisioningError(
+            "provisioning_runtime_source_unavailable"
+        ) from None
+    if not root.is_dir() or actual_module != expected_module:
+        raise V536ProvisioningError("provisioning_runtime_source_mismatch")
+
+    if provenance_loader is None:
+        try:
+            from algotrader.execution.crypto_read_only_paper_observation_adapter import (
+                get_source_provenance,
+            )
+        except Exception:
+            raise V536ProvisioningError(
+                "provisioning_runtime_source_unavailable"
+            ) from None
+        provenance_loader = get_source_provenance
+    try:
+        provenance = dict(provenance_loader(root))
+    except Exception:
+        raise V536ProvisioningError(
+            "provisioning_runtime_source_unavailable"
+        ) from None
+
+    if provenance.get("source_worktree_clean") is not True:
+        raise V536ProvisioningError("provisioning_runtime_source_dirty")
+    if (
+        _HEX_40_RE.fullmatch(str(provenance.get("source_commit_sha", ""))) is None
+        or _HEX_40_RE.fullmatch(str(provenance.get("source_tree_sha", ""))) is None
+    ):
+        raise V536ProvisioningError("provisioning_runtime_source_mismatch")
+    manifest = provenance.get("source_bundle_manifest")
+    if not isinstance(manifest, Mapping):
+        raise V536ProvisioningError("provisioning_runtime_source_manifest_missing")
+
+    for relative_path in (
+        _RUNTIME_MODULE_RELATIVE_PATH,
+        _RUNTIME_LAUNCHER_RELATIVE_PATH,
+    ):
+        claimed_digest = manifest.get(relative_path)
+        if type(claimed_digest) is not str or _HEX_64_RE.fullmatch(
+            claimed_digest
+        ) is None:
+            raise V536ProvisioningError(
+                "provisioning_runtime_source_manifest_missing"
+            )
+        try:
+            source = (root / relative_path).resolve(strict=True)
+            if source != root / relative_path:
+                raise V536ProvisioningError("provisioning_runtime_source_mismatch")
+            actual_digest = hashlib.sha256(
+                source.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest()
+        except V536ProvisioningError:
+            raise
+        except (OSError, RuntimeError, ValueError):
+            raise V536ProvisioningError(
+                "provisioning_runtime_source_unavailable"
+            ) from None
+        if actual_digest != claimed_digest:
+            raise V536ProvisioningError(
+                "provisioning_runtime_source_digest_mismatch"
+            )
+    return provenance
+
+
+def validate_runtime_authorization_source_binding(
+    authorization: V536ProvisioningAuthorization,
+    provenance: Mapping[str, object],
+) -> None:
+    """Reject authorization/source mismatch before Windows identity access."""
+
+    if provenance.get("source_worktree_clean") is not True:
+        raise V536ProvisioningError("provisioning_source_dirty")
+    if provenance.get("source_commit_sha") != authorization.source_commit_sha:
+        raise V536ProvisioningError("provisioning_source_commit_mismatch")
+    if provenance.get("source_tree_sha") != authorization.source_tree_sha:
+        raise V536ProvisioningError("provisioning_source_tree_mismatch")
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    expected_repo_root: Path | str | None = None,
+) -> int:
     args = build_parser().parse_args(argv)
     if not args.provision_authorized:
         print(json.dumps({"classification": "provisioning_write_not_authorized"}))
         return 2
     try:
         _reject_forbidden_environment()
+        provenance = load_runtime_bound_source_provenance(
+            Path.cwd() if expected_repo_root is None else expected_repo_root
+        )
         authorization = load_v536_provisioning_authorization(
             Path(args.authorization_artifact)
         )
-        from algotrader.execution.crypto_read_only_paper_observation_adapter import (
-            get_source_provenance,
-        )
-
+        validate_runtime_authorization_source_binding(authorization, provenance)
         receipt = provision_v536_credential(
             authorization=authorization,
             material_source=lambda: read_interactive_provisioning_material(
@@ -523,7 +623,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             writer=WindowsCredentialManagerWriter(),
             current_identity=current_windows_identity(),
-            provenance=get_source_provenance(Path.cwd()),
+            provenance=provenance,
             clock=lambda: datetime.now(UTC),
         )
     except (V536ProvisioningError, CredentialProviderError) as exc:
@@ -636,8 +736,10 @@ __all__ = [
     "WindowsCredentialManagerWriter",
     "canonical_provisioning_authorization_sha256",
     "current_windows_identity",
+    "load_runtime_bound_source_provenance",
     "load_v536_provisioning_authorization",
     "parse_v536_provisioning_authorization",
     "provision_v536_credential",
     "read_interactive_provisioning_material",
+    "validate_runtime_authorization_source_binding",
 ]

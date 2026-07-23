@@ -94,6 +94,24 @@ fresh one-hour provisioning grants and a new explicit operator action. Any
 behavioral correction identified by that attempt requires a separately frozen
 contract and review.
 
+### V5.36.2 exact runtime-source amendment
+
+The first post-review V5.36.1 attempts exposed an ambient editable-installation
+hazard: bare `python -m` executed the older V5.36 module while Git provenance
+described the requested V5.36.1 worktree. V5.36.2 replaces that launch with an
+absolute repository-owned entry point under Python isolated mode. The entry
+point places only the exact deployment `src` directory first, verifies the
+imported module path, and passes the launcher-derived deployment root into the
+provisioner.
+
+Before authorization loading, identity lookup, prompting, material creation,
+or native access, the provisioner now binds its own resolved source path and
+normalized SHA-256 to the clean source-bundle manifest. The same provenance is
+then used for authorization commit/tree checks. Missing launcher/module
+bindings, ambient modules, dirty source, or digest mismatch produce only fixed
+sanitized classifications. No credential-record or native-write behavior is
+changed by this amendment.
+
 ## Canary Authorization Gate
 
 The exact schema is `v5_36_scheduled_canary_authorization_v1`. It rejects

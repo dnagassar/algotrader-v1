@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 import inspect
 import json
 import os
@@ -8,6 +9,8 @@ from pathlib import Path
 import sys
 
 import pytest
+
+import algotrader.execution.v536_credential_provisioning as provisioning_module
 
 from algotrader.execution.secure_credential_provider import CredentialFamily
 from algotrader.execution.v536_credential_provisioning import (
@@ -17,10 +20,12 @@ from algotrader.execution.v536_credential_provisioning import (
     WindowsCredWriteNativeBoundary,
     WindowsCredentialManagerWriter,
     canonical_provisioning_authorization_sha256,
+    load_runtime_bound_source_provenance,
     main,
     parse_v536_provisioning_authorization,
     provision_v536_credential,
     read_interactive_provisioning_material,
+    validate_runtime_authorization_source_binding,
 )
 
 
@@ -517,3 +522,193 @@ def test_cli_without_explicit_write_gate_never_loads_artifact_or_prompts(
         "classification": "provisioning_write_not_authorized"
     }
     assert not missing.exists()
+
+
+def _runtime_binding_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, dict[str, object]]:
+    root = tmp_path / "deployment"
+    module_path = (
+        root / "src" / "algotrader" / "execution" / "v536_credential_provisioning.py"
+    )
+    launcher_path = root / "scripts" / "launch_v536_credential_provisioning.py"
+    module_path.parent.mkdir(parents=True)
+    launcher_path.parent.mkdir(parents=True)
+    module_path.write_bytes(b"module fixture\r\n")
+    launcher_path.write_bytes(b"launcher fixture\r\n")
+
+    def digest(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+    provenance: dict[str, object] = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_bundle_manifest": {
+            "src/algotrader/execution/v536_credential_provisioning.py": digest(
+                module_path
+            ),
+            "scripts/launch_v536_credential_provisioning.py": digest(launcher_path),
+        },
+    }
+    return root, module_path, provenance
+
+
+def test_runtime_source_binding_accepts_exact_module_launcher_and_digests(
+    tmp_path: Path,
+) -> None:
+    root, module_path, provenance = _runtime_binding_fixture(tmp_path)
+    result = load_runtime_bound_source_provenance(
+        root,
+        module_path=module_path,
+        provenance_loader=lambda _root: provenance,
+    )
+    assert result == provenance
+
+
+def test_runtime_source_binding_rejects_wrong_module_before_provenance(
+    tmp_path: Path,
+) -> None:
+    root, _module_path, _provenance = _runtime_binding_fixture(tmp_path)
+    calls: list[Path] = []
+    wrong_module = tmp_path / "ambient" / "v536_credential_provisioning.py"
+    wrong_module.parent.mkdir()
+    wrong_module.write_text("ambient", encoding="utf-8")
+    with pytest.raises(
+        V536ProvisioningError,
+        match="provisioning_runtime_source_mismatch",
+    ):
+        load_runtime_bound_source_provenance(
+            root,
+            module_path=wrong_module,
+            provenance_loader=lambda candidate: calls.append(candidate),  # type: ignore[return-value]
+        )
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "classification"),
+    (
+        ("missing_launcher", "provisioning_runtime_source_manifest_missing"),
+        ("wrong_digest", "provisioning_runtime_source_digest_mismatch"),
+        ("dirty", "provisioning_runtime_source_dirty"),
+        ("bad_commit", "provisioning_runtime_source_mismatch"),
+    ),
+)
+def test_runtime_source_binding_fails_closed_on_provenance_mismatch(
+    mutation: str,
+    classification: str,
+    tmp_path: Path,
+) -> None:
+    root, module_path, provenance = _runtime_binding_fixture(tmp_path)
+    manifest = provenance["source_bundle_manifest"]
+    assert isinstance(manifest, dict)
+    if mutation == "missing_launcher":
+        manifest.pop("scripts/launch_v536_credential_provisioning.py")
+    elif mutation == "wrong_digest":
+        manifest["src/algotrader/execution/v536_credential_provisioning.py"] = (
+            "c" * 64
+        )
+    elif mutation == "dirty":
+        provenance["source_worktree_clean"] = False
+    else:
+        provenance["source_commit_sha"] = "invalid"
+    with pytest.raises(V536ProvisioningError, match=classification):
+        load_runtime_bound_source_provenance(
+            root,
+            module_path=module_path,
+            provenance_loader=lambda _root: provenance,
+        )
+
+
+def test_runtime_source_loader_exception_is_sanitized(
+    tmp_path: Path,
+) -> None:
+    root, module_path, _provenance = _runtime_binding_fixture(tmp_path)
+
+    def fail(_root: Path) -> dict[str, object]:
+        raise RuntimeError(f"{SECRET_SENTINEL}:{module_path}")
+
+    with pytest.raises(V536ProvisioningError) as captured:
+        load_runtime_bound_source_provenance(
+            root,
+            module_path=module_path,
+            provenance_loader=fail,
+        )
+    assert str(captured.value) == "provisioning_runtime_source_unavailable"
+    assert SECRET_SENTINEL not in repr(captured.value)
+    assert str(module_path) not in repr(captured.value)
+
+
+def test_runtime_source_failure_precedes_artifact_identity_material_and_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[str] = []
+
+    def fail_runtime(_root: object) -> dict[str, object]:
+        raise V536ProvisioningError("provisioning_runtime_source_mismatch")
+
+    monkeypatch.setattr(
+        provisioning_module,
+        "load_runtime_bound_source_provenance",
+        fail_runtime,
+    )
+    monkeypatch.setattr(
+        provisioning_module,
+        "load_v536_provisioning_authorization",
+        lambda _path: calls.append("artifact"),
+    )
+    monkeypatch.setattr(
+        provisioning_module,
+        "current_windows_identity",
+        lambda: calls.append("identity"),
+    )
+    monkeypatch.setattr(
+        provisioning_module,
+        "read_interactive_provisioning_material",
+        lambda _family: calls.append("material"),
+    )
+    monkeypatch.setattr(
+        provisioning_module,
+        "WindowsCredentialManagerWriter",
+        lambda: calls.append("writer"),
+    )
+    result = provisioning_module.main(
+        [
+            "--authorization-artifact",
+            str((tmp_path / "missing.json").resolve()),
+            "--provision-authorized",
+        ],
+        expected_repo_root=tmp_path,
+    )
+    assert result == 2
+    assert calls == []
+    output = capsys.readouterr().out + capsys.readouterr().err
+    assert json.loads(output) == {
+        "classification": "provisioning_runtime_source_mismatch"
+    }
+    assert SECRET_SENTINEL not in output
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "classification"),
+    (
+        ("source_worktree_clean", False, "provisioning_source_dirty"),
+        ("source_commit_sha", "c" * 40, "provisioning_source_commit_mismatch"),
+        ("source_tree_sha", "d" * 40, "provisioning_source_tree_mismatch"),
+    ),
+)
+def test_runtime_authorization_source_binding_precedes_identity(
+    field: str,
+    value: object,
+    classification: str,
+) -> None:
+    provenance = _provenance()
+    provenance[field] = value
+    with pytest.raises(V536ProvisioningError, match=classification):
+        validate_runtime_authorization_source_binding(
+            parse_v536_provisioning_authorization(_payload()),
+            provenance,
+        )

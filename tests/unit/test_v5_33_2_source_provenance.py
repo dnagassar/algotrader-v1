@@ -61,11 +61,13 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
             "scripts/run_v535_unattended_readonly.ps1",
             "scripts/run_v536_windows_host_canary.ps1",
             "scripts/provision_v536_windows_credential.ps1",
+            "scripts/launch_v536_credential_provisioning.py",
             "docs/design/v5_35_secure_unattended_read_only_acceptance_contract.md",
             "docs/design/v5_35_credential_provider_and_threat_boundary.md",
             "docs/design/v5_36_windows_host_commissioning_canary_acceptance_contract.md",
             "docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md",
             "docs/design/v5_36_1_credential_writer_diagnostic_repair_contract.md",
+            "docs/design/v5_36_2_exact_runtime_source_binding_repair_contract.md",
             "docs/design/crypto_tournament_v2_oos_scheduler_task.xml",
         }.issubset(provenance["source_bundle_manifest"])
 

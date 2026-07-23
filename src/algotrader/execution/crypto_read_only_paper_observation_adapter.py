@@ -94,6 +94,7 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "scripts/run_v535_unattended_readonly.ps1",
         "scripts/run_v536_windows_host_canary.ps1",
         "scripts/provision_v536_windows_credential.ps1",
+        "scripts/launch_v536_credential_provisioning.py",
         "scripts/consume_crypto_observation_receipt.ps1",
         "scripts/verify_crypto_preflight.ps1",
         "scripts/verify_crypto_readiness_replay.ps1",
@@ -102,6 +103,7 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "docs/design/v5_36_windows_host_commissioning_canary_acceptance_contract.md",
         "docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md",
         "docs/design/v5_36_1_credential_writer_diagnostic_repair_contract.md",
+        "docs/design/v5_36_2_exact_runtime_source_binding_repair_contract.md",
         "docs/design/crypto_tournament_v2_oos_scheduler_task.xml"
     ]
     manifest = {}
