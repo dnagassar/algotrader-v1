@@ -13,12 +13,12 @@ import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import getpass
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import sys
 from typing import Protocol, TypeVar
 
 from algotrader.execution.secure_credential_provider import (
@@ -81,6 +81,7 @@ _RUNTIME_MODULE_RELATIVE_PATH = (
     "src/algotrader/execution/v536_credential_provisioning.py"
 )
 _RUNTIME_LAUNCHER_RELATIVE_PATH = "scripts/launch_v536_credential_provisioning.py"
+_MASKED_INPUT_MARKER = "*"
 _T = TypeVar("_T")
 
 
@@ -399,10 +400,11 @@ def provision_v536_credential(
     *,
     authorization: V536ProvisioningAuthorization,
     material_source: Callable[[], OpaqueProvisioningMaterial],
-    writer: CredentialRecordWriter,
+    writer: CredentialRecordWriter | None,
     current_identity: str,
     provenance: Mapping[str, object],
     clock: Callable[[], datetime],
+    writer_factory: Callable[[], CredentialRecordWriter] | None = None,
 ) -> dict[str, object]:
     _reject_forbidden_environment()
     now = _parse_utc(clock())
@@ -426,8 +428,22 @@ def provision_v536_credential(
     if material.family is not authorization.family:
         material.close()
         raise V536ProvisioningError("provisioning_material_family_mismatch")
+    if (writer is None) == (writer_factory is None):
+        material.close()
+        raise V536ProvisioningError("credential_writer_failed")
+    if writer is not None:
+        resolved_writer = writer
+    else:
+        assert writer_factory is not None
+        try:
+            resolved_writer = writer_factory()
+        except Exception:
+            material.close()
+            raise V536ProvisioningError("credential_writer_failed") from None
     try:
-        material.use(lambda record: writer.write(authorization.reference, record))
+        material.use(
+            lambda record: resolved_writer.write(authorization.reference, record)
+        )
     except V536ProvisioningError:
         raise
     except Exception:
@@ -452,15 +468,110 @@ def provision_v536_credential(
     return receipt
 
 
+def constant_width_masked_prompt(
+    label: str,
+    *,
+    read_character: Callable[[], str] | None = None,
+    write_output: Callable[[str], object] | None = None,
+) -> str:
+    """Read one ASCII field while revealing only empty/non-empty state."""
+
+    if type(label) is not str or not label:
+        raise V536ProvisioningError("provisioning_masked_input_unavailable")
+    if read_character is None:
+        if os.name != "nt":
+            raise V536ProvisioningError("provisioning_masked_input_unavailable")
+        try:
+            import msvcrt
+        except ImportError:
+            raise V536ProvisioningError(
+                "provisioning_masked_input_unavailable"
+            ) from None
+        read_character = msvcrt.getwch
+    output = write_output or _write_masked_console_output
+    characters: list[str] = []
+    marker_visible = False
+
+    def emit(value: str) -> None:
+        try:
+            output(value)
+        except Exception:
+            raise V536ProvisioningError(
+                "provisioning_masked_output_unavailable"
+            ) from None
+
+    def read_one() -> str:
+        try:
+            value = read_character()
+        except (EOFError, KeyboardInterrupt):
+            raise V536ProvisioningError(
+                "provisioning_masked_input_interrupted"
+            ) from None
+        except Exception:
+            raise V536ProvisioningError(
+                "provisioning_masked_input_unavailable"
+            ) from None
+        if type(value) is not str or len(value) != 1:
+            raise V536ProvisioningError("provisioning_masked_input_invalid")
+        return value
+
+    try:
+        emit(label)
+        while True:
+            character = read_one()
+            if character in ("\r", "\n"):
+                emit("\n")
+                if not characters:
+                    raise V536ProvisioningError(
+                        "provisioning_masked_input_empty"
+                    )
+                return "".join(characters)
+            if character in ("\x03", "\x1a"):
+                emit("\n")
+                raise V536ProvisioningError(
+                    "provisioning_masked_input_interrupted"
+                )
+            if character in ("\x00", "\xe0"):
+                read_one()
+                continue
+            if character == "\b":
+                if characters:
+                    characters[-1] = ""
+                    characters.pop()
+                    if not characters and marker_visible:
+                        emit("\b \b")
+                        marker_visible = False
+                continue
+            if not 0x21 <= ord(character) <= 0x7E:
+                emit("\n")
+                raise V536ProvisioningError(
+                    "provisioning_masked_input_invalid"
+                )
+            if len(characters) >= _MAX_SECRET_BYTES:
+                emit("\n")
+                raise V536ProvisioningError(
+                    "provisioning_masked_input_too_long"
+                )
+            characters.append(character)
+            if not marker_visible:
+                emit(_MASKED_INPUT_MARKER)
+                marker_visible = True
+    finally:
+        for index in range(len(characters)):
+            characters[index] = ""
+        characters.clear()
+
+
 def read_interactive_provisioning_material(
     family: CredentialFamily,
     *,
-    prompt: Callable[[str], str] = getpass.getpass,
+    prompt: Callable[[str], str] | None = None,
 ) -> OpaqueProvisioningMaterial:
-    api_key = prompt("API key ID: ")
-    api_secret = prompt("API secret key: ")
+    resolved_prompt = prompt or constant_width_masked_prompt
+    api_key = resolved_prompt("API key ID: ")
+    api_secret = resolved_prompt("API secret key: ")
     account = (
-        prompt("Expected paper account identity: ")
+        resolved_prompt("Expected paper account identity: ")
         if family is CredentialFamily.ALPACA_PAPER_OBSERVATION
         else None
     )
@@ -621,10 +732,11 @@ def main(
             material_source=lambda: read_interactive_provisioning_material(
                 authorization.family
             ),
-            writer=WindowsCredentialManagerWriter(),
+            writer=None,
             current_identity=current_windows_identity(),
             provenance=provenance,
             clock=lambda: datetime.now(UTC),
+            writer_factory=WindowsCredentialManagerWriter,
         )
     except (V536ProvisioningError, CredentialProviderError) as exc:
         classification = getattr(exc, "classification", "provisioning_failed")
@@ -652,6 +764,11 @@ def _reject_forbidden_environment() -> None:
         for name in _FORBIDDEN_ENVIRONMENT_ALIASES
     ):
         raise V536ProvisioningError("credential_environment_alias_rejected")
+
+
+def _write_masked_console_output(value: str) -> None:
+    sys.stderr.write(value)
+    sys.stderr.flush()
 
 
 def _secret_buffer(value: object) -> bytearray:
@@ -735,6 +852,7 @@ __all__ = [
     "WindowsCredWriteNativeBoundary",
     "WindowsCredentialManagerWriter",
     "canonical_provisioning_authorization_sha256",
+    "constant_width_masked_prompt",
     "current_windows_identity",
     "load_runtime_bound_source_provenance",
     "load_v536_provisioning_authorization",

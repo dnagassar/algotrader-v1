@@ -104,6 +104,7 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md",
         "docs/design/v5_36_1_credential_writer_diagnostic_repair_contract.md",
         "docs/design/v5_36_2_exact_runtime_source_binding_repair_contract.md",
+        "docs/design/v5_36_3_masked_provisioning_input_repair_contract.md",
         "docs/design/crypto_tournament_v2_oos_scheduler_task.xml"
     ]
     manifest = {}

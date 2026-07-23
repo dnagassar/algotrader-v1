@@ -62,11 +62,13 @@ approval, and its canonical SHA-256.
 
 The operator-only provisioner accepts no secret parameter, environment
 variable, pipeline value, or file. Python collects key, secret, and (for the
-paper-observation family) expected account identity using no-echo interactive
-input. Mutable buffers are assembled directly into the native generic
-credential record, passed to `CredWriteW`, and zeroized. The output is only a
-sanitized non-secret receipt. Default tests inject a fake writer and never call
-the Windows vault.
+paper-observation family) expected account identity using non-echoing
+interactive input. V5.36.3 displays one constant-width `*` only to indicate
+that the current field is non-empty; it never displays a credential character
+or credential length. Mutable buffers are assembled directly into the native
+generic credential record, passed to `CredWriteW`, and zeroized. The output is
+only a sanitized non-secret receipt. Default tests inject fake console and
+writer boundaries and never call the Windows vault.
 
 Market-data and paper-observation records are separate families. A market-data
 record must not contain an account identity. A paper-observation record must
@@ -111,6 +113,22 @@ then used for authorization commit/tree checks. Missing launcher/module
 bindings, ambient modules, dirty source, or digest mismatch produce only fixed
 sanitized classifications. No credential-record or native-write behavior is
 changed by this amendment.
+
+### V5.36.3 constant-width masked-input amendment
+
+V5.36.3 replaces the visually blank prompt with a direct Windows console
+reader that keeps terminal echo disabled. The prompt displays exactly one `*`
+while a field is non-empty, independent of its length, and erases that marker
+only when Backspace returns the field to empty. The only disclosed state is
+empty versus non-empty.
+
+The console reader and fixed-output writer are injected boundaries in default
+tests. Empty, malformed, overlong, interrupted, unavailable, or failed console
+input returns a fixed sanitized classification before the credential writer is
+constructed. No visible-input, redirected-stdin, environment, file, clipboard,
+GUI, or subprocess fallback exists. Native record layout, `CredWriteW`
+behavior, runtime-source binding, authorization, and single-attempt gates are
+unchanged.
 
 ## Canary Authorization Gate
 

@@ -1186,7 +1186,7 @@ window without a new milestone and new exact authorization.
 Credential writes are not included in the canary read authority. If either
 vault record is absent, stop and obtain a separate, one-family, at-most-one-hour
 `v5_36_windows_credential_provisioning_authorization_v1` grant. Only then may
-the exact principal use an interactive no-echo console:
+the exact principal use an interactive non-echoing masked console:
 
 ```powershell
 .\scripts\provision_v536_windows_credential.ps1 `
@@ -1197,7 +1197,10 @@ the exact principal use an interactive no-echo console:
 Run that command once per separately authorized family. Never redirect input,
 record the console, load credential aliases, or pass secrets as arguments.
 Provisioning does not authorize task mutation, network access, broker reads,
-or canary execution.
+or canary execution. The V5.36.3 prompt shows exactly one `*` while the
+current field is non-empty, regardless of field length. Backspace removes the
+marker only when the field becomes empty. The marker confirms input without
+echoing credential characters or length.
 
 ## V5.32 End-to-End Supervised Crypto Readiness Trial
 

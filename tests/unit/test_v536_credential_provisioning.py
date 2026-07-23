@@ -20,6 +20,7 @@ from algotrader.execution.v536_credential_provisioning import (
     WindowsCredWriteNativeBoundary,
     WindowsCredentialManagerWriter,
     canonical_provisioning_authorization_sha256,
+    constant_width_masked_prompt,
     load_runtime_bound_source_provenance,
     main,
     parse_v536_provisioning_authorization,
@@ -475,7 +476,147 @@ def test_unexpected_writer_failure_is_sanitized_and_material_is_closed() -> None
     assert material.closed
 
 
-def test_interactive_reader_uses_no_echo_prompt_and_never_prints_values(
+def test_constant_width_masked_prompt_reveals_presence_not_value_or_length() -> None:
+    characters = iter(KEY_SENTINEL + "\r")
+    output: list[str] = []
+
+    value = constant_width_masked_prompt(
+        "API key ID: ",
+        read_character=lambda: next(characters),
+        write_output=output.append,
+    )
+
+    assert value == KEY_SENTINEL
+    assert "".join(output) == "API key ID: *\n"
+    assert KEY_SENTINEL not in "".join(output)
+    assert len(KEY_SENTINEL) > "".join(output).count("*")
+
+
+def test_constant_width_mask_tracks_only_empty_nonempty_transitions() -> None:
+    characters = iter(("A", "B", "\b", "C", "\b", "\b", "D", "\r"))
+    output: list[str] = []
+
+    value = constant_width_masked_prompt(
+        "Field: ",
+        read_character=lambda: next(characters),
+        write_output=output.append,
+    )
+
+    assert value == "D"
+    assert "".join(output) == "Field: *\b \b*\n"
+
+
+def test_constant_width_mask_ignores_windows_extended_key_pair() -> None:
+    characters = iter(("\x00", "K", "A", "\r"))
+    output: list[str] = []
+
+    value = constant_width_masked_prompt(
+        "Field: ",
+        read_character=lambda: next(characters),
+        write_output=output.append,
+    )
+
+    assert value == "A"
+    assert "".join(output) == "Field: *\n"
+
+
+@pytest.mark.parametrize(
+    ("characters", "classification"),
+    (
+        (("\r",), "provisioning_masked_input_empty"),
+        (("A", " ", "\r"), "provisioning_masked_input_invalid"),
+        (("\x03",), "provisioning_masked_input_interrupted"),
+        (("\x1a",), "provisioning_masked_input_interrupted"),
+        (("AB",), "provisioning_masked_input_invalid"),
+    ),
+)
+def test_constant_width_masked_prompt_failures_are_fixed_and_secret_free(
+    characters: tuple[str, ...],
+    classification: str,
+) -> None:
+    values = iter(characters)
+    output: list[str] = []
+
+    with pytest.raises(V536ProvisioningError) as captured:
+        constant_width_masked_prompt(
+            "Field: ",
+            read_character=lambda: next(values),
+            write_output=output.append,
+        )
+
+    assert str(captured.value) == classification
+    assert KEY_SENTINEL not in repr(captured.value)
+    assert KEY_SENTINEL not in "".join(output)
+
+
+@pytest.mark.parametrize(
+    ("failure", "classification"),
+    (
+        (EOFError(SECRET_SENTINEL), "provisioning_masked_input_interrupted"),
+        (
+            KeyboardInterrupt(SECRET_SENTINEL),
+            "provisioning_masked_input_interrupted",
+        ),
+        (
+            RuntimeError(SECRET_SENTINEL),
+            "provisioning_masked_input_unavailable",
+        ),
+    ),
+)
+def test_constant_width_masked_reader_exceptions_are_sanitized(
+    failure: BaseException,
+    classification: str,
+) -> None:
+    def fail() -> str:
+        raise failure
+
+    with pytest.raises(V536ProvisioningError) as captured:
+        constant_width_masked_prompt(
+            "Field: ",
+            read_character=fail,
+            write_output=lambda _value: None,
+        )
+
+    assert str(captured.value) == classification
+    assert SECRET_SENTINEL not in repr(captured.value)
+
+
+def test_constant_width_masked_writer_failure_precedes_character_read() -> None:
+    reads: list[bool] = []
+
+    def fail(_value: str) -> None:
+        raise RuntimeError(SECRET_SENTINEL)
+
+    with pytest.raises(V536ProvisioningError) as captured:
+        constant_width_masked_prompt(
+            "Field: ",
+            read_character=lambda: reads.append(True) or "A",
+            write_output=fail,
+        )
+
+    assert str(captured.value) == "provisioning_masked_output_unavailable"
+    assert SECRET_SENTINEL not in repr(captured.value)
+    assert reads == []
+
+
+def test_constant_width_masked_prompt_rejects_overlong_input() -> None:
+    characters = iter(("A",) * 4097)
+    output: list[str] = []
+
+    with pytest.raises(
+        V536ProvisioningError,
+        match="provisioning_masked_input_too_long",
+    ):
+        constant_width_masked_prompt(
+            "Field: ",
+            read_character=lambda: next(characters),
+            write_output=output.append,
+        )
+
+    assert "".join(output) == "Field: *\n"
+
+
+def test_interactive_reader_uses_injected_secret_source_and_never_prints_values(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     answers = iter((KEY_SENTINEL, SECRET_SENTINEL, ACCOUNT_SENTINEL))
@@ -495,6 +636,85 @@ def test_interactive_reader_uses_no_echo_prompt_and_never_prints_values(
     assert SECRET_SENTINEL not in output
     assert ACCOUNT_SENTINEL not in output
     material.close()
+
+
+def test_interactive_reader_integrates_three_constant_width_masked_fields() -> None:
+    answers = iter((KEY_SENTINEL, SECRET_SENTINEL, ACCOUNT_SENTINEL))
+    output: list[str] = []
+
+    def prompt(label: str) -> str:
+        characters = iter(next(answers) + "\r")
+        return constant_width_masked_prompt(
+            label,
+            read_character=lambda: next(characters),
+            write_output=output.append,
+        )
+
+    material = read_interactive_provisioning_material(
+        CredentialFamily.ALPACA_PAPER_OBSERVATION,
+        prompt=prompt,
+    )
+
+    assert "".join(output) == (
+        "API key ID: *\n"
+        "API secret key: *\n"
+        "Expected paper account identity: *\n"
+    )
+    for sentinel in (KEY_SENTINEL, SECRET_SENTINEL, ACCOUNT_SENTINEL):
+        assert sentinel not in "".join(output)
+    material.close()
+
+
+def test_masked_prompt_failure_precedes_writer_factory() -> None:
+    writer_factory_calls: list[bool] = []
+
+    with pytest.raises(
+        V536ProvisioningError,
+        match="provisioning_masked_input_empty",
+    ):
+        provision_v536_credential(
+            authorization=parse_v536_provisioning_authorization(_payload()),
+            material_source=lambda: constant_width_masked_prompt(  # type: ignore[return-value]
+                "Field: ",
+                read_character=lambda: "\r",
+                write_output=lambda _value: None,
+            ),
+            writer=None,
+            writer_factory=lambda: writer_factory_calls.append(True),  # type: ignore[return-value]
+            current_identity="DOMAIN\\canary-user",
+            provenance=_provenance(),
+            clock=lambda: NOW,
+        )
+
+    assert writer_factory_calls == []
+
+
+def test_writer_factory_runs_after_material_acquisition() -> None:
+    events: list[str] = []
+    writer = FakeWriter()
+
+    receipt = provision_v536_credential(
+        authorization=parse_v536_provisioning_authorization(_payload()),
+        material_source=lambda: events.append("material") or _material(),
+        writer=None,
+        writer_factory=lambda: events.append("writer_factory") or writer,
+        current_identity="DOMAIN\\canary-user",
+        provenance=_provenance(),
+        clock=lambda: NOW,
+    )
+
+    assert events == ["material", "writer_factory"]
+    assert len(writer.calls) == 1
+    assert receipt["classification"] == "credential_record_provisioned"
+
+
+def test_masked_prompt_has_no_visible_or_redirected_input_fallback() -> None:
+    source = inspect.getsource(constant_width_masked_prompt).lower()
+    assert "getpass" not in source
+    assert "read-host" not in source
+    assert "input(" not in source
+    assert "subprocess" not in source
+    assert "clipboard" not in source
 
 
 def test_native_writer_uses_credwrite_directly_without_helpers_or_tempfiles() -> None:
