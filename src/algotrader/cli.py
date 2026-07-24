@@ -1786,6 +1786,21 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Execution ledger output format.",
     )
+    paper_boundary_check_parser = subparsers.add_parser(
+        "paper-boundary-check",
+        help=(
+            "Report the live-capital interlock verdict for the current "
+            "environment (paper profile + endpoint; live signals). Booleans and "
+            "variable names only; never prints a credential value."
+        ),
+    )
+    paper_boundary_check_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Interlock verdict output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -4292,6 +4307,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_autonomy_next_plan(args)
     if command == "autonomy-apply-plan":
         return _run_autonomy_apply_plan(args)
+    if command == "paper-boundary-check":
+        return _run_paper_boundary_check(args)
     if command == "etf-sma-cycle":
         return _run_etf_sma_cycle(args)
     if command == "etf-sma-cycle-brief":
@@ -6074,6 +6091,32 @@ def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
     if not args.apply and payload["eligible_count"] > 0:
         return 1
     return 0
+
+
+def _run_paper_boundary_check(args: argparse.Namespace) -> int:
+    from .execution.live_capital_interlock import evaluate_live_capital_interlock
+
+    verdict = evaluate_live_capital_interlock()
+    payload = verdict.to_dict()
+
+    if args.output_format == "json":
+        print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    else:
+        print("Live-capital interlock verdict")
+        print(f"paper_boundary_ok: {str(payload['paper_boundary_ok']).lower()}")
+        print(f"app_profile: {payload['app_profile']}")
+        print(f"endpoint_class: {payload['endpoint_class']}")
+        print(
+            "expected_paper_account_present: "
+            f"{str(payload['expected_paper_account_present']).lower()}"
+        )
+        signals = ",".join(payload["live_signals"]) or "none"
+        blockers = ",".join(payload["blockers"]) or "none"
+        print(f"live_signals: {signals}")
+        print(f"blockers: {blockers}")
+        print(f"live_authorized: {str(payload['live_authorized']).lower()}")
+
+    return 0 if payload["paper_boundary_ok"] else 1
 
 
 def _run_etf_sma_cycle(args: argparse.Namespace) -> int:

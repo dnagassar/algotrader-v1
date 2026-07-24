@@ -1433,3 +1433,26 @@ report (that lane disables staleness by design), so in practice the eligible set
 is empty and `-Apply` executes nothing — the intended fail-closed state. The
 detailed contract is in
 `docs/design/v5_39_gated_offline_autonomy_executor.md`.
+
+## V5.40 Live-Capital Interlock Boundary Verification
+
+The live-capital interlock is the runtime structural guard enforcing the paper-only repository execution policy. Before initiating paper-trading or broker-touching tasks, operators and autonomous callers run the boundary check to verify profile, endpoint, and live-signal status.
+
+```powershell
+# Human-readable operator verification
+python -m algotrader.cli paper-boundary-check
+
+# JSON payload output for automated tooling
+python -m algotrader.cli paper-boundary-check --format json
+```
+
+The command checks:
+1. `APP_PROFILE` must strictly equal `paper`.
+2. The broker endpoint base URL must contain `paper` and classify as a paper endpoint.
+3. No live enablement variables (`ALLOW_LIVE_TRADING`, etc.) or live host URLs (`api.alpaca.markets`) exist in the environment.
+
+Exit codes:
+- `0` — Paper boundary is satisfied (`paper_boundary_ok: true`).
+- `1` — Paper boundary refused / live signal detected (`paper_boundary_ok: false`).
+
+Detailed contract: `docs/design/v5_40_live_capital_interlock_contract.md`.
