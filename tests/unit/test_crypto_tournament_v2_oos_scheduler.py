@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from algotrader.errors import ValidationError
+from algotrader.execution.secure_credential_provider import CredentialReference
 from algotrader.orchestration.crypto_tournament_v2_oos_scheduler import (
     SCHEDULER_SCHEMA_VERSION,
     CalculationResult,
@@ -483,8 +484,15 @@ def test_regression_case_i() -> None:
 
 def test_dispatcher_command_argument_mapping() -> None:
     # Prove that requested_end_bar_open = 2026-07-18T20:00:00Z maps to command argument --as-of 2026-07-18T21:00:00Z
+    provider = MagicMock()
+    provider.validate.return_value = None
     dispatcher = RealCommandDispatcher(
-        scheduler_enabled=True, market_data_read_authorized=True
+        scheduler_enabled=True,
+        market_data_read_authorized=True,
+        credential_reference=CredentialReference(
+            "wincred:algotrader/v5.35/alpaca-market-data/offline-test"
+        ),
+        credential_provider=provider,
     )
     job = SchedulerJob(
         schema_version=SCHEDULER_SCHEMA_VERSION,
@@ -518,3 +526,5 @@ def test_dispatcher_command_argument_mapping() -> None:
         # Verify the --as-of command line argument
         as_of_idx = cmd.index("--as-of")
         assert cmd[as_of_idx + 1] == "2026-07-18T21:00:00+00:00"
+        assert "--credential-reference" in cmd
+        assert not any("sensitive" in str(item) for item in cmd)

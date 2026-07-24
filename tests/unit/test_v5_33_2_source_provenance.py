@@ -47,7 +47,35 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
         assert provenance["source_branch_or_detached"] == "feature-branch"
         assert len(provenance["adapter_source_bundle_sha256"]) == 64
         assert isinstance(provenance["source_bundle_manifest"], dict)
-        assert len(provenance["source_bundle_manifest"]) == 9
+        assert {
+            "src/algotrader/execution/secure_credential_provider.py",
+            "src/algotrader/execution/v535_unattended_readonly.py",
+            "src/algotrader/execution/v535_burn_in_status.py",
+            "src/algotrader/execution/v536_canary_authorization.py",
+            "src/algotrader/execution/v536_credential_provisioning.py",
+            "src/algotrader/execution/v536_windows_task.py",
+            "src/algotrader/execution/v536_windows_host_canary.py",
+            "src/algotrader/execution/crypto_history_refresh_adapter.py",
+            "src/algotrader/orchestration/crypto_tournament_v2_forward_oos.py",
+            "src/algotrader/orchestration/crypto_tournament_v2_oos_scheduler.py",
+            "scripts/run_v535_unattended_readonly.ps1",
+            "scripts/run_v536_windows_host_canary.ps1",
+            "scripts/provision_v536_windows_credential.ps1",
+            "scripts/launch_v536_credential_provisioning.py",
+            "docs/design/v5_35_secure_unattended_read_only_acceptance_contract.md",
+            "docs/design/v5_35_credential_provider_and_threat_boundary.md",
+            "docs/design/v5_36_windows_host_commissioning_canary_acceptance_contract.md",
+            "docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md",
+            "docs/design/v5_36_1_credential_writer_diagnostic_repair_contract.md",
+            "docs/design/v5_36_2_exact_runtime_source_binding_repair_contract.md",
+            "docs/design/v5_36_3_masked_provisioning_input_repair_contract.md",
+            "docs/design/v5_36_4_credential_writer_stage_diagnostic_contract.md",
+            "docs/design/v5_36_4a_native_buffer_view_lifetime_repair_contract.md",
+            "docs/design/v5_36_4b_direct_bytearray_address_contract.md",
+            "docs/design/v5_36_5_external_canary_authorization_path_contract.md",
+            "docs/design/v5_36_5a_concurrent_evidence_scan_coordination_contract.md",
+            "docs/design/crypto_tournament_v2_oos_scheduler_task.xml",
+        }.issubset(provenance["source_bundle_manifest"])
 
 
 def test_dirty_source_worktree_blocks_before_client_construction(tmp_path: Path) -> None:

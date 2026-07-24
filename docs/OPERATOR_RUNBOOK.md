@@ -1020,6 +1020,17 @@ before venue refresh, planning, exact grant, paper lifecycle, and closeout.
 
 ## Deterministic One-Shot Tournament-V2 OOS Scheduler
 
+V5.35 replaces the unattended production action with
+`scripts/run_v535_unattended_readonly.ps1`. The older scheduler wrapper remains
+available for credential-free preview/status/recovery only; its real dispatcher
+now fails closed without an injected secure provider and reference. The V5.35
+wrapper rejects inherited credential/profile aliases and passes only non-secret
+Windows Credential Manager references.
+
+The canonical XML template is disabled at task and trigger levels and disallows
+start-on-demand. V5.35 verification does not provision credentials, register
+the template, enable it, or run it. Those are separate operator gates.
+
 The one-shot scheduler calculates eligible closed crypto hours, claims jobs atomically using SQLite transaction fencing, dispatches the existing accrual command, and records durable audit receipts. It is entirely offline by default, never polls or sleeps, and enforces strict security gates.
 
 ### Usage Modes
@@ -1028,7 +1039,7 @@ The one-shot scheduler calculates eligible closed crypto hours, claims jobs atom
   ```powershell
   .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode preview
   ```
-* **Run Once**: Runs the scheduler in real mode. It requires explicit authorization switches and will execute the accrual lane if an eligible closed window is calculated:
+* **Legacy Run Once**: This older command has no complete V5.35 credential boundary and now fails closed. Do not use it for V5.35:
   ```powershell
   .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork
   ```
@@ -1057,9 +1068,9 @@ The one-shot scheduler calculates eligible closed crypto hours, claims jobs atom
     ```powershell
     .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
     ```
-*   **Executing the Rerun**: After resetting, the job transitions to `pending`. Execute the normal one-shot run command to dispatch and rerun the job:
+*   **Executing the Rerun**: No unattended rerun is authorized by V5.35. Leave a failed window blocked for separately scoped operator review:
     ```powershell
-    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork
+    # No V5.35 rerun command is authorized by this milestone.
     ```
 *   **Avoiding Skipped Intervals**: Since the scheduler computes the eligible window starting immediately after the accepted frontier, a blocked/failed job blocks subsequent hours from being processed in that lane. Once reset and rerun successfully, the accepted frontier advances, ensuring that no intervals are skipped or processed out of order.
 
@@ -1074,23 +1085,152 @@ The one-shot scheduler calculates eligible closed crypto hours, claims jobs atom
 
 ### Windows Scheduled Task Template
 
-A Windows Task Scheduler XML template is available at `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`. It triggers 5 minutes after every UTC hour boundary, uses least privileges, prevents overlapping executions (`MultipleInstancesPolicy = IgnoreNew`), and has a 15-minute execution limit.
+A disabled Windows Task Scheduler XML template is available at `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`. It describes a trigger 5 minutes after every UTC hour boundary, uses least privileges, prevents overlapping executions (`MultipleInstancesPolicy = IgnoreNew`), and has a 15-minute execution limit. It is review evidence only in V5.35.
 
-To preview or register/unregister the task, use the registration helper script:
+Only preview the resolved XML during V5.35:
 *   **Preview XML Template (Default)**:
     ```powershell
     .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1
     ```
-*   **Register Scheduled Task**:
-    ```powershell
-    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -RegisterTask
-    ```
-*   **Unregister Scheduled Task**:
-    ```powershell
-    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 -UnregisterTask
-    ```
+
+Do not use the helper's registration or unregistration switches under V5.35;
+task mutation remains outside the milestone authorization.
 
 No real credentials, live endpoints, or trading actions are permitted or stored in the task configuration.
+
+## V5.36 Independent-Review And One-Canary Route
+
+V5.36 adds a generated, one-time Windows task around the V5.35 production
+read-only dispatcher. It does not use the recurring V5.35 review template and
+never calls `Start-ScheduledTask`. The task is installed disabled, attested,
+armed for exactly one UTC trigger, and disarmed after its first attempt. Final
+commissioning requires a later credential-free terminal attestation.
+
+The implementation milestone performs none of those host operations. The
+authorization template containing `<EXACT_CLOSED_WINDOW>`,
+`<NON_SECRET_REFERENCE>`, `<VERIFIED_V5_36_COMMIT>`, or `<EXACT_UTC_TIME>` is
+not executable. First obtain independent review of the exact clean V5.36
+commit. Then create one strict, non-secret
+`v5_36_scheduled_canary_authorization_v1` artifact outside generated output,
+using the exact field contract in
+`docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md`.
+Never put credential values or a raw account identity in that artifact or in
+chat. V5.36.5 explicitly supports an operator-owned authorization file outside
+the deployment root. The file must be an absolute, existing, non-symlink
+regular file. The repository-owned wrapper and task working directory remain
+strictly contained within the exact deployment root.
+
+V5.36.5a also coordinates immutable canary evidence writes with the structural
+secret scan so an active repository-owned atomic write cannot be mistaken for
+a residual temporary artifact. The scan still blocks on every temporary file
+that exists while it owns the evidence boundary; operators must not delete,
+rename, or retry around such a result.
+
+From a normal credential-free shell owned by the exact task principal, preview
+the resolved task definition:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode preview `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH>
+```
+
+If preview blocks, stop. Do not edit around the validator. If both exact vault
+records already exist for the same Windows principal, proceed to disabled
+installation only under the independently reviewed authorization:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode install-disabled `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH> `
+  -TaskMutationAuthorized
+
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode attest-disabled `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH>
+```
+
+Review the disabled attestation before arming. Arm no earlier than 15 minutes
+before the exact scheduled start and before that start:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode arm-exact-window `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH> `
+  -TaskMutationAuthorized `
+  -CredentialReadAuthorized
+```
+
+Do not manually start the task and do not invoke `-Mode execute` from the
+operator console. Task Scheduler owns the single trigger. The registered
+action supplies only the absolute non-secret authorization path and the three
+required switches. It resolves credentials inside the production boundary,
+performs at most the exact market-data GET and paper account/position/order/
+asset reads, then attempts disarm regardless of result.
+
+If emergency disarm is needed before or after the trigger, this credential-free
+operation constructs neither a vault provider nor a broker client:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode disarm `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH> `
+  -TaskMutationAuthorized
+```
+
+After the task has exited, run terminal attestation from a credential-free
+shell:
+
+```powershell
+.\scripts\run_v536_windows_host_canary.ps1 `
+  -Mode post-run-attest `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_CANARY_AUTHORIZATION_PATH>
+```
+
+Only `scheduled_read_only_canary_commissioning_complete` records a successful
+one-attempt commissioning packet. Any `blocked_*` result is terminal for that
+authorization: do not retry, reset, extend the deadline, or schedule another
+window without a new milestone and new exact authorization.
+
+Credential writes are not included in the canary read authority. If either
+vault record is absent, stop and obtain a separate, one-family, at-most-one-hour
+`v5_36_windows_credential_provisioning_authorization_v1` grant. Only then may
+the exact principal use an interactive non-echoing masked console:
+
+```powershell
+.\scripts\provision_v536_windows_credential.ps1 `
+  -AuthorizationArtifact <ABSOLUTE_RESOLVED_PROVISIONING_AUTHORIZATION_PATH> `
+  -ProvisionAuthorized
+```
+
+Run that command once per separately authorized family. Never redirect input,
+record the console, load credential aliases, or pass secrets as arguments.
+Provisioning does not authorize task mutation, network access, broker reads,
+or canary execution. The V5.36.3 prompt shows exactly one `*` while the
+current field is non-empty, regardless of field length. Backspace removes the
+marker only when the field becomes empty. The marker confirms input without
+echoing credential characters or length.
+
+V5.36.4 may additionally return
+`credential_writer_native_setup_failed`,
+`credential_writer_native_invocation_failed`, or
+`credential_writer_unknown_native_failure`. These are fixed diagnostic
+classifications only. They do not prove credential-record state and do not
+authorize inspection, retry, remediation, Task Scheduler work, network access,
+broker access, or canary execution. Preserve the grant as terminal and route
+any identified adapter defect through a new frozen repair contract and
+independent review.
+
+V5.36.4a isolated the temporary native buffer-view lifetime defect before
+mandatory zeroization. Its first release mechanism was rejected by synthetic
+proof before a production commit. This changes no operator command or
+authority. Earlier credential-record state remains unknown, and fresh grants
+remain prohibited until independent review.
+
+V5.36.4b avoids creating the exported native buffer view entirely by binding
+the original mutable record through CPython's direct bytearray address API.
+The record is still overwritten and cleared immediately, with no copy or
+operator-procedure change.
 
 ## V5.32 End-to-End Supervised Crypto Readiness Trial
 

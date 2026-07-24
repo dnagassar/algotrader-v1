@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from algotrader.errors import ValidationError
+from algotrader.execution.secure_credential_provider import CredentialReference
 from algotrader.orchestration.crypto_tournament_v2_oos_scheduler import (
     SCHEDULER_SCHEMA_VERSION,
     SchedulerJob,
@@ -535,7 +536,7 @@ def test_environment_isolation_and_live_rejection() -> None:
         with pytest.raises(ValidationError, match="APP_PROFILE cannot be 'live'"):
             dispatcher.dispatch(job, Path("root"), Path("source"), Path("receipt"), allow_network=True)
 
-    # 2. Test minimal allowlisted env filtering
+    # 2. Credential aliases are rejected before child creation.
     with patch.dict(os.environ, {
         "APP_PROFILE": "paper",
         "ALPACA_API_KEY": "sensitive_key",
@@ -545,12 +546,42 @@ def test_environment_isolation_and_live_rejection() -> None:
     }, clear=True):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            
-            # Create files so dispatch doesn't fail on missing manifest checks
-            # (though mock_run is mocked, so let's mock the file exists check or create files)
-            with patch.object(Path, "is_file", return_value=True), patch("algotrader.orchestration.crypto_tournament_v2_oos_scheduler._file_sha256", return_value="hash"):
+            with pytest.raises(
+                ValidationError,
+                match="credential environment aliases are forbidden",
+            ):
                 dispatcher.dispatch(job, Path("root"), Path("source"), Path("receipt"), allow_network=True)
-            
+            assert not mock_run.called
+
+    # 3. A clean process receives only the minimal public environment.
+    provider = MagicMock()
+    provider.validate.return_value = None
+    secure_dispatcher = RealCommandDispatcher(
+        scheduler_enabled=True,
+        market_data_read_authorized=True,
+        credential_reference=CredentialReference(
+            "wincred:algotrader/v5.35/alpaca-market-data/offline-test"
+        ),
+        credential_provider=provider,
+    )
+    with patch.dict(os.environ, {
+        "SYSTEMROOT": "C:\\Windows",
+        "MY_UNRELATED_VAR": "should_be_scrubbed",
+    }, clear=True):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="{}")
+            with patch.object(Path, "is_file", return_value=True), patch(
+                "algotrader.orchestration.crypto_tournament_v2_oos_scheduler._file_sha256",
+                return_value="hash",
+            ):
+                secure_dispatcher.dispatch(
+                    job,
+                    Path("root"),
+                    Path("source"),
+                    Path("receipt"),
+                    allow_network=True,
+                )
+
             assert mock_run.called
             run_kwargs = mock_run.call_args[1]
             child_env = run_kwargs["env"]

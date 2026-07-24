@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import sys
@@ -22,6 +23,12 @@ from typing import Callable, Mapping, Sequence
 
 from algotrader.errors import ValidationError
 from algotrader.core.time import require_utc_datetime
+
+WINDOWS_PROVIDER_NAME = "windows-credential-manager"
+_V535_MARKET_CREDENTIAL_REFERENCE_RE = re.compile(
+    r"\Awincred:algotrader/v5[.]35/alpaca-market-data/"
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z"
+)
 
 SCHEDULER_VERSION = "v5.31a_v2"
 SCHEDULER_SCHEMA_VERSION = "v5_31a_scheduler_schema_v2"
@@ -851,10 +858,33 @@ class PreviewDispatcher(CommandDispatcher):
 
 class RealCommandDispatcher(CommandDispatcher):
     def __init__(
-        self, scheduler_enabled: bool, market_data_read_authorized: bool
+        self,
+        scheduler_enabled: bool,
+        market_data_read_authorized: bool,
+        *,
+        credential_reference: object | None = None,
+        credential_provider: object | None = None,
+        credential_provider_name: str = WINDOWS_PROVIDER_NAME,
+        app_profile: str = "paper",
+        paper_endpoint: str = "https://paper-api.alpaca.markets",
+        market_data_endpoint: str = "https://data.alpaca.markets",
+        process_runner: Callable[..., object] | None = None,
     ) -> None:
         self.scheduler_enabled = scheduler_enabled
         self.market_data_read_authorized = market_data_read_authorized
+        if credential_reference is not None and not _V535_MARKET_CREDENTIAL_REFERENCE_RE.fullmatch(
+            str(credential_reference)
+        ):
+            raise ValidationError(
+                "Real dispatch rejected: malformed market-data credential reference."
+            )
+        self.credential_reference = credential_reference
+        self.credential_provider = credential_provider
+        self.credential_provider_name = credential_provider_name
+        self.app_profile = app_profile
+        self.paper_endpoint = paper_endpoint
+        self.market_data_endpoint = market_data_endpoint
+        self.process_runner = process_runner
 
     def dispatch(
         self,
@@ -875,16 +905,62 @@ class RealCommandDispatcher(CommandDispatcher):
                 "Real dispatch rejected: AllowNetwork is false."
             )
 
-        # Active rejection for configured live or trading endpoints
-        app_profile = os.environ.get("APP_PROFILE", "").lower()
-        if app_profile == "live":
-            raise ValidationError("Real dispatch rejected: APP_PROFILE cannot be 'live'.")
+        if self.app_profile.strip().lower() != "paper":
+            raise ValidationError("Real dispatch rejected: exact paper profile required.")
+        if self.paper_endpoint.strip().lower().rstrip("/") != "https://paper-api.alpaca.markets":
+            raise ValidationError("Real dispatch rejected: exact paper endpoint required.")
+        if self.market_data_endpoint.strip().lower().rstrip("/") != "https://data.alpaca.markets":
+            raise ValidationError("Real dispatch rejected: exact market-data endpoint required.")
+
+        if str(os.environ.get("APP_PROFILE", "")).strip().lower() == "live":
+            raise ValidationError(
+                "Real dispatch rejected: APP_PROFILE cannot be 'live'."
+            )
+
+        credential_aliases = {
+            "ALPACA_API_KEY",
+            "ALPACA_API_KEY_ID",
+            "ALPACA_API_SECRET_KEY",
+            "ALPACA_SECRET_KEY",
+            "APCA_API_KEY_ID",
+            "APCA_API_SECRET_KEY",
+        }
+        if any(str(os.environ.get(name, "")).strip() for name in credential_aliases):
+            raise ValidationError(
+                "Real dispatch rejected: credential environment aliases are forbidden."
+            )
 
         for k, v in os.environ.items():
             if "alpaca.markets" in v.lower():
                 hostname = _extract_hostname(v)
                 if hostname == "api.alpaca.markets":
                     raise ValidationError(f"Real dispatch rejected: Live Alpaca endpoint found in environment variable {k}.")
+
+        if self.credential_reference is None:
+            raise ValidationError(
+                "Real dispatch rejected: secure credential reference required."
+            )
+        try:
+            provider = self.credential_provider
+            if provider is None or not callable(getattr(provider, "validate", None)):
+                raise ValidationError(
+                    "Real dispatch rejected: secure credential provider required."
+                )
+            provider.validate(  # type: ignore[attr-defined]
+                self.credential_reference,
+                expected_family="alpaca-market-data",
+            )
+        except ValidationError:
+            raise
+        except Exception as exc:
+            classification = getattr(exc, "classification", "credential_provider_failed")
+            if type(classification) is not str or not re.fullmatch(
+                r"[a-z][a-z0-9_]{0,63}", classification
+            ):
+                classification = "credential_provider_failed"
+            raise ValidationError(
+                f"Real dispatch rejected: {classification}."
+            ) from None
 
         cmd = [
             sys.executable,
@@ -903,6 +979,16 @@ class RealCommandDispatcher(CommandDispatcher):
             "--allow-network",
             "--as-of",
             job.provider_as_of_boundary.isoformat(),
+            "--credential-provider",
+            self.credential_provider_name,
+            "--credential-reference",
+            str(self.credential_reference),
+            "--app-profile",
+            self.app_profile,
+            "--paper-endpoint",
+            self.paper_endpoint,
+            "--market-data-endpoint",
+            self.market_data_endpoint,
         ]
 
         # Minimal allowlisted child environment
@@ -939,7 +1025,8 @@ class RealCommandDispatcher(CommandDispatcher):
                     env[k] = v
 
         try:
-            result = subprocess.run(
+            run_process = self.process_runner or subprocess.run
+            result = run_process(
                 cmd,
                 capture_output=True,
                 text=True,
@@ -952,8 +1039,7 @@ class RealCommandDispatcher(CommandDispatcher):
                     "classification": "subprocess_error",
                     "dispatch_type": "real",
                     "exit_code": result.returncode,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "output_discarded": True,
                 }
             # Try to parse stdout as json
             try:
@@ -969,14 +1055,12 @@ class RealCommandDispatcher(CommandDispatcher):
                     "status": "failed",
                     "classification": "missing_operating_packet",
                     "dispatch_type": "real",
-                    "reason": f"Expected operating packet at {packet_path} was not created.",
                 }
             if not state_path.is_file():
                 return {
                     "status": "failed",
                     "classification": "missing_frozen_state",
                     "dispatch_type": "real",
-                    "reason": f"Expected frozen state at {state_path} was not created.",
                 }
 
             packet_hash = _file_sha256(packet_path)
@@ -1008,7 +1092,7 @@ class RealCommandDispatcher(CommandDispatcher):
                 "classification": "subprocess_exception",
                 "dispatch_type": "real",
                 "error_type": exc.__class__.__name__,
-                "reason": str(exc),
+                "output_discarded": True,
             }
 
 
