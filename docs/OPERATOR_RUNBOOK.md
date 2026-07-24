@@ -199,6 +199,33 @@ Upon completion, the launcher prints a compact final summary:
 * **Git Artifact Verification**: Confirms that no generated artifacts are tracked or staged.
 * **Key Output Artifact Paths**: List of generated files relative and POSIX-style.
 
+### Per-Worktree Interpreter Binding
+
+Before the first `-Full` run in a worktree (and after switching worktrees), bind
+the system Python's editable `algotrader` install to the current worktree:
+
+```powershell
+.\scripts\bind_worktree_python.ps1
+```
+
+The full suite includes subprocess wrappers (the V5.30 bounded paper-probe
+lifecycle and the independent-flat operator) that resolve a trusted, signed,
+*registered* Python interpreter and strip `PYTHONPATH` by design. They import
+`algotrader` from the system interpreter's site-packages, so a virtual
+environment cannot satisfy them. There is one registered interpreter, and its
+editable install points at whichever worktree it was last bound to; if that
+worktree is deleted it dangles, and those wrappers fail with
+`ModuleNotFoundError: No module named 'algotrader'` even though every in-process
+test still passes (pytest's `pythonpath=["src"]` shadows the broken install).
+`bind_worktree_python.ps1` repoints that install at the current worktree. It is
+package management only: no credentials, broker, paper, trading-network, or Task
+Scheduler action. Use `-WithDependencies` for a first-time machine setup.
+
+`verify_offline.ps1 -Full` runs this binding check automatically and auto-binds
+the current worktree by default before executing the suite, so the normal flow
+is just `.\scripts\verify_offline.ps1 -Full`. Pass `-NoAutoBind` to require an
+explicit prior bind and fail fast instead of auto-binding.
+
 ### Complete Offline Verification
 
 Run the canonical full default collection with bounded deterministic sharding:
@@ -208,13 +235,15 @@ Run the canonical full default collection with bounded deterministic sharding:
 ```
 
 The full verifier collects the default suite once, partitions every node ID
-exactly once across four balanced argument files, recollects each shard to prove
-there are no missing, duplicate, or extra tests, and then executes the shards
-with isolated temporary state and per-shard timeouts. It fails on any collection
-drift, timeout, nonzero pytest exit, missing JUnit result, or aggregate testcase
-count mismatch. The summary includes shard wall times and the slowest files by
-aggregate testcase seconds. It does not add skip, deselect, marker, network, or
-credential overrides.
+exactly once across one balanced argument file per shard, recollects each shard
+to prove there are no missing, duplicate, or extra tests, and then executes the
+shards in parallel with isolated temporary state and per-shard timeouts. The
+shard count auto-scales to the detected logical CPU count (capped at 16); pin it
+with `-Full -Shards <n>`. It fails on any collection drift, timeout, nonzero
+pytest exit, missing JUnit result, or aggregate testcase count mismatch. The
+summary includes shard wall times and the slowest files by aggregate testcase
+seconds. It does not add skip, deselect, marker, network, or credential
+overrides.
 
 ## Authoritative SPY EOD Market-Data Refresh
 
@@ -1271,3 +1300,159 @@ indicator. This lane is read-only and no-submit; the script has no paper
 mutation, submit, cancel, replace, close, liquidation, or live switch. Without
 inherited credentials, retain the default
 `blocked_credentials_unavailable` classification and do not expose secrets.
+
+## V5.37 Cross-Lane Autonomy Supervisor
+
+Run the supervisor from a normal credential-free development shell to get one
+whole-system readout across every autonomy lane. It reads only local evidence
+artifacts, never loads credentials or the network, and never mutates anything.
+
+```powershell
+.\scripts\run_autonomy_supervisor.ps1 `
+  -RunId supervisor-<yyyymmdd> `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -Format text
+```
+
+The wrapper refuses to run if `APP_PROFILE=paper`/`live` or any Alpaca
+credential/network-test variable is loaded; this command must never see
+secrets. `-AsOf` is required and is the only time source (no wall clock is read),
+so the report is deterministic. Provide it as an ISO-8601 UTC timestamp.
+
+For a machine-readable record, add `-Format json` and `-RunLog
+runs\autonomy_supervisor\latest\report.jsonl` to write exactly one JSONL record.
+
+The command reports, per lane, a normalized state in
+`absent`/`waiting`/`nominal`/`stale`/`attention_required`/`unknown`/`blocked`,
+the surfaced blockers, and one offline next action. The whole-system
+`system_status` is `blocked` if any lane is blocked, `attention_required` if any
+lane is unknown, attention, or stale, `waiting` if any lane is waiting, `nominal`
+if at least one lane is healthy, and `no_lane_evidence` when nothing has run yet.
+Exit code is `0` for nominal/waiting/no_lane_evidence, `1` for
+attention/blocked, and `2` on input error, so it is schedulable.
+
+In a clean checkout every lane reads `absent` because its `runs/` evidence is
+generated and gitignored; run the individual lane commands first to seed
+evidence. To point a lane at an exact artifact instead of its default path, pass
+`-Lane "lane_id=path"` (repeatable), for example:
+
+```powershell
+.\scripts\run_autonomy_supervisor.ps1 `
+  -RunId supervisor-<yyyymmdd> `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -Lane "crypto_bounded_paper_probe_review=runs\crypto_strategy_tournament\v2\bounded_paper_probe_review\latest\review.json" `
+  -Format text
+```
+
+Known lane ids: `spy_market_data_soak`, `spy_offline_daily_cycle`,
+`crypto_supervised_readiness_trial`, `crypto_forward_shadow_cycle`,
+`crypto_bounded_paper_probe_review`, `crypto_capability_production`. A
+`recommended_next_action` is always an offline, read-only, or operator-review
+follow-up; it never authorizes or names a broker mutation. The detailed contract
+is in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+
+## V5.38 Offline Autonomy Next-Action Planner
+
+The supervisor tells you *what state* each lane is in; the planner tells you
+*what to do next*. Run it from the same credential-free shell to turn the
+supervisor's abstract recommendations into a concrete, safety-classified plan.
+
+```powershell
+.\scripts\run_autonomy_next_plan.ps1 `
+  -RunId plan-<yyyymmdd> `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -Format text
+```
+
+Like the supervisor, the wrapper refuses to run under a loaded profile or any
+Alpaca credential/network-test variable, `-AsOf` is the only time source, and it
+reads only local evidence. Add `-Format json` and `-RunLog
+runs\autonomy_next_plan\latest\plan.jsonl` for a machine-readable record, and
+`-Lane "lane_id=path"` (repeatable) to point a lane at an exact artifact.
+
+For each lane the plan reports an execution class and, when applicable, the exact
+offline command to run:
+
+- `noop` — lane nominal or healthily waiting; nothing to run.
+- `offline_operator_input` — an offline command exists but needs operator-supplied
+  inputs (listed under `required_operator_inputs`). Today: the SPY offline daily
+  cycle seed `etf-sma-offline-daily-cycle-run` (needs `--validated-at` and
+  `--daily-bars-csv`).
+- `auto_offline` — a fully-defaulted offline command exists (today:
+  `etf-sma-offline-daily-cycle-rerun-m446`, which needs the refreshed M446 CSV
+  present). Only unattended-execution authority remains.
+- `operator_gated` — no offline path; the `gate` names why
+  (`network_market_data_fetch`, `broker_observation`, `operator_review`,
+  `task_scheduler_health`, `no_offline_command_available`).
+
+The whole-system `plan_class` is `offline_action_available`,
+`operator_authority_required`, or `all_nominal_or_waiting`; `next_offline_action`
+names the single highest-leverage offline-runnable action. Exit code is `0` when
+nothing is pending, `1` when an action is pending, and `2` on input error — a
+pending-action signal distinct from the supervisor's severity signal.
+
+Important gate: the planner **plans** commands but never runs them. In a clean
+checkout it will show one offline-runnable action (the daily-cycle seed) that
+still needs operator inputs, plus operator-gated lanes — i.e. no lane can be
+advanced without operator input or operator authority. Wiring the system to run
+even the offline commands unattended is a separate, higher milestone that
+requires explicit operator authorization. The detailed contract is in
+`docs/design/v5_38_offline_autonomy_next_action_planner.md`.
+
+## V5.39 Gated Offline Autonomy Executor
+
+The executor is the one authorized step that *acts* on the plan — running only
+the offline-runnable, allowlisted subset. It is dry-run by default; you must pass
+`-Apply` to actually execute.
+
+```powershell
+# Dry run: show what would run, execute nothing.
+.\scripts\run_autonomy_apply_plan.ps1 -RunId apply-<yyyymmdd> -AsOf <UTC> -Format text
+
+# Apply: actually run the eligible allowlisted offline commands.
+.\scripts\run_autonomy_apply_plan.ps1 -RunId apply-<yyyymmdd> -AsOf <UTC> -Apply `
+  -RunLog runs\autonomy_apply_plan\latest\ledger.jsonl -Format json
+```
+
+The wrapper and the executor both refuse to run under `APP_PROFILE=paper`/`live`
+or any Alpaca credential/network-test variable (reporting the variable name only,
+never its value), and each executed command runs with a child environment that
+strips every credential/profile variable. Only commands on the frozen
+`AUTONOMY_EXECUTOR_ALLOWLIST` are ever run — today just
+`etf-sma-offline-daily-cycle-rerun-m446`; the daily-cycle seed is excluded
+because it needs operator-supplied inputs (it is skipped with
+`requires_operator_input`). The ledger records eligible, skipped, and executed
+actions with exit codes and every safety boolean false.
+
+Exit code: `2` on input error or a preflight-refused `-Apply`; `1` on a failed
+execution or a dry run with eligible work pending; `0` otherwise.
+
+Note (current behaviour): the sole allowlisted command triggers on the SPY
+offline daily cycle lane being `stale`, which the supervisor does not currently
+report (that lane disables staleness by design), so in practice the eligible set
+is empty and `-Apply` executes nothing — the intended fail-closed state. The
+detailed contract is in
+`docs/design/v5_39_gated_offline_autonomy_executor.md`.
+
+## V5.40 Live-Capital Interlock Boundary Verification
+
+The live-capital interlock is the runtime structural guard enforcing the paper-only repository execution policy. Before initiating paper-trading or broker-touching tasks, operators and autonomous callers run the boundary check to verify profile, endpoint, and live-signal status.
+
+```powershell
+# Human-readable operator verification
+python -m algotrader.cli paper-boundary-check
+
+# JSON payload output for automated tooling
+python -m algotrader.cli paper-boundary-check --format json
+```
+
+The command checks:
+1. `APP_PROFILE` must strictly equal `paper`.
+2. The broker endpoint base URL must contain `paper` and classify as a paper endpoint.
+3. No live enablement variables (`ALLOW_LIVE_TRADING`, etc.) or live host URLs (`api.alpaca.markets`) exist in the environment.
+
+Exit codes:
+- `0` — Paper boundary is satisfied (`paper_boundary_ok: true`).
+- `1` — Paper boundary refused / live signal detected (`paper_boundary_ok: false`).
+
+Detailed contract: `docs/design/v5_40_live_capital_interlock_contract.md`.

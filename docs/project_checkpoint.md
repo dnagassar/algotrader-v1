@@ -15070,3 +15070,92 @@ Safe next tasks include:
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,
 and no-network defaults for normal test runs.
+
+- V5.37 adds `autonomy-supervisor-status`, one deterministic offline cross-lane
+  autonomy supervisor over the independent autonomy lanes. It reads only the
+  local latest evidence artifact for each registered lane
+  (`src/algotrader/execution/autonomy_supervisor.py`,
+  `AUTONOMY_SUPERVISOR_LANES`: SPY unattended market-data soak, SPY ETF/SMA
+  offline daily cycle chain, crypto V5.32 supervised readiness trial, crypto V2
+  forward-shadow cycle, crypto V2 bounded paper-probe review, crypto V2
+  capability production), normalizes each lane's declared state field into the
+  strict vocabulary `blocked`/`unknown`/`attention_required`/`stale`/`waiting`/
+  `nominal`/`absent`, computes staleness only against an explicit caller
+  `--as-of` (no wall-clock read), and aggregates one whole-system `system_status`
+  with a single `recommended_next_action`. `system_status` is `blocked` if any
+  lane is blocked, else `attention_required` if any lane is unknown, attention,
+  or stale, else `waiting`, else `nominal`, else `no_lane_evidence`; the command
+  exits `0` for nominal/waiting/no_lane_evidence, `1` for attention/blocked, and
+  `2` on validation error. Missing, unreadable, or ambiguous artifacts fail
+  closed to `absent`/`blocked`/`unknown`, and any source safety boolean that is
+  not false blocks that lane. Default artifact paths are best-effort canonical
+  `runs/` locations (all read `absent` in a clean checkout); operators may point
+  any lane at its exact latest artifact with `--lane LANE_ID=PATH`. The command
+  loads no profile, reads no environment/credential, imports no broker SDK, opens
+  no socket, and performs no submit, cancel, replace, close, liquidation, paper
+  mutation, capital, or live action; every record fixes `submitted`, `mutated`,
+  `broker_action_performed`, `broker_mutation_allowed`, `network_access_attempted`,
+  `credential_access_attempted`, and `live_authorized` to false with
+  `profit_claim=none`. Recommended next actions are always offline, read-only, or
+  operator-review follow-ups and never name a broker mutation. V5.37 materially
+  increases supervisable end-to-end autonomy by turning many independently
+  fail-closed lanes into one deterministic supervisory view; it adds no
+  strategy-performance evidence and changes no live-capital readiness. Focused
+  suite `tests/unit/test_autonomy_supervisor.py` (25 tests) plus the targeted
+  offline safety guards (99 tests) are green. The detailed immutable contract is
+  in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+
+- V5.38 adds `autonomy-next-plan`, one deterministic offline planner over the
+  V5.37 supervisor report (`src/algotrader/execution/autonomy_next_plan.py`). It
+  classifies each lane's abstract `recommended_next_action` token against the
+  frozen registry `AUTONOMY_ACTION_CLASSIFICATION` into an execution class
+  (`noop`, `auto_offline`, `offline_operator_input`, `operator_gated`) with the
+  exact offline command when one exists, the operator-supplied inputs it still
+  needs, its preconditions, and — when no offline path exists — the specific
+  operator gate. It aggregates one whole-system `plan_class`
+  (`offline_action_available`, `operator_authority_required`, or
+  `all_nominal_or_waiting`), the highest-severity `next_offline_action`, and the
+  full set of operator-gated actions; the command exits `0` when nothing is
+  pending, `1` when an action is pending, and `2` on validation error. It has the
+  same safety profile as the supervisor and, critically, spawns no subprocess: it
+  plans commands and never executes them; every record fixes the same safety
+  booleans to false with `profit_claim=none`, and an unclassified token fails
+  closed to an operator-review gate. `AUTONOMY_ACTION_CLASSIFICATION` provably
+  covers every action the supervisor can emit. Today the only offline-runnable
+  lane is the SPY offline daily cycle chain; every other action is `noop` or
+  operator-gated, so **no lane can be advanced without operator-supplied input or
+  operator authority**. Autonomous unattended execution of even the offline
+  commands is a deliberate, higher milestone that grants the system a new standing
+  authority and requires explicit operator authorization; this planner is the
+  complete advisory layer up to, but not across, that gate. Focused suite
+  `tests/unit/test_autonomy_next_plan.py` (22 tests) plus the V5.37 supervisor and
+  dependency-direction guards are green. The detailed immutable contract is in
+  `docs/design/v5_38_offline_autonomy_next_action_planner.md`.
+
+- V5.39 adds `autonomy-apply-plan`, the one operator-authorized executor over the
+  V5.38 plan (`src/algotrader/execution/autonomy_offline_executor.py`). It runs
+  only the offline-runnable, allowlisted subset of the plan and is **dry-run by
+  default** (spawns no subprocess); `--apply` executes the eligible allowlisted
+  commands after a credential/profile preflight and writes a deterministic action
+  ledger. The frozen `AUTONOMY_EXECUTOR_ALLOWLIST` holds only fully-defaulted
+  offline commands verified to import no network/broker/credential/profile surface
+  (today just `etf-sma-offline-daily-cycle-rerun-m446`); the seed command that
+  needs operator inputs is excluded and skipped with `requires_operator_input`.
+  Before any execution it refuses (zero executions, `execution_refused_reason=
+  preflight_failed`) if `APP_PROFILE` is paper/live or any credential/network-test
+  variable is loaded, reporting variable names only; each command runs with a child
+  environment that strips every credential/profile variable and sets only
+  `PYTHONPATH`. `_execute` re-checks the allowlist and argv before every run. Every
+  ledger record fixes the broker/submit/network/credential/live booleans to false
+  with `profit_claim=none`; the executor performs no broker/paper/live action of
+  its own. A source-scan permits `os`/`sys`/`subprocess` but forbids every
+  network/broker/credential-SDK import and broker mutation call. Exit codes: `2`
+  on validation error or a preflight-refused `--apply`, `1` on a failed execution
+  or a dry run with eligible work pending, `0` otherwise. Honest current
+  limitation: the sole allowlisted command triggers on the daily-cycle `stale`
+  state, which the supervisor cannot emit because that lane disables staleness
+  (`max_age_hours=0`), so the eligible set is empty today — the correct fail-closed
+  outcome; the executor is the reviewed seam all future autonomous execution passes
+  through. Focused suite `tests/unit/test_autonomy_offline_executor.py` (21 tests)
+  plus the V5.37/V5.38 and dependency-direction guards are green. The detailed
+  immutable contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.

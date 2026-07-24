@@ -16,10 +16,23 @@ import time
 import xml.etree.ElementTree as ET
 
 
-DEFAULT_SHARDS = 4
 DEFAULT_SHARD_TIMEOUT_SECONDS = 1800
 DEFAULT_COLLECTION_TIMEOUT_SECONDS = 300
 MAXIMUM_SHARDS = 16
+DEFAULT_SHARD_FALLBACK = 4
+
+
+def _default_shard_count() -> int:
+    """Auto-scale the default shard count to the detected logical CPU count.
+
+    The count is floored at 1 and capped at ``MAXIMUM_SHARDS``. When the CPU
+    count is unavailable, fall back to ``DEFAULT_SHARD_FALLBACK``.
+    """
+
+    return max(1, min(os.cpu_count() or DEFAULT_SHARD_FALLBACK, MAXIMUM_SHARDS))
+
+
+DEFAULT_SHARDS = _default_shard_count()
 BLOCKED_CREDENTIAL_VARIABLES = (
     "ALPACA_API_KEY",
     "ALPACA_API_SECRET_KEY",
@@ -74,7 +87,10 @@ def _parser() -> argparse.ArgumentParser:
         "--shards",
         type=int,
         default=DEFAULT_SHARDS,
-        help=f"parallel shard count (default: {DEFAULT_SHARDS})",
+        help=(
+            "parallel shard count (default: auto-scaled to detected logical "
+            f"cores = {DEFAULT_SHARDS}, capped at {MAXIMUM_SHARDS})"
+        ),
     )
     parser.add_argument(
         "--timeout-seconds",

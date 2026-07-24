@@ -22,10 +22,11 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert "tests/unit/test_strategy_challenger_factory.py" in script
     assert "tests/unit/test_preview_candidate_review.py" in script
     assert "python\" (@(\"-m\", \"pytest\") + $GuardTestPaths)" in script
-    assert (
-        '"python" @("scripts/run_full_pytest_sharded.py")'
-        in script
-    )
+    assert '$FullPytestArguments = @("scripts/run_full_pytest_sharded.py")' in script
+    assert '"python" $FullPytestArguments' in script
+    assert '"--shards", "$Shards"' in script
+    assert "Assert-WorktreeBinding" in script
+    assert "bind_worktree_python.ps1" in script
     assert '"python" @("-m", "pytest")' not in script
     assert "git\" @(\"diff\", \"--check\")" in script
     assert "git\" @(\"ls-files\", \"runs\")" in script

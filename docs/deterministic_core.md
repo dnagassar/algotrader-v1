@@ -1207,3 +1207,98 @@ paper profile, credential presence, and exact paper endpoint gates pass. V5.32
 adds no broker-mutation switch and grants no R3 or R4 authority. The detailed
 contract is in
 `docs/design/v5_32_end_to_end_supervised_crypto_readiness_trial.md`.
+
+## V5.37 Offline Cross-Lane Autonomy Supervisor
+
+V5.37 adds one deterministic, offline supervisor over the independent autonomy
+lanes. `autonomy-supervisor-status` reads only the local latest evidence
+artifact for each known lane, normalizes each lane's declared state field into a
+strict supervisory vocabulary (`blocked`, `unknown`, `attention_required`,
+`stale`, `waiting`, `nominal`, `absent`), computes staleness against an explicit
+caller `as_of`, and aggregates one whole-system readiness record with a single
+recommended next action.
+
+It is read-only reporting. It loads no profile, reads no environment or
+credential, imports no broker SDK, opens no socket, and reads no wall clock. It
+performs no submit, cancel, replace, close, liquidation, paper mutation, capital,
+or live action, and every record fixes `submitted`, `mutated`,
+`broker_action_performed`, `broker_mutation_allowed`, `network_access_attempted`,
+`credential_access_attempted`, and `live_authorized` to false with
+`profit_claim=none`. Missing, unreadable, or ambiguous artifacts fail closed to
+`absent`, `blocked`, or `unknown`; the supervisor never invents a healthy or
+actionable lane state. Staleness and safety escalations can only move a lane
+toward more attention, never toward `nominal`.
+
+The frozen lane registry `AUTONOMY_SUPERVISOR_LANES` maps each lane to its
+default local artifact, state field(s), value-to-state normalization, staleness
+bound, and per-state offline next action. Default artifact paths are best-effort
+canonical `runs/` locations; a missing default reads `absent`, and an operator
+or wrapper may override any lane with an exact artifact path. Recommended next
+actions are always offline, read-only, or operator-review follow-ups and never
+name a broker mutation. The supervisor adds no strategy-performance evidence and
+changes no live-capital, paper-mutation, credential, network, or Task Scheduler
+authority. The detailed contract is in
+`docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+
+## V5.38 Offline Autonomy Next-Action Planner
+
+V5.38 adds one deterministic, offline planner over the V5.37 supervisor report.
+`autonomy-next-plan` builds (or accepts) a supervisor report and classifies each
+lane's abstract `recommended_next_action` token against a frozen registry into a
+concrete plan: the exact offline command to run when one exists, the
+operator-supplied inputs it still needs, its preconditions, and — when no offline
+path exists — the specific operator gate (`network_market_data_fetch`,
+`broker_observation`, `operator_review`, `task_scheduler_health`,
+`no_offline_command_available`, or `unclassified_action_operator_review`). It
+aggregates one whole-system plan with a `plan_class`
+(`offline_action_available`, `operator_authority_required`, or
+`all_nominal_or_waiting`), the single highest-leverage `next_offline_action`, and
+the full set of operator-gated actions.
+
+It is read-only planning with the exact same safety profile as the supervisor:
+it loads no profile, reads no environment or credential, imports no broker SDK,
+opens no socket, reads no wall clock, and — critically — **spawns no subprocess**;
+it records command strings as inert data and never executes them. Every record
+fixes the same safety booleans to false with `profit_claim=none`, and an
+unclassified action token fails closed to an operator-review gate. Exit code `0`
+means nothing is pending (`all_nominal_or_waiting`); `1` means an action is
+pending; `2` is an input-validation error.
+
+`AUTONOMY_ACTION_CLASSIFICATION` covers every action the frozen supervisor lane
+registry can emit (proven by test). Today the only offline-runnable lane is the
+SPY offline daily cycle chain (`etf-sma-offline-daily-cycle-run` needs
+operator-supplied inputs; `etf-sma-offline-daily-cycle-rerun-m446` is fully
+defaulted); every other action is `noop` or operator-gated. **No lane can be
+advanced without operator-supplied input or operator authority**, and autonomous
+(unattended) execution of even the offline commands is a deliberate, higher
+milestone that grants the system a new standing authority and therefore requires
+explicit operator authorization. This planner is the complete advisory layer up
+to, but not across, that gate. The detailed contract is in
+`docs/design/v5_38_offline_autonomy_next_action_planner.md`.
+
+## V5.39 Gated Offline Autonomy Executor
+
+V5.39 is the one operator-authorized step that acts on the plan: `autonomy-apply-plan`
+executes only the offline-runnable, allowlisted subset of the V5.38 plan, behind
+a hard gate. It is **dry-run by default** (spawns no subprocess); `--apply` runs
+the eligible allowlisted commands after a credential/profile preflight and writes
+a deterministic action ledger. The frozen `AUTONOMY_EXECUTOR_ALLOWLIST` holds
+only fully-defaulted offline commands whose producing modules import no network/
+broker/credential/profile surface (today: `etf-sma-offline-daily-cycle-rerun-m446`);
+the seed command that needs operator inputs is intentionally excluded. Before any
+execution it refuses (zero executions) if `APP_PROFILE` is `paper`/`live` or any
+Alpaca credential/network-test variable is loaded — reporting variable names only,
+never values — and it runs each command with a child environment that strips every
+credential/profile variable. Every ledger record fixes the same broker/submit/
+network/credential/live booleans to false with `profit_claim=none`; it performs no
+broker/paper/live action of its own. A source-scan permits `os`/`sys`/`subprocess`
+(execution needs them) but forbids every network/broker/credential-SDK import and
+broker mutation call.
+
+Honest current limitation: the sole allowlisted command triggers on the `stale`
+state of the SPY offline daily cycle lane, which sets `max_age_hours=0` (staleness
+disabled by V5.37 design), so the supervisor cannot currently emit that action and
+the executor's eligible set is **empty today** — the correct fail-closed outcome.
+The executor is the reviewed, tested seam all future autonomous execution passes
+through, active the moment a stale-capable offline lane is allowlisted. The detailed
+contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.

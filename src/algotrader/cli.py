@@ -1643,6 +1643,164 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="State rollup output format.",
     )
+    autonomy_supervisor_parser = subparsers.add_parser(
+        "autonomy-supervisor-status",
+        help=(
+            "Aggregate local per-lane evidence into one offline cross-lane "
+            "autonomy supervisor record."
+        ),
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the supervisor record.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Explicit ISO-8601 UTC evaluation time used for staleness checks.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--lanes-root",
+        default="runs",
+        help="Local root for default per-lane artifact paths. Default: runs.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--lane",
+        action="append",
+        default=None,
+        metavar="LANE_ID=PATH",
+        dest="lane_overrides",
+        help=(
+            "Explicit local artifact path override for one lane id. "
+            "Repeatable. Example: --lane spy_market_data_soak=runs/.../report.json"
+        ),
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Write exactly one deterministic supervisor JSONL record to PATH.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Supervisor output format.",
+    )
+    autonomy_next_plan_parser = subparsers.add_parser(
+        "autonomy-next-plan",
+        help=(
+            "Classify each cross-lane supervisor recommendation into a concrete "
+            "offline next-action plan (read-only; never executes)."
+        ),
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the next-plan record.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Explicit ISO-8601 UTC evaluation time used for staleness checks.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--lanes-root",
+        default="runs",
+        help="Local root for default per-lane artifact paths. Default: runs.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--lane",
+        action="append",
+        default=None,
+        metavar="LANE_ID=PATH",
+        dest="lane_overrides",
+        help=(
+            "Explicit local artifact path override for one lane id. "
+            "Repeatable. Example: --lane spy_offline_daily_cycle=runs/.../run.jsonl"
+        ),
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Write exactly one deterministic next-plan JSONL record to PATH.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Next-plan output format.",
+    )
+    autonomy_apply_plan_parser = subparsers.add_parser(
+        "autonomy-apply-plan",
+        help=(
+            "Execute the offline-runnable, allowlisted subset of the autonomy "
+            "plan. Dry-run by default; pass --apply to actually run."
+        ),
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the execution ledger.",
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Explicit ISO-8601 UTC evaluation time used for staleness checks.",
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--lanes-root",
+        default="runs",
+        help="Local root for default per-lane artifact paths. Default: runs.",
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--lane",
+        action="append",
+        default=None,
+        metavar="LANE_ID=PATH",
+        dest="lane_overrides",
+        help=(
+            "Explicit local artifact path override for one lane id. Repeatable."
+        ),
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually execute the eligible allowlisted offline commands. Without "
+            "this flag the command is a dry run and executes nothing."
+        ),
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Write exactly one deterministic ledger JSONL record to PATH.",
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Execution ledger output format.",
+    )
+    paper_boundary_check_parser = subparsers.add_parser(
+        "paper-boundary-check",
+        help=(
+            "Report the live-capital interlock verdict for the current "
+            "environment (paper profile + endpoint; live signals). Booleans and "
+            "variable names only; never prints a credential value."
+        ),
+    )
+    paper_boundary_check_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Interlock verdict output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -4143,6 +4301,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_daily_preview(args)
     if command == "paper-lab-state-rollup":
         return _run_paper_lab_state_rollup(args)
+    if command == "autonomy-supervisor-status":
+        return _run_autonomy_supervisor(args)
+    if command == "autonomy-next-plan":
+        return _run_autonomy_next_plan(args)
+    if command == "autonomy-apply-plan":
+        return _run_autonomy_apply_plan(args)
+    if command == "paper-boundary-check":
+        return _run_paper_boundary_check(args)
     if command == "etf-sma-cycle":
         return _run_etf_sma_cycle(args)
     if command == "etf-sma-cycle-brief":
@@ -5769,6 +5935,188 @@ def _run_paper_lab_state_rollup(args: argparse.Namespace) -> int:
     else:
         print(render_paper_lab_state_rollup_text(payload))
     return 0
+
+
+def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.autonomy_supervisor import (
+        AutonomySupervisorConfig,
+        build_autonomy_supervisor_report,
+        render_autonomy_supervisor_json,
+        render_autonomy_supervisor_text,
+        write_autonomy_supervisor_jsonl,
+    )
+
+    try:
+        overrides: dict[str, str] = {}
+        for raw in args.lane_overrides or []:
+            if "=" not in raw:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            lane_id, _, path_text = raw.partition("=")
+            lane_id = lane_id.strip()
+            path_text = path_text.strip()
+            if not lane_id or not path_text:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            overrides[lane_id] = path_text
+        payload = build_autonomy_supervisor_report(
+            AutonomySupervisorConfig(
+                run_id=args.run_id,
+                as_of=args.as_of,
+                lanes_root=args.lanes_root,
+                lane_artifact_overrides=overrides,
+            )
+        )
+        if args.run_log is not None:
+            write_autonomy_supervisor_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_autonomy_supervisor_json(payload))
+    else:
+        print(render_autonomy_supervisor_text(payload))
+
+    if payload["system_status"] in ("blocked", "attention_required"):
+        return 1
+    return 0
+
+
+def _run_autonomy_next_plan(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.autonomy_next_plan import (
+        PLAN_ALL_NOMINAL_OR_WAITING,
+        build_autonomy_next_plan,
+        render_autonomy_next_plan_json,
+        render_autonomy_next_plan_text,
+        write_autonomy_next_plan_jsonl,
+    )
+    from .execution.autonomy_supervisor import AutonomySupervisorConfig
+
+    try:
+        overrides: dict[str, str] = {}
+        for raw in args.lane_overrides or []:
+            if "=" not in raw:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            lane_id, _, path_text = raw.partition("=")
+            lane_id = lane_id.strip()
+            path_text = path_text.strip()
+            if not lane_id or not path_text:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            overrides[lane_id] = path_text
+        payload = build_autonomy_next_plan(
+            AutonomySupervisorConfig(
+                run_id=args.run_id,
+                as_of=args.as_of,
+                lanes_root=args.lanes_root,
+                lane_artifact_overrides=overrides,
+            )
+        )
+        if args.run_log is not None:
+            write_autonomy_next_plan_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_autonomy_next_plan_json(payload))
+    else:
+        print(render_autonomy_next_plan_text(payload))
+
+    if payload["plan_class"] == PLAN_ALL_NOMINAL_OR_WAITING:
+        return 0
+    return 1
+
+
+def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.autonomy_offline_executor import (
+        build_offline_execution_ledger,
+        render_offline_execution_ledger_json,
+        render_offline_execution_ledger_text,
+        write_offline_execution_ledger_jsonl,
+    )
+    from .execution.autonomy_supervisor import AutonomySupervisorConfig
+
+    try:
+        overrides: dict[str, str] = {}
+        for raw in args.lane_overrides or []:
+            if "=" not in raw:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            lane_id, _, path_text = raw.partition("=")
+            lane_id = lane_id.strip()
+            path_text = path_text.strip()
+            if not lane_id or not path_text:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            overrides[lane_id] = path_text
+        payload = build_offline_execution_ledger(
+            AutonomySupervisorConfig(
+                run_id=args.run_id,
+                as_of=args.as_of,
+                lanes_root=args.lanes_root,
+                lane_artifact_overrides=overrides,
+            ),
+            apply=args.apply,
+        )
+        if args.run_log is not None:
+            write_offline_execution_ledger_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_offline_execution_ledger_json(payload))
+    else:
+        print(render_offline_execution_ledger_text(payload))
+
+    # A refused apply (preflight failed) is a safety refusal.
+    if args.apply and not payload["preflight_ok"]:
+        return 2
+    # An executed action that failed is a hard error.
+    if payload["execution_count"] > 0 and not payload["all_executions_succeeded"]:
+        return 1
+    # Dry run with eligible offline work pending signals "there is work to do".
+    if not args.apply and payload["eligible_count"] > 0:
+        return 1
+    return 0
+
+
+def _run_paper_boundary_check(args: argparse.Namespace) -> int:
+    from .execution.live_capital_interlock import evaluate_live_capital_interlock
+
+    verdict = evaluate_live_capital_interlock()
+    payload = verdict.to_dict()
+
+    if args.output_format == "json":
+        print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    else:
+        print("Live-capital interlock verdict")
+        print(f"paper_boundary_ok: {str(payload['paper_boundary_ok']).lower()}")
+        print(f"app_profile: {payload['app_profile']}")
+        print(f"endpoint_class: {payload['endpoint_class']}")
+        print(
+            "expected_paper_account_present: "
+            f"{str(payload['expected_paper_account_present']).lower()}"
+        )
+        signals = ",".join(payload["live_signals"]) or "none"
+        blockers = ",".join(payload["blockers"]) or "none"
+        print(f"live_signals: {signals}")
+        print(f"blockers: {blockers}")
+        print(f"live_authorized: {str(payload['live_authorized']).lower()}")
+
+    return 0 if payload["paper_boundary_ok"] else 1
 
 
 def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
