@@ -199,6 +199,28 @@ Upon completion, the launcher prints a compact final summary:
 * **Git Artifact Verification**: Confirms that no generated artifacts are tracked or staged.
 * **Key Output Artifact Paths**: List of generated files relative and POSIX-style.
 
+### Per-Worktree Interpreter Binding
+
+Before the first `-Full` run in a worktree (and after switching worktrees), bind
+the system Python's editable `algotrader` install to the current worktree:
+
+```powershell
+.\scripts\bind_worktree_python.ps1
+```
+
+The full suite includes subprocess wrappers (the V5.30 bounded paper-probe
+lifecycle and the independent-flat operator) that resolve a trusted, signed,
+*registered* Python interpreter and strip `PYTHONPATH` by design. They import
+`algotrader` from the system interpreter's site-packages, so a virtual
+environment cannot satisfy them. There is one registered interpreter, and its
+editable install points at whichever worktree it was last bound to; if that
+worktree is deleted it dangles, and those wrappers fail with
+`ModuleNotFoundError: No module named 'algotrader'` even though every in-process
+test still passes (pytest's `pythonpath=["src"]` shadows the broken install).
+`bind_worktree_python.ps1` repoints that install at the current worktree. It is
+package management only: no credentials, broker, paper, trading-network, or Task
+Scheduler action. Use `-WithDependencies` for a first-time machine setup.
+
 ### Complete Offline Verification
 
 Run the canonical full default collection with bounded deterministic sharding:
@@ -208,13 +230,15 @@ Run the canonical full default collection with bounded deterministic sharding:
 ```
 
 The full verifier collects the default suite once, partitions every node ID
-exactly once across four balanced argument files, recollects each shard to prove
-there are no missing, duplicate, or extra tests, and then executes the shards
-with isolated temporary state and per-shard timeouts. It fails on any collection
-drift, timeout, nonzero pytest exit, missing JUnit result, or aggregate testcase
-count mismatch. The summary includes shard wall times and the slowest files by
-aggregate testcase seconds. It does not add skip, deselect, marker, network, or
-credential overrides.
+exactly once across one balanced argument file per shard, recollects each shard
+to prove there are no missing, duplicate, or extra tests, and then executes the
+shards in parallel with isolated temporary state and per-shard timeouts. The
+shard count auto-scales to the detected logical CPU count (capped at 16); pin it
+with `-Full -Shards <n>`. It fails on any collection drift, timeout, nonzero
+pytest exit, missing JUnit result, or aggregate testcase count mismatch. The
+summary includes shard wall times and the slowest files by aggregate testcase
+seconds. It does not add skip, deselect, marker, network, or credential
+overrides.
 
 ## Authoritative SPY EOD Market-Data Refresh
 
