@@ -15070,3 +15070,37 @@ Safe next tasks include:
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,
 and no-network defaults for normal test runs.
+
+- V5.37 adds `autonomy-supervisor-status`, one deterministic offline cross-lane
+  autonomy supervisor over the independent autonomy lanes. It reads only the
+  local latest evidence artifact for each registered lane
+  (`src/algotrader/execution/autonomy_supervisor.py`,
+  `AUTONOMY_SUPERVISOR_LANES`: SPY unattended market-data soak, SPY ETF/SMA
+  offline daily cycle chain, crypto V5.32 supervised readiness trial, crypto V2
+  forward-shadow cycle, crypto V2 bounded paper-probe review, crypto V2
+  capability production), normalizes each lane's declared state field into the
+  strict vocabulary `blocked`/`unknown`/`attention_required`/`stale`/`waiting`/
+  `nominal`/`absent`, computes staleness only against an explicit caller
+  `--as-of` (no wall-clock read), and aggregates one whole-system `system_status`
+  with a single `recommended_next_action`. `system_status` is `blocked` if any
+  lane is blocked, else `attention_required` if any lane is unknown, attention,
+  or stale, else `waiting`, else `nominal`, else `no_lane_evidence`; the command
+  exits `0` for nominal/waiting/no_lane_evidence, `1` for attention/blocked, and
+  `2` on validation error. Missing, unreadable, or ambiguous artifacts fail
+  closed to `absent`/`blocked`/`unknown`, and any source safety boolean that is
+  not false blocks that lane. Default artifact paths are best-effort canonical
+  `runs/` locations (all read `absent` in a clean checkout); operators may point
+  any lane at its exact latest artifact with `--lane LANE_ID=PATH`. The command
+  loads no profile, reads no environment/credential, imports no broker SDK, opens
+  no socket, and performs no submit, cancel, replace, close, liquidation, paper
+  mutation, capital, or live action; every record fixes `submitted`, `mutated`,
+  `broker_action_performed`, `broker_mutation_allowed`, `network_access_attempted`,
+  `credential_access_attempted`, and `live_authorized` to false with
+  `profit_claim=none`. Recommended next actions are always offline, read-only, or
+  operator-review follow-ups and never name a broker mutation. V5.37 materially
+  increases supervisable end-to-end autonomy by turning many independently
+  fail-closed lanes into one deterministic supervisory view; it adds no
+  strategy-performance evidence and changes no live-capital readiness. Focused
+  suite `tests/unit/test_autonomy_supervisor.py` (25 tests) plus the targeted
+  offline safety guards (99 tests) are green. The detailed immutable contract is
+  in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.

@@ -1207,3 +1207,35 @@ paper profile, credential presence, and exact paper endpoint gates pass. V5.32
 adds no broker-mutation switch and grants no R3 or R4 authority. The detailed
 contract is in
 `docs/design/v5_32_end_to_end_supervised_crypto_readiness_trial.md`.
+
+## V5.37 Offline Cross-Lane Autonomy Supervisor
+
+V5.37 adds one deterministic, offline supervisor over the independent autonomy
+lanes. `autonomy-supervisor-status` reads only the local latest evidence
+artifact for each known lane, normalizes each lane's declared state field into a
+strict supervisory vocabulary (`blocked`, `unknown`, `attention_required`,
+`stale`, `waiting`, `nominal`, `absent`), computes staleness against an explicit
+caller `as_of`, and aggregates one whole-system readiness record with a single
+recommended next action.
+
+It is read-only reporting. It loads no profile, reads no environment or
+credential, imports no broker SDK, opens no socket, and reads no wall clock. It
+performs no submit, cancel, replace, close, liquidation, paper mutation, capital,
+or live action, and every record fixes `submitted`, `mutated`,
+`broker_action_performed`, `broker_mutation_allowed`, `network_access_attempted`,
+`credential_access_attempted`, and `live_authorized` to false with
+`profit_claim=none`. Missing, unreadable, or ambiguous artifacts fail closed to
+`absent`, `blocked`, or `unknown`; the supervisor never invents a healthy or
+actionable lane state. Staleness and safety escalations can only move a lane
+toward more attention, never toward `nominal`.
+
+The frozen lane registry `AUTONOMY_SUPERVISOR_LANES` maps each lane to its
+default local artifact, state field(s), value-to-state normalization, staleness
+bound, and per-state offline next action. Default artifact paths are best-effort
+canonical `runs/` locations; a missing default reads `absent`, and an operator
+or wrapper may override any lane with an exact artifact path. Recommended next
+actions are always offline, read-only, or operator-review follow-ups and never
+name a broker mutation. The supervisor adds no strategy-performance evidence and
+changes no live-capital, paper-mutation, credential, network, or Task Scheduler
+authority. The detailed contract is in
+`docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.

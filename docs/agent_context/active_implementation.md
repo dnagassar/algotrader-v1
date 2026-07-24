@@ -3,218 +3,125 @@
 ## Classification
 
 - Milestone:
-  `V5.36.5 — external canary authorization path repair`.
-- Amendment:
-  `V5.36.5a — concurrent immutable-evidence scan coordination`.
+  `V5.37 — offline cross-lane autonomy supervisor`.
 - Classification: `implemented`.
 - Operator action required for implementation: `false`.
-- Independent review required before any new canary authorization: `true`.
+- Independent review required before merge to `main`: `true`.
 - This checkpoint is not canary, broker, paper, activation, or trading
-  readiness evidence.
+  readiness evidence. It is an offline read-only reporting surface only.
 
 ## Use This One Workspace
 
-- Review worktree:
-  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\codex-v5.36.5-canary-artifact-boundary`
-- Branch: `codex/v5.36.5-canary-artifact-boundary`
-- The operator's normal
-  `C:\Users\danie\Desktop\algo_trader` checkout on `main` was not modified.
-- Do not switch branches in either checkout. Review this worktree directly.
+- Implementation worktree:
+  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\algo-trader-autonomy-bottleneck-2cb009`
+- Branch: `claude/algo-trader-autonomy-bottleneck-2cb009`
+- Base: `main@3336e9a` (reviewed V5.36.5/V5.36.5a merge).
+- The operator's `C:\Users\danie\Desktop\algo_trader` checkout on `main` was not
+  modified. Review this worktree and its branch HEAD directly.
 
-## Exact Repository State
+## Principal Bottleneck Addressed
 
-- Accepted V5.36.4 base commit:
-  `dddea20e19c7b30834e8e3d547567ce1e53bba91`
-- Accepted base tree:
-  `cb058c6a2b935bc821f9d26b18467b6a5cd8ca93`
-- Frozen V5.36.5 contract commit:
-  `3aea8f95604c44002fa6867cd08d3d36e98be110`
-- Frozen V5.36.5a contract commit:
-  `962c0ad200536738690b24584395f6ed58dca594`
-- Implementation commit:
-  `d7a614fb72d3d26a58983571619dc4498214962c`
-- Implementation tree:
-  `82a077e344d4518eed26304d1148002b25809fef`
-- The implementation commit was clean for the authoritative full offline
-  verifier.
-- This handoff file is the only intended post-verification change and must be
-  committed before review.
-
-## Terminal Operational Evidence
-
-- The earlier V5.36.4 credential-provisioning grants are terminal successes.
-- The first canary authorization
-  `v536-canary-20260724t0105z` is terminal.
-- Its preview returned `blocked_task_path_escape`.
-- Preview performed no Task Scheduler read or mutation, credential read,
-  network request, broker request, paper mutation, order action, canary
-  activation, or trading effect.
-- The terminal authorization must not be edited, moved, rehashed, retried, or
-  reused.
-
-## Defects And Repairs
-
-### V5.36.5
-
-The runbook correctly required an operator-owned authorization artifact
-outside generated output. The task builder incorrectly required that artifact
-to be inside the deployment root, producing the terminal preview block.
-
-The repaired task builder:
-
-1. resolves the deployment root and repository wrapper strictly;
-2. keeps the wrapper and task working directory within the deployment root;
-3. requires an absolute authorization artifact path;
-4. rejects a symlink, missing path, or directory;
-5. resolves the existing regular authorization file strictly;
-6. permits that exact resolved file outside the deployment root; and
-7. places only the exact resolved artifact path in the task arguments.
-
-Authorization schema, canonical hash, source, identity, family, endpoint,
-timing, task, no-submit, no-retry, and post-run checks are unchanged.
-
-### V5.36.5a
-
-The broader host-canary suite exposed an order-dependent pre-existing race.
-Duplicate no-op receipt writers could create repository-owned atomic temporary
-files while the admitted execution ran the structural secret scan. The scan
-then returned `blocked_secret_persistence_detected`.
-
-V5.36.5a coordinates V5.36 immutable writes and the structural scan with one
-in-memory reentrant lock. It does not filter, ignore, delete, or retry
-temporary artifacts. A temporary file or forbidden token present while the
-scanner owns the lock still blocks. The SQLite claim remains the durable
-external-effect fence and duplicate executions remain immutable no-ops.
+The repository runs several independent autonomy lanes (SPY market-data soak,
+SPY ETF/SMA offline daily cycle, crypto V5.32 readiness trial, crypto V2
+forward-shadow cycle, bounded paper-probe review, capability production). Each
+lane fails closed independently and writes its own local evidence artifact, but
+there was no single offline command reporting whole-system state, per-lane
+blockers, and the next eligible action. The remaining strategy-evidence and
+Windows-canary frontiers are gated on wall-clock time (V2 OOS window closes
+2026-08-13) or on operator credentials, Task Scheduler, and live authorization —
+none of which are in scope for autonomous advance. The highest-leverage change
+inside the authorized offline envelope is a deterministic cross-lane supervisor
+that makes the multi-lane system supervisable as one unit.
 
 ## Changed Files
 
-- `docs/OPERATOR_RUNBOOK.md`
-- `docs/agent_context/active_implementation.md`
-- `docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md`
-- `docs/design/v5_36_5_external_canary_authorization_path_contract.md`
-- `docs/design/v5_36_5a_concurrent_evidence_scan_coordination_contract.md`
-- `src/algotrader/execution/crypto_read_only_paper_observation_adapter.py`
-- `src/algotrader/execution/v536_windows_host_canary.py`
-- `src/algotrader/execution/v536_windows_task.py`
-- `tests/unit/test_v536_windows_host_canary.py`
-- `tests/unit/test_v536_windows_task.py`
-- `tests/unit/test_v5_33_2_source_provenance.py`
+- `src/algotrader/cli.py`
+  (registers `autonomy-supervisor-status` and its handler)
+- `src/algotrader/execution/autonomy_supervisor.py` (new pure module)
+- `tests/unit/test_autonomy_supervisor.py` (new focused suite, 25 tests)
+- `scripts/run_autonomy_supervisor.ps1` (new credential-free wrapper)
+- `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md` (frozen contract)
+- `docs/deterministic_core.md` (current-contract section)
+- `docs/project_checkpoint.md` (ledger entry)
+- `docs/OPERATOR_RUNBOOK.md` (operator section)
+- `docs/agent_context/active_implementation.md` (this handoff)
+
+## Contract Summary
+
+- `autonomy-supervisor-status` reads only local per-lane evidence artifacts,
+  normalizes each lane's declared state field into the strict vocabulary
+  `blocked`/`unknown`/`attention_required`/`stale`/`waiting`/`nominal`/`absent`,
+  computes staleness only against an explicit `--as-of` (no wall-clock read),
+  and aggregates one `system_status` with one `recommended_next_action`.
+- The frozen registry `AUTONOMY_SUPERVISOR_LANES` declares each lane's default
+  artifact path, reader kind, state field(s), value normalization, staleness
+  bound, and per-state offline next action. Missing defaults read `absent`;
+  operators may override any lane with `--lane LANE_ID=PATH`.
+- Missing/unreadable/ambiguous artifacts fail closed. A source safety boolean
+  that is not false blocks that lane. Staleness and safety escalations can only
+  move a lane toward more attention, never toward `nominal`.
+- Exit code: `0` for nominal/waiting/no_lane_evidence, `1` for
+  attention/blocked, `2` on validation error.
 
 ## Safety And External Effects
 
-Boolean-only preflight was clean before implementation and verification:
+Boolean-only preflight was clean before and during implementation and
+verification:
 
 - `APP_PROFILE=paper`: `false`
-- supported credential/profile aliases present: `false`
+- Alpaca credential aliases loaded: `false`
 - network-test enablement present: `false`
 
 During implementation and verification:
 
-- no credential value was loaded, read, enumerated, created, replaced,
-  renamed, deleted, or exposed;
-- no real prompt or native credential boundary was opened;
-- no Task Scheduler read or mutation occurred;
-- no network or broker request occurred;
-- no paper mutation or order action occurred; and
-- no canary, strategy, paper automation, live access, or trading effect was
-  activated.
+- no credential value was loaded, read, enumerated, or exposed;
+- no network, broker, or Task Scheduler access occurred;
+- no paper mutation, order action, canary, or live activation occurred.
 
-All tests used deterministic fake boundaries.
+Every emitted record fixes `submitted`, `mutated`, `broker_action_performed`,
+`broker_actions_performed`, `broker_mutation_allowed`, `network_access_attempted`,
+`credential_access_attempted`, and `live_authorized` to false with
+`profit_claim=none`. The module imports no `os`, `socket`, `urllib`, `requests`,
+or broker SDK, and reads no wall clock; a source-scan test enforces this.
 
 ## Verification Evidence
 
-### Required Pre-Repair Failure
-
-The new external-authorization regression failed against the accepted base
-with `task_path_escape`, confirming the defect before production repair.
-
-### Focused Task Suite
-
-- `tests/unit/test_v536_windows_task.py`
-- Result: `27 passed`
-
-### Host-Canary Suite
-
-- `tests/unit/test_v536_windows_host_canary.py`
-- Result: `23 passed`
-- Includes concurrent duplicate execution and real stale-`.tmp` blocking.
-
-### Focused V5.36 Suite
-
-- Task, authorization, host-canary, wrapper, and provenance tests
-- Result: `87 passed`
-- Pytest elapsed: `73.73s`
-
-### Broader V5.35/V5.36 Safety Suite
-
-- Result: `276 passed`
-- Pytest elapsed: `168.86s`
-
-### Dependency Direction
-
-- Result: `34 passed`
-- Pytest elapsed: `11.67s`
-
-### Full Offline Verifier
-
-The first full invocation passed all `99` targeted safety guards but all four
-execution shards hit the 30-minute resource timeout while still progressing.
-It produced no test failure and was treated as unavailable, not as a pass.
-No duplicate verifier was started while it remained active.
-
-One clean rerun was started after the earlier processes ended and no competing
-Python workload remained:
-
-- Verified commit:
-  `d7a614fb72d3d26a58983571619dc4498214962c`
-- Verified tree:
-  `82a077e344d4518eed26304d1148002b25809fef`
-- Exit code: `0`
-- Targeted safety guards: `99 passed`
-- Canonical collection: `9,816` node IDs across `488` files
-- Shard assignments: `2454`, `2454`, `2454`, `2454`
-- Shard results: all four exited `0`; no timeout
-- Shard wall times: `1652.45s`, `1381.20s`, `1435.15s`, `1439.02s`
-- Collection equivalence: `PASS`
-- Execution equivalence: `PASS`
-- Aggregate: `9,816` tests; `9,811` passed; `5` skipped; `0` failures;
-  `0` errors
-- Bounded full suite: `PASS`
-- Final repository hygiene: `PASS`
-- Overall offline verification: `PASS`
+- Focused suite: `tests/unit/test_autonomy_supervisor.py` — `25 passed`.
+- Dependency direction: `tests/unit/test_dependency_direction.py` — `34 passed`.
+- Targeted offline verifier (`scripts/verify_offline.ps1`): `PASS`,
+  `99 passed` safety guards, credential/network preflight all false, git
+  hygiene clean, no tracked `runs/` artifacts.
+- Full bounded offline suite (`scripts/verify_offline.ps1 -Full`): not run in
+  this session (many-minute four-shard run). Recommended before merge.
+- Manual `autonomy-supervisor-status` and `run_autonomy_supervisor.ps1` runs on
+  a clean checkout returned `system_status=no_lane_evidence` (all lanes
+  `absent`, expected, since `runs/` evidence is generated and gitignored) with
+  exit code `0` and all safety booleans false.
 
 ## Required Independent Review
 
-Claude should review this one worktree and exact final handoff commit. Review
-must verify:
+Review this worktree and its branch HEAD. Verify:
 
-1. contract commits precede their production changes;
-2. the external artifact may be outside the deployment root only after
-   strict absolute, regular-file, non-symlink resolution;
-3. the wrapper and working directory cannot escape the deployment root;
-4. task action arguments contain only the exact resolved public artifact
-   path and existing fixed switches;
-5. the evidence lock coordinates writers and scanner without suppressing any
-   temporary-file or forbidden-token check;
-6. exactly one durable execution and immutable duplicate no-op behavior
-   remain;
-7. provenance binds both new contracts; and
-8. no credential, scheduler, network, broker, mutation, order, canary, paper,
-   or live authority was added by implementation.
+1. the supervisor reads only local files and constructs no broker/network/
+   credential path and reads no wall clock (source scan plus manual read);
+2. missing, unreadable, or ambiguous artifacts fail closed and never yield a
+   `nominal` or actionable lane;
+3. a source safety boolean that is not false blocks its lane;
+4. staleness uses only the explicit `--as-of` and can only escalate attention;
+5. the frozen lane registry state maps match the producing modules' real state
+   values, and unmapped/cautionary values normalize conservatively;
+6. every emitted record and the write result preserve the false safety booleans
+   and `profit_claim=none`;
+7. no recommended next action names a broker mutation.
 
-Claude should return one classification: `accepted`, `changes_requested`, or
-`blocked`, with sanitized findings and evidence.
+Return one classification: `accepted`, `changes_requested`, or `blocked`, with
+sanitized findings and evidence.
 
 ## Route After Review
 
-If Claude accepts the exact final commit:
-
-1. the operator may separately authorize one fresh canary artifact with a new
-   window and final commit/tree;
-2. Antigravity may execute that fresh lifecycle from this exact worktree;
-3. the terminal `v536-canary-20260724t0105z` artifact remains unusable; and
-4. any new blocked or ambiguous result is terminal with no retry.
-
-No merge, push, main-branch switch, new canary artifact, Task Scheduler
-operation, credential read, network request, broker request, paper mutation,
-order action, or trading activation follows automatically from this handoff.
+If accepted, this additive `claude/*` branch may be merged into `main` under the
+canonical layout. No merge, push to `main`, credential read, network request,
+broker request, paper mutation, order action, Task Scheduler operation, or
+trading activation follows automatically from this handoff. Follow-on lanes can
+be added to `AUTONOMY_SUPERVISOR_LANES` as additional evidence artifacts are
+grounded in their producing modules.

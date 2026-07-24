@@ -1271,3 +1271,53 @@ indicator. This lane is read-only and no-submit; the script has no paper
 mutation, submit, cancel, replace, close, liquidation, or live switch. Without
 inherited credentials, retain the default
 `blocked_credentials_unavailable` classification and do not expose secrets.
+
+## V5.37 Cross-Lane Autonomy Supervisor
+
+Run the supervisor from a normal credential-free development shell to get one
+whole-system readout across every autonomy lane. It reads only local evidence
+artifacts, never loads credentials or the network, and never mutates anything.
+
+```powershell
+.\scripts\run_autonomy_supervisor.ps1 `
+  -RunId supervisor-<yyyymmdd> `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -Format text
+```
+
+The wrapper refuses to run if `APP_PROFILE=paper`/`live` or any Alpaca
+credential/network-test variable is loaded; this command must never see
+secrets. `-AsOf` is required and is the only time source (no wall clock is read),
+so the report is deterministic. Provide it as an ISO-8601 UTC timestamp.
+
+For a machine-readable record, add `-Format json` and `-RunLog
+runs\autonomy_supervisor\latest\report.jsonl` to write exactly one JSONL record.
+
+The command reports, per lane, a normalized state in
+`absent`/`waiting`/`nominal`/`stale`/`attention_required`/`unknown`/`blocked`,
+the surfaced blockers, and one offline next action. The whole-system
+`system_status` is `blocked` if any lane is blocked, `attention_required` if any
+lane is unknown, attention, or stale, `waiting` if any lane is waiting, `nominal`
+if at least one lane is healthy, and `no_lane_evidence` when nothing has run yet.
+Exit code is `0` for nominal/waiting/no_lane_evidence, `1` for
+attention/blocked, and `2` on input error, so it is schedulable.
+
+In a clean checkout every lane reads `absent` because its `runs/` evidence is
+generated and gitignored; run the individual lane commands first to seed
+evidence. To point a lane at an exact artifact instead of its default path, pass
+`-Lane "lane_id=path"` (repeatable), for example:
+
+```powershell
+.\scripts\run_autonomy_supervisor.ps1 `
+  -RunId supervisor-<yyyymmdd> `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -Lane "crypto_bounded_paper_probe_review=runs\crypto_strategy_tournament\v2\bounded_paper_probe_review\latest\review.json" `
+  -Format text
+```
+
+Known lane ids: `spy_market_data_soak`, `spy_offline_daily_cycle`,
+`crypto_supervised_readiness_trial`, `crypto_forward_shadow_cycle`,
+`crypto_bounded_paper_probe_review`, `crypto_capability_production`. A
+`recommended_next_action` is always an offline, read-only, or operator-review
+follow-up; it never authorizes or names a broker mutation. The detailed contract
+is in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.

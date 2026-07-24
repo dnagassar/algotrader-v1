@@ -1643,6 +1643,51 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="State rollup output format.",
     )
+    autonomy_supervisor_parser = subparsers.add_parser(
+        "autonomy-supervisor-status",
+        help=(
+            "Aggregate local per-lane evidence into one offline cross-lane "
+            "autonomy supervisor record."
+        ),
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the supervisor record.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Explicit ISO-8601 UTC evaluation time used for staleness checks.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--lanes-root",
+        default="runs",
+        help="Local root for default per-lane artifact paths. Default: runs.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--lane",
+        action="append",
+        default=None,
+        metavar="LANE_ID=PATH",
+        dest="lane_overrides",
+        help=(
+            "Explicit local artifact path override for one lane id. "
+            "Repeatable. Example: --lane spy_market_data_soak=runs/.../report.json"
+        ),
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Write exactly one deterministic supervisor JSONL record to PATH.",
+    )
+    autonomy_supervisor_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Supervisor output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -4143,6 +4188,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_daily_preview(args)
     if command == "paper-lab-state-rollup":
         return _run_paper_lab_state_rollup(args)
+    if command == "autonomy-supervisor-status":
+        return _run_autonomy_supervisor(args)
     if command == "etf-sma-cycle":
         return _run_etf_sma_cycle(args)
     if command == "etf-sma-cycle-brief":
@@ -5768,6 +5815,55 @@ def _run_paper_lab_state_rollup(args: argparse.Namespace) -> int:
         print(render_paper_lab_state_rollup_json(payload))
     else:
         print(render_paper_lab_state_rollup_text(payload))
+    return 0
+
+
+def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.autonomy_supervisor import (
+        AutonomySupervisorConfig,
+        build_autonomy_supervisor_report,
+        render_autonomy_supervisor_json,
+        render_autonomy_supervisor_text,
+        write_autonomy_supervisor_jsonl,
+    )
+
+    try:
+        overrides: dict[str, str] = {}
+        for raw in args.lane_overrides or []:
+            if "=" not in raw:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            lane_id, _, path_text = raw.partition("=")
+            lane_id = lane_id.strip()
+            path_text = path_text.strip()
+            if not lane_id or not path_text:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            overrides[lane_id] = path_text
+        payload = build_autonomy_supervisor_report(
+            AutonomySupervisorConfig(
+                run_id=args.run_id,
+                as_of=args.as_of,
+                lanes_root=args.lanes_root,
+                lane_artifact_overrides=overrides,
+            )
+        )
+        if args.run_log is not None:
+            write_autonomy_supervisor_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_autonomy_supervisor_json(payload))
+    else:
+        print(render_autonomy_supervisor_text(payload))
+
+    if payload["system_status"] in ("blocked", "attention_required"):
+        return 1
     return 0
 
 
