@@ -2,235 +2,219 @@
 
 ## Classification
 
-- Milestone: `V5.36.4 — credential-writer stage diagnostic repair`.
-- Amendments:
-  - `V5.36.4a — native buffer-view lifetime repair`.
-  - `V5.36.4b — direct bytearray address repair`.
+- Milestone:
+  `V5.36.5 — external canary authorization path repair`.
+- Amendment:
+  `V5.36.5a — concurrent immutable-evidence scan coordination`.
 - Classification: `implemented`.
-- Operator action required: `false`.
-- Final disposition belongs to an independent reviewer. This checkpoint is not
-  credential, canary, paper, activation, or operational-readiness evidence.
+- Operator action required for implementation: `false`.
+- Independent review required before any new canary authorization: `true`.
+- This checkpoint is not canary, broker, paper, activation, or trading
+  readiness evidence.
 
-## Ownership And Repository State
+## Use This One Workspace
 
-- Sole implementation writer: Codex `/root`.
-- Worktree:
-  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\codex-v5.36.4-credential-writer-diagnostics`.
-- Branch: `codex/v5.36.4-credential-writer-diagnostics`.
-- Exact independently reviewed V5.36.3 base:
-  `cabf7e7c1e5958d68cec49c40c1d39a2dc8e5382`.
-- Base tree: `39100141f9b0f3154c6048ec91376709a3134884`.
-- Frozen V5.36.4 diagnostic contract commit:
-  `b5207d921ebdf49124f6b5a0742ea581fa2b05ef`.
-- Frozen V5.36.4a lifetime contract commit:
-  `df38bfe78929ce0c6ed6df9ba605bd2aef84e897`.
-- Frozen V5.36.4b direct-address contract commit:
-  `7d44e772bcdaa13f3c754852466cddbb4a69b1a6`.
+- Review worktree:
+  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\codex-v5.36.5-canary-artifact-boundary`
+- Branch: `codex/v5.36.5-canary-artifact-boundary`
+- The operator's normal
+  `C:\Users\danie\Desktop\algo_trader` checkout on `main` was not modified.
+- Do not switch branches in either checkout. Review this worktree directly.
+
+## Exact Repository State
+
+- Accepted V5.36.4 base commit:
+  `dddea20e19c7b30834e8e3d547567ce1e53bba91`
+- Accepted base tree:
+  `cb058c6a2b935bc821f9d26b18467b6a5cd8ca93`
+- Frozen V5.36.5 contract commit:
+  `3aea8f95604c44002fa6867cd08d3d36e98be110`
+- Frozen V5.36.5a contract commit:
+  `962c0ad200536738690b24584395f6ed58dca594`
 - Implementation commit:
-  `4b0a5bc010b76afd9af08b42f149150ad879752a`.
-- Implementation tree: `2f7c10b4aa336661539ee9b81f9299286c63a5ee`.
-- The implementation commit was clean for commit-bound full verification.
-- The first handoff commit
-  `dba831a3b1b10034925480e9cc0f2127b9d8ceaf` was clean for exact-final full
-  verification.
-- This final evidence update is the sole intended dirty file. No unrelated
-  staged, unstaged, or untracked user work was inherited.
-- Next implementation action: none. Yield the clean final evidence commit for
-  independent review.
+  `d7a614fb72d3d26a58983571619dc4498214962c`
+- Implementation tree:
+  `82a077e344d4518eed26304d1148002b25809fef`
+- The implementation commit was clean for the authoritative full offline
+  verifier.
+- This handoff file is the only intended post-verification change and must be
+  committed before review.
 
-## Credential And External-Effect State
+## Terminal Operational Evidence
 
-Boolean-only preflight was repeated before every test group:
+- The earlier V5.36.4 credential-provisioning grants are terminal successes.
+- The first canary authorization
+  `v536-canary-20260724t0105z` is terminal.
+- Its preview returned `blocked_task_path_escape`.
+- Preview performed no Task Scheduler read or mutation, credential read,
+  network request, broker request, paper mutation, order action, canary
+  activation, or trading effect.
+- The terminal authorization must not be edited, moved, rehashed, retried, or
+  reused.
 
-- `APP_PROFILE` present: `false`
-- `APP_PROFILE=paper`: `false`
-- supported Alpaca credential aliases present: `false`
-- expected-paper-account aliases present: `false`
+## Defects And Repairs
 
-No credential was read, enumerated, created, replaced, renamed, deleted, or
-provisioned during implementation. No real prompt opened. No native credential
-library loaded. No Task Scheduler read or mutation, network request, broker
-request, paper mutation, order action, canary operation, or trading effect
-occurred.
+### V5.36.5
 
-The post-review V5.36.3 market-data attempt remains ambiguous and terminal.
-The post-review paper-observation attempt accepted all three constant-width
-masked fields and returned the fixed `credential_writer_failed`
-classification. Its grant remains terminal. No credential record is assumed
-to exist, and no record state was queried.
+The runbook correctly required an operator-owned authorization artifact
+outside generated output. The task builder incorrectly required that artifact
+to be inside the deployment root, producing the terminal preview block.
 
-## Frozen Defect Evidence
+The repaired task builder:
 
-Credential-free fake-native proof identified a retained
-`ctypes.from_buffer` export in the reviewed V5.36.3 native writer. After fake
-success, mandatory `bytearray.clear()` raised `BufferError`. The same export
-masked setup and invocation classifications during cleanup.
+1. resolves the deployment root and repository wrapper strictly;
+2. keeps the wrapper and task working directory within the deployment root;
+3. requires an absolute authorization artifact path;
+4. rejects a symlink, missing path, or directory;
+5. resolves the existing regular authorization file strictly;
+6. permits that exact resolved file outside the deployment root; and
+7. places only the exact resolved artifact path in the task arguments.
 
-Dropping local pointer, structure, and view references did not release the
-export without garbage collection. That mechanism was rejected before a
-production commit and frozen separately in V5.36.4b.
+Authorization schema, canonical hash, source, identity, family, endpoint,
+timing, task, no-submit, no-retry, and post-run checks are unchanged.
 
-## Implemented Boundary
+### V5.36.5a
 
-1. Native library loading, `CredWriteW` binding, structure construction, and
-   pre-call failures map to
-   `credential_writer_native_setup_failed`.
-2. An exception from the single bound `CredWriteW` call maps to
-   `credential_writer_native_invocation_failed`.
-3. A false native return with an unrecognized integer error maps to
-   `credential_writer_unknown_native_failure`.
-4. Existing fixed mappings for denied, invalid parameter, invalid flags,
-   missing preserved target, unavailable logon session, and bad username are
-   unchanged.
-5. Malformed injected results, arbitrary injected classifications, and
-   unexpected adapter exceptions remain generic `credential_writer_failed`.
-6. The native library loader, last-error reader, and bytearray-address resolver
-   are injected boundaries. Default tests use fake callables and never load
-   `Advapi32.dll`.
-7. Production uses CPython `PyByteArray_AsString` to address the original
-   non-empty mutable record directly. It creates no copy and no exported
-   buffer view.
-8. The original record remains strongly referenced through exactly one native
-   call, after which temporary pointer, structure, and address references are
-   released before immediate overwrite and clear.
-9. Target, type, flags, persistence, username, record schema/bytes, prompt,
-   authorization, exact-runtime binding, receipt, one-use material, and
-   zeroization contracts remain unchanged.
-10. No credential read, enumeration, delete, rename, Task Scheduler, network,
-    broker, paper-mutation, order, canary, or live capability was added.
+The broader host-canary suite exposed an order-dependent pre-existing race.
+Duplicate no-op receipt writers could create repository-owned atomic temporary
+files while the admitted execution ran the structural secret scan. The scan
+then returned `blocked_secret_persistence_detected`.
+
+V5.36.5a coordinates V5.36 immutable writes and the structural scan with one
+in-memory reentrant lock. It does not filter, ignore, delete, or retry
+temporary artifacts. A temporary file or forbidden token present while the
+scanner owns the lock still blocks. The SQLite claim remains the durable
+external-effect fence and duplicate executions remain immutable no-ops.
 
 ## Changed Files
 
-- `docs/agent_context/active_implementation.md`
 - `docs/OPERATOR_RUNBOOK.md`
+- `docs/agent_context/active_implementation.md`
 - `docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md`
+- `docs/design/v5_36_5_external_canary_authorization_path_contract.md`
+- `docs/design/v5_36_5a_concurrent_evidence_scan_coordination_contract.md`
 - `src/algotrader/execution/crypto_read_only_paper_observation_adapter.py`
-- `src/algotrader/execution/v536_credential_provisioning.py`
-- `tests/unit/test_v536_credential_provisioning.py`
+- `src/algotrader/execution/v536_windows_host_canary.py`
+- `src/algotrader/execution/v536_windows_task.py`
+- `tests/unit/test_v536_windows_host_canary.py`
+- `tests/unit/test_v536_windows_task.py`
 - `tests/unit/test_v5_33_2_source_provenance.py`
 
-The three frozen contract files were committed separately before the production
-implementation:
+## Safety And External Effects
 
-- `docs/design/v5_36_4_credential_writer_stage_diagnostic_contract.md`
-- `docs/design/v5_36_4a_native_buffer_view_lifetime_repair_contract.md`
-- `docs/design/v5_36_4b_direct_bytearray_address_contract.md`
+Boolean-only preflight was clean before implementation and verification:
+
+- `APP_PROFILE=paper`: `false`
+- supported credential/profile aliases present: `false`
+- network-test enablement present: `false`
+
+During implementation and verification:
+
+- no credential value was loaded, read, enumerated, created, replaced,
+  renamed, deleted, or exposed;
+- no real prompt or native credential boundary was opened;
+- no Task Scheduler read or mutation occurred;
+- no network or broker request occurred;
+- no paper mutation or order action occurred; and
+- no canary, strategy, paper automation, live access, or trading effect was
+  activated.
+
+All tests used deterministic fake boundaries.
 
 ## Verification Evidence
 
-All completed verification was offline, credential-free, network-free, and
-broker-free.
+### Required Pre-Repair Failure
 
-### Focused Provisioning, Wrapper, And Provenance Suite
+The new external-authorization regression failed against the accepted base
+with `task_path_escape`, confirming the defect before production repair.
 
-Command:
+### Focused Task Suite
 
-```powershell
-python -m pytest tests/unit/test_v536_credential_provisioning.py tests/unit/test_v536_scripts.py tests/unit/test_v5_33_2_source_provenance.py -q
-```
+- `tests/unit/test_v536_windows_task.py`
+- Result: `27 passed`
 
-- Exit code: `0`
-- Result: `80 passed`
-- Pytest elapsed: `35.43s`
+### Host-Canary Suite
 
-### Affected V5.35/V5.36 Safety And Regression Suite
+- `tests/unit/test_v536_windows_host_canary.py`
+- Result: `23 passed`
+- Includes concurrent duplicate execution and real stale-`.tmp` blocking.
 
-Command:
+### Focused V5.36 Suite
 
-```powershell
-python -m pytest tests/unit/test_v536_credential_provisioning.py tests/unit/test_v536_canary_authorization.py tests/unit/test_v536_windows_task.py tests/unit/test_v536_windows_host_canary.py tests/unit/test_v536_scripts.py tests/unit/test_v535_unattended_readonly.py tests/unit/test_v535_task_boundary.py tests/unit/test_v535_secure_dispatcher.py tests/unit/test_v535_secure_credential_provider.py tests/unit/test_v5_33_2_source_provenance.py tests/unit/test_v5_33_2_atomic_persistence.py tests/unit/test_v5_33_2_account_identity.py tests/unit/test_default_pytest_network_guard.py tests/unit/test_broker_mutation_surface_invariant.py tests/unit/test_crypto_no_submit_operating_cycle.py -q
-```
+- Task, authorization, host-canary, wrapper, and provenance tests
+- Result: `87 passed`
+- Pytest elapsed: `73.73s`
 
-- Exit code: `0`
-- Result: `269 passed`
-- Pytest elapsed: `103.16s`
+### Broader V5.35/V5.36 Safety Suite
 
-### Standalone Dependency Direction
+- Result: `276 passed`
+- Pytest elapsed: `168.86s`
 
-Command:
+### Dependency Direction
 
-```powershell
-python -m pytest tests/unit/test_dependency_direction.py -q
-```
-
-- Exit code: `0`
 - Result: `34 passed`
-- Pytest elapsed: `5.87s`
+- Pytest elapsed: `11.67s`
 
 ### Full Offline Verifier
 
-Command:
+The first full invocation passed all `99` targeted safety guards but all four
+execution shards hit the 30-minute resource timeout while still progressing.
+It produced no test failure and was treated as unavailable, not as a pass.
+No duplicate verifier was started while it remained active.
 
-```powershell
-.\scripts\verify_offline.ps1 -Full
-```
-
-- Verified commit:
-  `4b0a5bc010b76afd9af08b42f149150ad879752a`
-- Verified tree: `2f7c10b4aa336661539ee9b81f9299286c63a5ee`
-- Exit code: `0`
-- Targeted safety guards: `99 passed`
-- Guard elapsed: `97.61s`
-- Canonical collection: `9,809` node IDs across `488` files
-- Shards: `4`; assigned counts `2453`, `2452`, `2452`, `2452`
-- Collection equivalence: `PASS`
-- Execution equivalence: `PASS`
-- Aggregate: `9,809` tests; `9,804` passed; `5` skipped; `0` failures;
-  `0` errors
-- Shard wall times: `1231.75s`, `1177.20s`, `1055.93s`, `1138.16s`
-- Bounded full suite: `PASS`
-- Final repository hygiene: `PASS`
-- Overall offline verification: `PASS`
-
-An earlier invocation exceeded its 20-minute controller window and its result
-was treated as unavailable. No duplicate was started while that process
-remained active. The authoritative rerun above completed with a captured exit
-code and full summary.
-
-### Exact-Final Handoff Verification
-
-The full verifier was repeated after the first handoff commit so repository
-policy was exercised on the exact clean handoff state:
+One clean rerun was started after the earlier processes ended and no competing
+Python workload remained:
 
 - Verified commit:
-  `dba831a3b1b10034925480e9cc0f2127b9d8ceaf`
-- Verified tree: `326d7d3de71f762e25be74995ec90a6727eb516e`
+  `d7a614fb72d3d26a58983571619dc4498214962c`
+- Verified tree:
+  `82a077e344d4518eed26304d1148002b25809fef`
 - Exit code: `0`
 - Targeted safety guards: `99 passed`
-- Guard elapsed: `120.07s`
-- Canonical collection: `9,809` node IDs across `488` files
+- Canonical collection: `9,816` node IDs across `488` files
+- Shard assignments: `2454`, `2454`, `2454`, `2454`
+- Shard results: all four exited `0`; no timeout
+- Shard wall times: `1652.45s`, `1381.20s`, `1435.15s`, `1439.02s`
 - Collection equivalence: `PASS`
-- Shard results: all `4` exited `0`; no timeout
-- Shard wall times: `1171.01s`, `1145.35s`, `1059.67s`, `1104.59s`
 - Execution equivalence: `PASS`
-- Aggregate: `9,809` tests; `9,804` passed; `5` skipped; `0` failures;
+- Aggregate: `9,816` tests; `9,811` passed; `5` skipped; `0` failures;
   `0` errors
 - Bounded full suite: `PASS`
 - Final repository hygiene: `PASS`
 - Overall offline verification: `PASS`
 
-## Residual Risks
+## Required Independent Review
 
-- Real Windows Credential Manager behavior remains untested and unauthorized.
-- The earlier paper attempt may or may not have invoked `CredWriteW`; record
-  state remains unknown because no read or enumeration was authorized.
-- `PyByteArray_AsString` intentionally binds production to CPython. An
-  unavailable or malformed API fails closed with no copy or fallback.
-- A future real attempt can identify only a fixed sanitized category. Any
-  newly identified adapter correction requires another frozen contract and
-  independent review.
-- No provisioning attempt, Task Scheduler operation, network access, broker
-  access, paper mutation, canary activation, or trading action is authorized
-  by this implementation.
+Claude should review this one worktree and exact final handoff commit. Review
+must verify:
 
-## Exact Next Review And Operator Route
+1. contract commits precede their production changes;
+2. the external artifact may be outside the deployment root only after
+   strict absolute, regular-file, non-symlink resolution;
+3. the wrapper and working directory cannot escape the deployment root;
+4. task action arguments contain only the exact resolved public artifact
+   path and existing fixed switches;
+5. the evidence lock coordinates writers and scanner without suppressing any
+   temporary-file or forbidden-token check;
+6. exactly one durable execution and immutable duplicate no-op behavior
+   remain;
+7. provenance binds both new contracts; and
+8. no credential, scheduler, network, broker, mutation, order, canary, paper,
+   or live authority was added by implementation.
 
-1. Yield the clean final evidence commit for independent review.
-2. Push only if separately requested or needed for that review.
-3. The independent reviewer verifies contract chronology, direct-address
-   lifetime, exact one-call behavior, record-layout preservation, stage
-   mappings, redaction, zeroization, provenance, and full offline evidence.
-4. Only after independent review may the operator authorize fresh, separate,
-   non-reusable, one-hour grants and one new attempt per family.
-5. No Task Scheduler, network, broker, paper, canary, or trading action follows
-   automatically.
+Claude should return one classification: `accepted`, `changes_requested`, or
+`blocked`, with sanitized findings and evidence.
+
+## Route After Review
+
+If Claude accepts the exact final commit:
+
+1. the operator may separately authorize one fresh canary artifact with a new
+   window and final commit/tree;
+2. Antigravity may execute that fresh lifecycle from this exact worktree;
+3. the terminal `v536-canary-20260724t0105z` artifact remains unusable; and
+4. any new blocked or ambiguous result is terminal with no retry.
+
+No merge, push, main-branch switch, new canary artifact, Task Scheduler
+operation, credential read, network request, broker request, paper mutation,
+order action, or trading activation follows automatically from this handoff.
