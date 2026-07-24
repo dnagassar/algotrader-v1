@@ -17,6 +17,7 @@ from typing import Any, Mapping, Sequence, cast
 
 from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_client import PaperObservationReader
+from algotrader.execution.live_capital_interlock import evaluate_live_capital_interlock
 
 PRODUCTION_OBSERVATION_SCHEMA = "v5_33_production_broker_observation_receipt_v1"
 PRODUCTION_INVOCATION_SCHEMA = "v5_33_production_invocation_receipt_v1"
@@ -233,6 +234,10 @@ def validate_preflight_gates(
     paper_broker_read_authorized: bool,
     allow_network: bool,
 ) -> None:
+    interlock_verdict = evaluate_live_capital_interlock(os.environ)
+    if interlock_verdict.live_signals:
+        raise PreflightCheckError("preflight_failed_live_signal_detected")
+
     if not app_profile or app_profile.strip().lower() != "paper":
         raise PreflightCheckError("preflight_failed_profile_not_paper")
 
