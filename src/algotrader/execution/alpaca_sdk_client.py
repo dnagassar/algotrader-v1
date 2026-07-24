@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+import os
 import re
 from typing import Any, cast
 
 from algotrader.config import AlpacaPaperConfig, require_paper_profile
+from algotrader.execution.live_capital_interlock import require_live_capital_interlock
 from algotrader.execution.alpaca_client import (
     AlpacaAccountResponse,
     AlpacaClient,

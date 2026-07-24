@@ -151,12 +151,22 @@ class AlpacaPaperConfig:
     ) -> "AlpacaPaperConfig":
         source = os.environ if env is None else env
 
+        api_key = (
+            _clean_optional(source.get("ALPACA_API_KEY"))
+            or _clean_optional(source.get("ALPACA_API_KEY_ID"))
+            or _clean_optional(source.get("APCA_API_KEY_ID"))
+        )
+        secret_key = (
+            _clean_optional(source.get("ALPACA_SECRET_KEY"))
+            or _clean_optional(source.get("ALPACA_API_SECRET_KEY"))
+            or _clean_optional(source.get("APCA_API_SECRET_KEY"))
+        )
         return cls(
             app_profile=_clean_with_default(
                 source.get("APP_PROFILE"), DEFAULT_APP_PROFILE
             ),
-            alpaca_api_key=_clean_optional(source.get("ALPACA_API_KEY")),
-            alpaca_secret_key=_clean_optional(source.get("ALPACA_SECRET_KEY")),
+            alpaca_api_key=api_key,
+            alpaca_secret_key=secret_key,
             alpaca_paper_base_url=_clean_with_default(
                 source.get("ALPACA_PAPER_BASE_URL"),
                 DEFAULT_ALPACA_PAPER_BASE_URL,

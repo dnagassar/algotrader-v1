@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from algotrader.errors import ValidationError
+from algotrader.execution.live_capital_interlock import require_live_capital_interlock
 from algotrader.execution.secure_credential_provider import (
     CredentialFamily,
     CredentialProvider,
@@ -434,6 +435,7 @@ def fetch_crypto_history_from_alpaca_market_data(
     timeout: int = 30,
     timeframe: str = _DEFAULT_TIMEFRAME,
     loc: str = _DEFAULT_LOC,
+    env: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Fetch read-only market-data bars for the requested crypto symbols."""
 
@@ -442,6 +444,8 @@ def fetch_crypto_history_from_alpaca_market_data(
             "market-data refresh requires --allow-network and "
             "--market-data-fetch-authorized."
         )
+
+    require_live_capital_interlock(env)
 
     checked_symbols = _symbol_tuple(symbols)
     checked_start = _aware_utc_datetime(start, "start")
@@ -788,6 +792,7 @@ def _run_market_data_fetch_mode(
             opener=opener,
             timeframe=config.timeframe,
             loc=config.loc,
+            env=env,
         )
 
     if credential_provider is not None and credential_reference is not None:

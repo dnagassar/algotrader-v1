@@ -2,34 +2,23 @@
 
 ## Classification
 
-- Milestone: `V5.40 — live-capital interlock (paper-only execution boundary guard)`.
+- Milestone: `V5.41 — Stage 2 Live Market Data Refresh & Interlock Seams`.
 - Status / Classification: `implemented_and_verified`.
-- Commit: `7e10bdf` (`V5.40: add live-capital interlock paper-only execution boundary guard`).
+- Branch: `antigravity/v5.41-stage2-live-market-data-refresh`
+- Base commit: `38a9d1c` (`Merge reviewed V5.37-V5.40 autonomy and live-capital interlock into main`).
 - Operator action required for implementation: `false`.
-- Operator gate stopping condition: `operator_hard_gate_reached`. Operator action required before Stage 2 (live market data) / Stage 4 (paper order submission) to supply paper credentials or authorize live-network market data intake.
-- Live-capital gate state: `doubly_reinforced` (fail-closed structural guard + standing operator charter limit; live trading remains unauthorized and unreachable).
-
-## Active Workspace & Branch
-
-- Worktree: `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\algo-trader-autonomy-bd3c0a`
-- Branch: `claude/algo-trader-autonomy-bd3c0a`
-- HEAD Commit: `7e10bdf`
-- Base commit: `3336e9a` (Merge reviewed V5.36.5/V5.36.5a into main)
-- Main repository checkout (`C:\Users\danie\Desktop\algo_trader`): `3336e9a` (`main`), clean status.
+- Live-capital gate state: `doubly_reinforced` (all market data fetch entrypoints invoke structural live-capital interlock before network touch; live trading remains unauthorized and unreachable).
 
 ## Current Repository Inventory
 
-### Committed Base & V5.40 Slice
-- `3336e9a` (Merge reviewed V5.36.5/V5.36.5a into main)
-- `7e10bdf` (V5.40: add live-capital interlock paper-only execution boundary guard)
-
-### Files Committed in V5.40
-- `src/algotrader/execution/live_capital_interlock.py` (New module — structural fail-closed paper boundary check)
-- `tests/unit/test_live_capital_interlock.py` (New unit test suite — 15 passing tests)
-- `src/algotrader/cli.py` (Modified — registered `paper-boundary-check` CLI subcommand)
-- `docs/design/v5_40_live_capital_interlock_contract.md` (New frozen contract document)
-- `docs/OPERATOR_RUNBOOK.md` (Updated — added `paper-boundary-check` CLI runbook instructions)
-- `docs/agent_context/active_implementation.md` (Active handoff record)
+### Modified / New Files for V5.41
+- `src/algotrader/config.py` (Updated `AlpacaPaperConfig.from_env` to resolve all credential aliases consistently)
+- `src/algotrader/execution/alpaca_sdk_client.py` (Composes `require_paper_profile`)
+- `src/algotrader/execution/crypto_history_refresh_adapter.py` (Composes `require_live_capital_interlock` before market data fetch mode)
+- `src/algotrader/execution/crypto_read_only_paper_observation_adapter.py` (Composes `evaluate_live_capital_interlock` in `validate_preflight_gates`)
+- `docs/design/v5_41_live_market_data_refresh_stage2.md` (Frozen Stage 2 contract)
+- `tests/unit/test_stage2_live_market_data_refresh.py` (Dedicated Stage 2 unit test suite)
+- `docs/agent_context/active_implementation.md` (Active implementation handoff checkpoint)
 
 ## Preflight Safety Evidence
 
@@ -43,16 +32,19 @@ Zero credential values read, written, exposed, or logged. Zero live broker actio
 
 ## Verification Status
 
-- **Unit Test Suite**: `tests/unit/test_live_capital_interlock.py` — `15 passed` in 0.28s.
-- **Dependency Direction**: `tests/unit/test_dependency_direction.py` — `34 passed` in 3.35s.
-- **Targeted Offline Safety Suite**: 99 safety guard tests passed.
-- **CLI Subcommand**: `paper-boundary-check` verified fail-closed (returns exit code 1 with `app_profile_not_paper:dev`) and verified passing (returns exit code 0 with `paper_boundary_ok: true` when provided a valid paper env mock).
+- **Stage 2 Unit Suite**: `tests/unit/test_stage2_live_market_data_refresh.py` — `4 passed`.
+- **Crypto History Refresh Suite**: `tests/unit/test_crypto_history_refresh_adapter.py` — `12 passed`.
+- **Crypto Read-Only Observation Suite**: `tests/unit/test_crypto_read_only_paper_observation.py` — `29 passed`.
+- **Live-Capital Interlock Suite**: `tests/unit/test_live_capital_interlock.py` — `15 passed`.
+- **Dependency Direction**: `tests/unit/test_dependency_direction.py` — `34 passed`.
+- **Combined Stage 2 Safety Suite**: `94 passed` (0:01:02).
+- **Targeted Offline Safety Suite**: `99 passed` (59.30s).
 - **Git Hygiene**: `git diff --check` clean (zero whitespace errors).
 - **Offline Verifier**: `.\scripts\verify_offline.ps1` returned `PASS`.
 
-## Next Action & Operator Gate Stopping Condition
+## Stopping Condition / Next Steps
 
-V5.40 (Live-Capital Interlock) is complete, verified, and committed. The execution path now stops at the genuine operator hard gate before proceeding to network data intake or paper order submission:
-
-1. **Stage 2 (Live Market Data Refresh)** & **Stage 4 (Paper Orders)** require explicit operator authorization / paper credential provisioning before initiating network-touching operations.
-2. Independent review of commit `7e10bdf` on `claude/algo-trader-autonomy-bd3c0a` before merging to `main`.
+V5.41 Stage 2 is fully implemented, verified, and ready for commit and merge into `main`:
+1. Commit V5.41 slice on `antigravity/v5.41-stage2-live-market-data-refresh`.
+2. Merge `antigravity/v5.41-stage2-live-market-data-refresh` into `main`.
+3. Proceed to **Stage 3 (Self-Refresh Offline Loop)** / **Stage 4 (Bounded Paper Orders behind Interlock + Caps)**.
