@@ -282,15 +282,35 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
         offline_runnable=True,
         gate=_GATE_UNATTENDED_EXECUTION,
         gate_detail=(
-            "fully-defaulted offline rerun command exists; only unattended "
-            "execution authority remains, and the refreshed M446 CSV must be "
-            "present."
+            "fully-defaulted offline command that reproduces the pinned M446/M447 "
+            "milestone result; only unattended execution authority remains."
         ),
         command=_OFFLINE_DAILY_CYCLE_RERUN_COMMAND,
         preconditions=(
-            "refreshed M446 canonical adjusted SPY daily-bars CSV present at "
-            "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv "
-            "(operator-provided market-data refresh)",
+            "the exact pinned M446 canonical CSV (sha256 408fd46...db69, latest "
+            "bar date 2026-06-08) present at "
+            "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        ),
+        # This command is a milestone reproduction, not a refresh: the module
+        # hard-pins the expected latest bar date to 2026-06-08 and writes the
+        # M447 manifest, never the m444 artifact the daily-cycle lane reads. It
+        # therefore cannot cure daily-cycle staleness; that routes to
+        # ``operator_refresh_offline_daily_cycle_inputs`` instead.
+    ),
+    "operator_refresh_offline_daily_cycle_inputs": ActionClass(
+        execution_class=EXECUTION_OPERATOR_GATED,
+        offline_runnable=False,
+        gate=_GATE_OPERATOR_INPUTS,
+        gate_detail=(
+            "stale daily-cycle evidence means the underlying daily bars are old; "
+            "curing it needs an operator-supplied refreshed adjusted SPY "
+            "daily-bars CSV and daily chain clock, then a reseed of the chain "
+            "via etf-sma-offline-daily-cycle-run. No allowlisted offline command "
+            "writes this lane's artifact."
+        ),
+        required_operator_inputs=(
+            "--validated-at: timezone-aware ISO-8601 daily chain clock",
+            "--daily-bars-csv: refreshed local adjusted SPY daily-bars CSV path",
         ),
     ),
     # --- Operator-gated: market-data fetch (network). ---

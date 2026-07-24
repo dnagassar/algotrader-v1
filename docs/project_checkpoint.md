@@ -15151,12 +15151,13 @@ and no-network defaults for normal test runs.
   its own. A source-scan permits `os`/`sys`/`subprocess` but forbids every
   network/broker/credential-SDK import and broker mutation call. Exit codes: `2`
   on validation error or a preflight-refused `--apply`, `1` on a failed execution
-  or a dry run with eligible work pending, `0` otherwise. Honest current
-  limitation: the sole allowlisted command triggers on the daily-cycle `stale`
-  state, which the supervisor cannot emit because that lane disables staleness
-  (`max_age_hours=0`), so the eligible set is empty today — the correct fail-closed
-  outcome; the executor is the reviewed seam all future autonomous execution passes
-  through. Focused suite `tests/unit/test_autonomy_offline_executor.py` (21 tests)
+  or a dry run with eligible work pending, `0` otherwise. At the V5.39
+  checkpoint, the sole allowlisted command targeted the daily-cycle `stale`
+  action while that lane still disabled staleness (`max_age_hours=0`), so the
+  eligible set was intentionally empty. V5.42 supersedes that historical
+  limitation by routing stale M444 evidence to operator inputs because the
+  allowlisted M446/M447 reproduction cannot refresh it; the executor remains the
+  reviewed seam future autonomous execution must pass through. Focused suite `tests/unit/test_autonomy_offline_executor.py` (21 tests)
   plus the V5.37/V5.38 and dependency-direction guards are green. The detailed
   immutable contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.
 
@@ -15168,15 +15169,29 @@ and no-network defaults for normal test runs.
   (`dry_run_preview`/`noop_no_action`/`refreshed`/`still_pending`/
   `execution_failed`) and `converged`. Dry-run by default; `--apply` executes the
   eligible allowlisted offline refresh actions behind the executor preflight. To
-  give the loop a real trigger, the `spy_offline_daily_cycle` supervisor lane's
-  `max_age_hours` moved 0→30: a timestamped daily-cycle record older than 30h is
-  now `stale` → planner emits `rerun_offline_daily_cycle_chain` → executor may run
-  it; records without a timestamp are never stale. The orchestrator imports no
+  give the loop a real staleness signal, the `spy_offline_daily_cycle` supervisor
+  lane's `max_age_hours` moved 0→30: a timestamped daily-cycle record older than
+  30h is now `stale`; records without a timestamp are never stale. Review
+  correction: that staleness is operator-curable only — the allowlisted
+  `...rerun-m446` is pinned to the 2026-06-08 dataset and writes the M447
+  manifest, not the lane's `m444` artifact, so it could never cure it. Stale now
+  routes to `operator_refresh_offline_daily_cycle_inputs`, and the new
+  `LaneSpec.stale_requires_operator_action` makes such lanes aggregate as
+  `waiting` (still reported in `stale_lanes`) so the loop converges truthfully
+  instead of re-running a command that cannot help. The orchestrator imports no
   os/socket/urllib/requests/subprocess/broker SDK and reads no wall clock; every
   record fixes the safety booleans false with `profit_claim=none`. Focused suite
-  `tests/unit/test_autonomy_self_refresh_cycle.py` (13 tests, incl. the
-  stale→execute→converge loop-closure test) plus the autonomy/interlock/
-  dependency-direction guards (133 together) and the targeted offline verifier
-  (99 guards) are green. Built on `claude/v5.42-stage3-self-refresh` from
-  `main@82b1e07`; independent review required before merge. The detailed immutable
-  contract is in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
+  `tests/unit/test_autonomy_self_refresh_cycle.py` (incl. convergence-to-waiting
+  on operator-curable staleness, executor inertness under the current registry,
+  and full `cycle_outcome` classification coverage) plus the autonomy/interlock/
+  dependency-direction guards and the targeted offline verifier
+  (99 guards) are green. Independent full-gate review also repaired the inherited
+  secure-provider/interlock integration: explicit non-secret paper inputs now
+  form a temporary boundary view without masking ambient live signals; live
+  conflicts refuse before the credential lease, and the complete interlock runs
+  again with leased values in memory immediately before read-only HTTP. Final
+  bounded suite: 9,933 collected, 9,929 passed, 4 skipped, 0 failures/errors;
+  collection/execution equivalence passed across eight shards. Built on
+  `claude/v5.42-stage3-self-refresh` from `main@82b1e07`; independent review was
+  completed with corrections before merge. The detailed immutable contract is
+  in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.

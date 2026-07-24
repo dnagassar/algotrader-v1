@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from algotrader.errors import ValidationError
-from algotrader.execution.live_capital_interlock import require_live_capital_interlock
+from algotrader.execution.live_capital_interlock import (
+    evaluate_live_capital_interlock,
+    require_live_capital_interlock,
+)
 from algotrader.execution.secure_credential_provider import (
     CredentialFamily,
     CredentialProvider,
@@ -270,6 +273,15 @@ def run_crypto_history_refresh(
         if secure_provider_mode
         else crypto_history_refresh_preflight(source_env)
     )
+    interlock_env = (
+        _secure_provider_interlock_env(
+            source_env,
+            app_profile=app_profile,
+            paper_endpoint=paper_endpoint,
+        )
+        if secure_provider_mode
+        else source_env
+    )
     as_of = _as_of_datetime(checked_config.as_of)
 
     if preflight["live_endpoint_indicator"]:
@@ -304,6 +316,7 @@ def run_crypto_history_refresh(
         preflight,
         as_of=as_of,
         env=source_env,
+        interlock_env=interlock_env,
         opener=opener,
         credential_provider=credential_provider,
         credential_reference=credential_reference,
@@ -357,6 +370,43 @@ def _secure_provider_preflight(
         or not paper_is_exact
         or not market_data_is_exact,
     }
+
+
+def _secure_provider_interlock_env(
+    env: Mapping[str, str],
+    *,
+    app_profile: str | None,
+    paper_endpoint: str | None,
+) -> dict[str, str]:
+    """Build the non-secret interlock view without masking ambient signals."""
+
+    resolved = dict(env)
+    if "APP_PROFILE" not in resolved and isinstance(app_profile, str):
+        resolved["APP_PROFILE"] = app_profile
+    if "ALPACA_PAPER_BASE_URL" not in resolved and isinstance(paper_endpoint, str):
+        resolved["ALPACA_PAPER_BASE_URL"] = paper_endpoint
+    return resolved
+
+
+def _require_pre_lease_interlock(
+    env: Mapping[str, str],
+    *,
+    secure_provider_mode: bool,
+) -> None:
+    if not secure_provider_mode:
+        require_live_capital_interlock(env)
+        return
+
+    verdict = evaluate_live_capital_interlock(env)
+    if (
+        not verdict.profile_is_paper
+        or not verdict.paper_endpoint_ok
+        or verdict.live_signals
+    ):
+        # Reuse the canonical refusal and message. A secure credential provider
+        # supplies credential presence later, inside the lease callback; every
+        # other paper/live boundary condition must already pass here.
+        require_live_capital_interlock(env)
 
 
 def crypto_history_refresh_preflight(
@@ -751,6 +801,7 @@ def _run_market_data_fetch_mode(
     *,
     as_of: datetime,
     env: Mapping[str, str],
+    interlock_env: Mapping[str, str],
     opener: UrlOpen | None,
     credential_provider: CredentialProvider | None,
     credential_reference: CredentialReference | None,
@@ -771,6 +822,17 @@ def _run_market_data_fetch_mode(
             ),
         )
 
+    # Refuse profile, endpoint, and live-signal conflicts before opening a
+    # credential lease. Secure-provider mode defers only credential-presence
+    # validation; the fetch helper performs the complete canonical check before
+    # HTTP after the lease supplies those values in memory.
+    _require_pre_lease_interlock(
+        interlock_env,
+        secure_provider_mode=(
+            credential_provider is not None and credential_reference is not None
+        ),
+    )
+
     end = _as_of_datetime(config.end) if config.end is not None else as_of
     start = (
         _as_of_datetime(config.start)
@@ -782,6 +844,9 @@ def _run_market_data_fetch_mode(
         api_secret: str,
         _expected_account: str | None,
     ) -> dict[str, object]:
+        credential_bound_interlock_env = dict(interlock_env)
+        credential_bound_interlock_env.setdefault("ALPACA_API_KEY", api_key)
+        credential_bound_interlock_env.setdefault("ALPACA_SECRET_KEY", api_secret)
         return fetch_crypto_history_from_alpaca_market_data(
             symbols=config.symbols,
             start=start,
@@ -792,7 +857,7 @@ def _run_market_data_fetch_mode(
             opener=opener,
             timeframe=config.timeframe,
             loc=config.loc,
-            env=env,
+            env=credential_bound_interlock_env,
         )
 
     if credential_provider is not None and credential_reference is not None:

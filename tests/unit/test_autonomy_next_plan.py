@@ -123,6 +123,26 @@ def test_every_supervisor_action_is_classified() -> None:
     assert missing == [], f"unclassified supervisor actions: {missing}"
 
 
+def test_stale_operator_action_flag_matches_action_classification() -> None:
+    # The supervisor declares, per lane, whether staleness is operator-curable
+    # only; the planner independently classifies that lane's stale action. If the
+    # two drift, the supervisor would report "waiting" for a lane the executor
+    # actually could advance (or spin on one it cannot). Keep them in lockstep.
+    from algotrader.execution.autonomy_supervisor import STATE_STALE
+
+    for lane in AUTONOMY_SUPERVISOR_LANES:
+        if lane.max_age_hours <= 0:
+            assert lane.stale_requires_operator_action is False, lane.lane_id
+            continue
+        stale_action = lane.next_actions[STATE_STALE]
+        classified = AUTONOMY_ACTION_CLASSIFICATION[stale_action]
+        assert classified.offline_runnable is not lane.stale_requires_operator_action, (
+            f"{lane.lane_id}: stale_requires_operator_action="
+            f"{lane.stale_requires_operator_action} but {stale_action} is "
+            f"offline_runnable={classified.offline_runnable}"
+        )
+
+
 def test_classification_registry_is_internally_consistent() -> None:
     for token, classified in AUTONOMY_ACTION_CLASSIFICATION.items():
         assert isinstance(classified, ActionClass), token

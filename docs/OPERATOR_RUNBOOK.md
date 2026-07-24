@@ -1326,10 +1326,18 @@ The command reports, per lane, a normalized state in
 `absent`/`waiting`/`nominal`/`stale`/`attention_required`/`unknown`/`blocked`,
 the surfaced blockers, and one offline next action. The whole-system
 `system_status` is `blocked` if any lane is blocked, `attention_required` if any
-lane is unknown, attention, or stale, `waiting` if any lane is waiting, `nominal`
-if at least one lane is healthy, and `no_lane_evidence` when nothing has run yet.
-Exit code is `0` for nominal/waiting/no_lane_evidence, `1` for
-attention/blocked, and `2` on input error, so it is schedulable.
+lane is unknown, attention, or *actionably* stale, `waiting` if any lane is
+waiting, `nominal` if at least one lane is healthy, and `no_lane_evidence` when
+nothing has run yet. Exit code is `0` for nominal/waiting/no_lane_evidence, `1`
+for attention/blocked, and `2` on input error, so it is schedulable.
+
+Staleness splits in two. A lane whose `stale_requires_operator_action` is true
+(today: `spy_offline_daily_cycle` and `spy_market_data_soak`) has no offline
+command that could refresh it, so when it goes stale the system reports `waiting`
+rather than `attention_required` — the lane still shows `stale`, its age, and
+appears in `stale_lanes`, but the autonomous loop correctly reports it has
+nothing to run and hands you the exact remediation it needs. Only a stale lane that an
+allowlisted offline command *could* advance escalates to `attention_required`.
 
 In a clean checkout every lane reads `absent` because its `runs/` evidence is
 generated and gitignored; run the individual lane commands first to seed
@@ -1457,6 +1465,21 @@ error; `1` on execution failure or a non-converged cycle; `0` otherwise. Same
 credential/profile refusal and safety guarantees as the executor. The detailed
 contract is in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
 
+What to expect today: no lane state currently emits an allowlisted action, so
+`-Apply` executes nothing and the cycle reports `noop_no_action` with
+`converged: true` (exit `0`). When daily-cycle evidence ages past 30h the cycle
+converges to `waiting` and the plan names the operator inputs needed — supply a
+refreshed adjusted SPY daily-bars CSV and re-seed the chain with
+`etf-sma-offline-daily-cycle-run --manifest-output-jsonl
+runs\paper_lab\m444_offline_daily_cycle_run.jsonl`. Do **not** expect
+`etf-sma-offline-daily-cycle-rerun-m446` to refresh this lane: it is a pinned
+reproduction of the 2026-06-08 M446/M447 milestone and writes a different
+artifact.
+
+Caveat: a wrong or empty `-LanesRoot` reports `no_lane_evidence` with
+`converged: true` and exit `0`. Confirm the lane count in the record before
+treating a green exit as healthy.
+
 ## V5.40 Live-Capital Interlock Boundary Verification
 
 The live-capital interlock is the runtime structural guard enforcing the paper-only repository execution policy. Before initiating paper-trading or broker-touching tasks, operators and autonomous callers run the boundary check to verify profile, endpoint, and live-signal status.
@@ -1479,3 +1502,12 @@ Exit codes:
 - `1` — Paper boundary refused / live signal detected (`paper_boundary_ok: false`).
 
 Detailed contract: `docs/design/v5_40_live_capital_interlock_contract.md`.
+
+Secure-provider child note: the scheduler intentionally strips profile and
+credential environment variables and passes the exact paper profile/endpoints as
+non-secret arguments. The history adapter preserves any ambient key instead of
+overriding it, refuses live profile/endpoint/enablement signals before opening
+the credential lease, and performs the complete interlock again inside the lease
+callback immediately before read-only HTTP. A refusal must leave both provider
+open count and HTTP call count at zero. This path grants no broker mutation or
+live-capital authority.

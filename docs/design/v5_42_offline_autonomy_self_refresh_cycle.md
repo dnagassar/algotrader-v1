@@ -8,14 +8,41 @@ Stage 3 closes them into one loop. `autonomy-self-refresh-cycle` runs a single
 deterministic observe → decide → act → re-observe cycle and reports whether the
 system converged to a healthy steady state.
 
-It also gives the loop a real trigger. The V5.37 supervisor lane
-`spy_offline_daily_cycle` previously disabled staleness (`max_age_hours=0`), so
-its refresh action was never emitted and the executor was inert. V5.42 sets that
-lane's `max_age_hours=30`: a *daily* cycle whose latest accepted evidence carries
-a timestamp older than 30h is now `stale`, which the planner turns into
-`rerun_offline_daily_cycle_chain` (an allowlisted, fully-defaulted offline
-command the executor may run). Records without a timestamp are never stale, so
-seeded/absent evidence is unaffected.
+It also gives the loop a real staleness signal. The V5.37 supervisor lane
+`spy_offline_daily_cycle` previously disabled staleness (`max_age_hours=0`).
+V5.42 sets that lane's `max_age_hours=30`: a *daily* cycle whose latest accepted
+evidence carries a timestamp older than 30h is now `stale`. Records without a
+timestamp are never stale, so seeded/absent evidence is unaffected.
+
+### What staleness means per lane
+
+Staleness is a signal, not automatically an action. Each lane declares
+`stale_requires_operator_action`, which says whether any offline command could
+cure its staleness:
+
+- `spy_offline_daily_cycle` — **operator-curable only**. The sole command that
+  writes this lane's artifact (`m444_offline_daily_cycle_run.jsonl`) is the seed
+  command `etf-sma-offline-daily-cycle-run`, which requires an operator-supplied
+  daily chain clock and daily-bars CSV and is deliberately not allowlisted. The
+  allowlisted `etf-sma-offline-daily-cycle-rerun-m446` is a *milestone
+  reproduction*: it hard-pins the expected latest bar date to `2026-06-08` and
+  writes the M447 manifest, never `m444`. It therefore cannot cure staleness
+  here, and stale routes to `operator_refresh_offline_daily_cycle_inputs`.
+- `spy_market_data_soak` — **operator-curable only**. A stale soak means the
+  scheduled refresh task stopped producing sessions; only the operator can
+  restore it.
+
+A lane that is stale *and* operator-curable-only aggregates as `waiting`, not
+`attention_required`: the lane still reports `stale`, its age, and appears in
+`stale_lanes`, so no signal is lost — but an autonomous loop that has no command
+to run has genuinely finished its work, and says so rather than spinning. A
+cross-module test keeps this flag in lockstep with the planner's classification
+of each lane's stale action.
+
+Consequence: under the current lane registry **no reachable lane state emits an
+allowlisted action**, so the executor is inert and `--apply` executes nothing.
+That is the truthful state today, and an explicit test asserts it so that adding
+a genuinely offline-runnable refresh is a deliberate change.
 
 ## The Cycle
 
@@ -66,20 +93,61 @@ otherwise.
 ## Behaviour Change To Note
 
 Enabling daily-cycle staleness means that in an environment with real but aged
-daily-cycle evidence, the supervisor will now report that lane `stale` and the
-whole-system status `attention_required`, and a self-refresh cycle run with
-`--apply` will attempt the offline rerun. That is the intended closed loop; it is
-the correct escalation for a daily cycle that has not been refreshed within ~a
-day. It changes no live-capital, paper-mutation, credential, or network
-authority — the rerun is a local offline command.
+daily-cycle evidence, the supervisor now reports that lane `stale` and the
+whole-system status `waiting`, and the plan names the two operator inputs
+needed to cure it (a refreshed daily-bars CSV and a daily chain clock). The seed
+command must target the canonical m444 manifest output path. A `--apply` cycle
+executes nothing and exits `0`: the loop has converged on the correct
+conclusion that only the operator can advance this lane. It changes no live-capital, paper-mutation, credential, or network
+authority.
+
+## Known Gap (not addressed here)
+
+`converged` treats `no_lane_evidence` as success, so a wrong or empty
+`--lanes-root` exits `0` "healthy". This is inherited from the V5.37
+supervisor-status exit convention rather than introduced here, but it is more
+dangerous in an unattended loop and should be fixed before anything gates
+unattended authority on this cycle's exit code.
+
+## Full-gate secure-provider boundary correction
+
+Independent full-suite review exposed an inherited V5.35/V5.41a integration
+conflict: the secure child deliberately strips profile and credential environment
+variables and passes its validated paper profile/endpoints as explicit non-secret
+arguments, while the newly added live-capital interlock read only the stripped
+environment and refused the default `dev` profile. The adapter now builds a
+non-secret interlock view without overriding any ambient key. It refuses ambient
+profile, endpoint, or live-enable conflicts before opening the credential lease;
+inside the lease callback, it binds the already-resolved values only to a
+temporary in-memory view so the complete canonical paper-boundary check runs
+again immediately before the read-only HTTP opener. No credential value is
+persisted, logged, or returned, and no broker-mutation or live authority changes.
 
 ## Verification
 
-- `tests/unit/test_autonomy_self_refresh_cycle.py` proves dry-run inertness, the
-  full stale→execute→converge loop closure (`refreshed`), failed-refresh
-  non-convergence, noop when nothing is eligible, executor preflight refusal
-  under a live signal, deterministic JSON/text rendering, single-record JSONL
-  write, input validation, CLI dry-run and exit codes, and a source-scan.
+- `tests/unit/test_autonomy_self_refresh_cycle.py` proves dry-run inertness,
+  convergence-to-waiting on operator-curable staleness, executor inertness under
+  the current lane registry, full `cycle_outcome` classification coverage
+  (including the `refreshed`/`still_pending`/`execution_failed` paths that stay
+  correct but are currently unreachable), executor preflight refusal under a live
+  signal, deterministic JSON/text rendering, single-record JSONL write, input
+  validation, CLI exit codes, and a source-scan.
 - `tests/unit/test_autonomy_supervisor.py` adds daily-cycle staleness tests
-  (stale after 30h, fresh nominal, no-timestamp never stale).
-- The V5.37–V5.41a suites and the targeted offline verifier remain green.
+  (stale after 30h, fresh nominal, no-timestamp never stale) and proves stale
+  operator-curable lanes aggregate as `waiting` while still appearing in
+  `stale_lanes`.
+- `tests/unit/test_autonomy_next_plan.py` proves the supervisor's
+  `stale_requires_operator_action` flag and the planner's classification of each
+  lane's stale action cannot drift apart; the executor suite proves no action in
+  the current lane registry intersects the executor allowlist.
+- `tests/unit/test_v535_secure_dispatcher.py` proves the secure-provider path
+  passes the full interlock at the mocked read-only HTTP boundary and refuses
+  ambient live profile, live endpoint, and live-enable signals before credential
+  or HTTP access.
+- Combined focused autonomy/boundary/dependency suite: `163 passed` before the
+  final endpoint-key test addition; focused boundary suite afterward: `73 passed`.
+- Canonical standard offline verifier: `99 passed`, all profile/credential/network
+  preflight booleans false, hygiene clean.
+- Repository-owned bounded full suite: `9,933` collected, `9,929 passed`,
+  `4 skipped`, `0 failures`, `0 errors`; collection and execution equivalence
+  passed across all eight shards.

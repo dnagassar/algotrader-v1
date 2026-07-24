@@ -12,6 +12,7 @@ import algotrader.cli as cli_module
 import algotrader.execution.autonomy_offline_executor as executor_module
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
+    AUTONOMY_SUPERVISOR_LANES,
     AutonomySupervisorConfig,
     build_autonomy_supervisor_report_from_records,
 )
@@ -104,6 +105,18 @@ def test_allowlist_is_the_verified_offline_command_only() -> None:
     # The seed command that requires operator input must never be allowlisted.
     for argv in AUTONOMY_EXECUTOR_ALLOWLIST.values():
         assert "etf-sma-offline-daily-cycle-run" not in argv
+
+
+def test_allowlisted_actions_are_unreachable_from_current_lane_registry() -> None:
+    emitted_actions = {
+        action
+        for lane in AUTONOMY_SUPERVISOR_LANES
+        for action in lane.next_actions.values()
+    }
+    reachable_allowlisted = sorted(
+        emitted_actions.intersection(AUTONOMY_EXECUTOR_ALLOWLIST)
+    )
+    assert reachable_allowlisted == []
 
 
 def test_preflight_passes_on_clean_env() -> None:

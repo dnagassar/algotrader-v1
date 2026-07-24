@@ -16,6 +16,8 @@ from algotrader.execution.autonomy_self_refresh_cycle import (
     OUTCOME_EXECUTION_FAILED,
     OUTCOME_NOOP_NO_ACTION,
     OUTCOME_REFRESHED,
+    OUTCOME_STILL_PENDING,
+    _classify_outcome,
     build_self_refresh_cycle,
     render_self_refresh_cycle_json,
     render_self_refresh_cycle_text,
@@ -113,54 +115,78 @@ def test_dry_run_preview_executes_nothing(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# The loop closes: stale -> execute -> converge
+# The loop closes: stale evidence the loop cannot cure converges to "waiting"
 # --------------------------------------------------------------------------- #
-def test_stale_daily_cycle_refreshes_and_converges(tmp_path: Path) -> None:
-    path = _seed_stale_daily_cycle(tmp_path)
+def test_stale_daily_cycle_converges_to_operator_wait(tmp_path: Path) -> None:
+    # No allowlisted offline command writes this lane's artifact: the pinned
+    # m446 milestone rerun writes the M447 manifest, not m444. So staleness here
+    # is operator-curable only, and the loop converges by correctly reporting it
+    # has nothing to run rather than spinning on an action that cannot help.
+    _seed_stale_daily_cycle(tmp_path)
 
-    def _refresh_runner(argv, environ):
-        # Simulate the rerun writing fresh (non-stale) daily-cycle evidence.
-        path.write_text(
-            json.dumps(
-                {"daily_chain_state": "accepted_observe_hold_noop", "generated_at": AS_OF}
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        return {"exit_code": 0, "stdout": "", "stderr": "", "timed_out": False}
+    def _forbidden(argv, environ):  # pragma: no cover - must not run
+        raise AssertionError("no allowlisted action can cure daily-cycle staleness")
 
     cycle = build_self_refresh_cycle(
-        _config(tmp_path), apply=True, environ={}, runner=_refresh_runner
+        _config(tmp_path), apply=True, environ={}, runner=_forbidden
     )
 
-    assert cycle["before_system_status"] == "attention_required"
+    # The staleness signal itself is preserved, not suppressed.
     assert "spy_offline_daily_cycle" in cycle["before_report"]["stale_lanes"]
-    assert cycle["eligible_count"] == 1
-    assert cycle["execution_count"] == 1
-    assert cycle["all_executions_succeeded"] is True
-    assert cycle["after_system_status"] == "nominal"
-    assert cycle["after_report"]["stale_lanes"] == []
-    assert cycle["cycle_outcome"] == OUTCOME_REFRESHED
+    assert "spy_offline_daily_cycle" in cycle["after_report"]["stale_lanes"]
+    assert cycle["plan_summary"]["next_offline_action_lane"] == ""
+    assert "spy_offline_daily_cycle" in cycle["plan_summary"]["operator_gated_lanes"]
+    # Nothing was eligible, nothing ran, and the system waits on the operator.
+    assert cycle["eligible_count"] == 0
+    assert cycle["execution_count"] == 0
+    assert cycle["before_system_status"] == "waiting"
+    assert cycle["after_system_status"] == "waiting"
+    assert cycle["cycle_outcome"] == OUTCOME_NOOP_NO_ACTION
     assert cycle["converged"] is True
     _assert_safety_false(cycle)
 
 
-def test_failed_refresh_does_not_converge(tmp_path: Path) -> None:
+def test_stale_apply_cycle_is_inert(tmp_path: Path) -> None:
+    # This concrete stale-lane scenario must not reach the obsolete M446 rerun.
+    # The executor registry test separately proves no current lane action can
+    # reach the allowlist.
     _seed_stale_daily_cycle(tmp_path)
 
-    def _failing_runner(argv, environ):
-        # Command runs but fails; it writes no fresh evidence.
-        return {"exit_code": 3, "stdout": "", "stderr": "boom", "timed_out": False}
+    def _forbidden(argv, environ):  # pragma: no cover - must not run
+        raise AssertionError("executor must be inert under the current registry")
 
     cycle = build_self_refresh_cycle(
-        _config(tmp_path), apply=True, environ={}, runner=_failing_runner
+        _config(tmp_path), apply=True, environ={}, runner=_forbidden
     )
-    assert cycle["execution_count"] == 1
-    assert cycle["all_executions_succeeded"] is False
-    assert cycle["cycle_outcome"] == OUTCOME_EXECUTION_FAILED
-    # The lane is still stale, so the system still needs attention.
-    assert cycle["after_system_status"] == "attention_required"
-    assert cycle["converged"] is False
+    assert cycle["eligible_count"] == 0
+    assert cycle["execution_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("apply_flag", "count", "ok", "before", "after", "expected"),
+    (
+        (False, 0, True, "attention_required", "attention_required", OUTCOME_DRY_RUN_PREVIEW),
+        (True, 0, True, "waiting", "waiting", OUTCOME_NOOP_NO_ACTION),
+        (True, 1, False, "attention_required", "attention_required", OUTCOME_EXECUTION_FAILED),
+        (True, 1, True, "attention_required", "nominal", OUTCOME_REFRESHED),
+        (True, 1, True, "attention_required", "attention_required", OUTCOME_STILL_PENDING),
+    ),
+)
+def test_outcome_classification(
+    apply_flag: bool, count: int, ok: bool, before: str, after: str, expected: str
+) -> None:
+    # The execute/refresh code paths stay correct and covered even though the
+    # current lane registry cannot reach them.
+    assert (
+        _classify_outcome(
+            apply=apply_flag,
+            execution_count=count,
+            all_succeeded=ok,
+            before_status=before,
+            after_status=after,
+        )
+        == expected
+    )
 
 
 def test_noop_when_nothing_eligible(tmp_path: Path) -> None:
@@ -197,10 +223,10 @@ def test_apply_refuses_execution_under_live_signal(tmp_path: Path) -> None:
         environ={"APP_PROFILE": "live"},
         runner=_forbidden,
     )
-    # Executor refused; nothing ran, lane stays stale.
+    # Executor refused at preflight; nothing ran and the lane stays stale.
     assert cycle["execution_count"] == 0
     assert cycle["execution_ledger"]["preflight_ok"] is False
-    assert cycle["converged"] is False
+    assert "spy_offline_daily_cycle" in cycle["after_report"]["stale_lanes"]
 
 
 # --------------------------------------------------------------------------- #
@@ -266,8 +292,11 @@ def test_cli_dry_run(tmp_path: Path) -> None:
     assert payload["record_type"] == "autonomy_self_refresh_cycle"
     assert payload["dry_run"] is True
     assert payload["execution_count"] == 0
-    # Stale lane not refreshed in a dry run -> not converged -> exit 1.
-    assert exit_code == 1
+    # The stale lane is operator-curable only, so the loop has converged on a
+    # correct waiting state: exit 0, with the staleness still reported.
+    assert payload["converged"] is True
+    assert "spy_offline_daily_cycle" in payload["after_report"]["stale_lanes"]
+    assert exit_code == 0
     _assert_safety_false(payload)
 
 

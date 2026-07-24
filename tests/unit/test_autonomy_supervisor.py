@@ -252,7 +252,12 @@ def test_stale_nominal_lane_escalates_to_stale(tmp_path: Path) -> None:
     assert summary["stale"] is True
     assert summary["normalized_state"] == "stale"
     assert summary["age_hours"] is not None and summary["age_hours"] > 96
-    assert payload["system_status"] == "attention_required"
+    # The lane is still reported stale, but only the operator can restart the
+    # scheduled refresh task, so the system waits rather than claiming an
+    # attention condition the autonomous loop could act on.
+    assert summary["stale_requires_operator_action"] is True
+    assert payload["system_status"] == "waiting"
+    assert "spy_market_data_soak" in payload["stale_lanes"]
 
 
 def test_fresh_nominal_soak_is_not_stale(tmp_path: Path) -> None:
@@ -287,7 +292,12 @@ def test_daily_cycle_stale_after_30h(tmp_path: Path) -> None:
     summary = _lane_summary(payload, "spy_offline_daily_cycle")
     assert summary["stale"] is True
     assert summary["normalized_state"] == "stale"
-    assert summary["next_action"] == "rerun_offline_daily_cycle_chain"
+    # No allowlisted offline command writes this lane's artifact, so staleness
+    # routes to the operator rather than to the pinned m446 milestone rerun.
+    assert summary["next_action"] == "operator_refresh_offline_daily_cycle_inputs"
+    assert summary["stale_requires_operator_action"] is True
+    assert payload["system_status"] == "waiting"
+    assert "spy_offline_daily_cycle" in payload["stale_lanes"]
 
 
 def test_daily_cycle_fresh_is_nominal(tmp_path: Path) -> None:

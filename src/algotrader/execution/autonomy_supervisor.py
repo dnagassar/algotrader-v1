@@ -165,6 +165,13 @@ class LaneSpec:
     contain a fail-closed cautionary token, in which case they normalize to
     ``blocked``. ``next_actions`` maps a normalized state to a read-only or
     operator-review next action; it never names a mutation.
+
+    ``stale_requires_operator_action`` declares what staleness *means* for this
+    lane: when true, no offline command can cure it and the remaining remedy is
+    external/operator action, so the lane aggregates as ``waiting`` rather than
+    ``attention_required``. The lane still reports ``stale`` and its age, so no
+    signal is lost - only the system-level severity changes, because an
+    autonomous loop that cannot act has genuinely finished its work.
     """
 
     lane_id: str
@@ -178,6 +185,7 @@ class LaneSpec:
     state_map: Mapping[str, str]
     next_actions: Mapping[str, str]
     blocker_fields: tuple[str, ...] = ()
+    stale_requires_operator_action: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "lane_id", _required_string(self.lane_id, "lane_id"))
@@ -197,6 +205,12 @@ class LaneSpec:
         object.__setattr__(self, "state_map", _frozen_str_map(self.state_map, "state_map"))
         object.__setattr__(self, "next_actions", _frozen_str_map(self.next_actions, "next_actions"))
         object.__setattr__(self, "blocker_fields", _str_tuple(self.blocker_fields, "blocker_fields"))
+        if type(self.stale_requires_operator_action) is not bool:
+            raise ValidationError("stale_requires_operator_action must be a bool.")
+        if self.stale_requires_operator_action and self.max_age_hours <= 0:
+            raise ValidationError(
+                "stale_requires_operator_action is meaningless without max_age_hours."
+            )
 
     def resolve_state(self, raw_state: str) -> str:
         """Normalize a raw lane state value into the supervisory vocabulary."""
@@ -241,6 +255,9 @@ AUTONOMY_SUPERVISOR_LANES: tuple[LaneSpec, ...] = (
             STATE_UNKNOWN: "operator_review_market_data_soak_evidence",
             STATE_ABSENT: "run_authorized_read_only_market_data_refresh_to_seed_soak",
         },
+        # A stale soak means the scheduled refresh task stopped producing
+        # sessions. Only the operator can restore it; no offline command can.
+        stale_requires_operator_action=True,
     ),
     LaneSpec(
         lane_id="spy_offline_daily_cycle",
@@ -267,13 +284,19 @@ AUTONOMY_SUPERVISOR_LANES: tuple[LaneSpec, ...] = (
         next_actions={
             STATE_NOMINAL: "observe_hold_noop_continue_offline_daily_cycle",
             STATE_WAITING: "await_next_offline_daily_cycle_input",
-            STATE_STALE: "rerun_offline_daily_cycle_chain",
+            STATE_STALE: "operator_refresh_offline_daily_cycle_inputs",
             STATE_BLOCKED: "operator_review_blocked_offline_daily_cycle_chain",
             STATE_ATTENTION: "operator_review_offline_daily_cycle_chain",
             STATE_UNKNOWN: "operator_review_offline_daily_cycle_chain",
             STATE_ABSENT: "run_offline_daily_cycle_chain_to_seed_evidence",
         },
         blocker_fields=("chain_blockers", "validation_blockers", "blockers"),
+        # Stale daily-cycle evidence means the underlying daily bars are old.
+        # The only command that writes this lane's artifact is the seed command,
+        # which requires an operator-supplied clock and CSV; the allowlisted
+        # m446 rerun is pinned to one historical dataset and writes a different
+        # artifact, so it can never cure staleness here.
+        stale_requires_operator_action=True,
     ),
     LaneSpec(
         lane_id="crypto_supervised_readiness_trial",
@@ -569,6 +592,7 @@ def _summarize_lane(
         "age_hours": age_hours,
         "max_age_hours": lane.max_age_hours,
         "stale": stale,
+        "stale_requires_operator_action": lane.stale_requires_operator_action,
         "operator_action_required": operator_action_required,
         "safety_flags_ok": safety_flags_ok,
         "blockers": list(_dedupe(tuple(blockers))),
@@ -584,7 +608,17 @@ def _aggregate(
     for summary in lane_summaries:
         counts[str(summary["normalized_state"])] += 1
 
-    system_status = _system_status(counts)
+    # Stale lanes whose only cure is external/operator action are not a system
+    # attention condition: no offline command can advance them, so the autonomous
+    # loop has finished its work and is waiting on the operator.
+    operator_gated_stale = sum(
+        1
+        for summary in lane_summaries
+        if summary["normalized_state"] == STATE_STALE
+        and summary["stale_requires_operator_action"] is True
+    )
+
+    system_status = _system_status(counts, operator_gated_stale)
     highest = _highest_priority_lane(lane_summaries)
     aggregate_blockers: list[str] = []
     for summary in lane_summaries:
@@ -631,12 +665,16 @@ def _aggregate(
     }
 
 
-def _system_status(counts: Mapping[str, int]) -> str:
+def _system_status(counts: Mapping[str, int], operator_gated_stale: int) -> str:
+    # Stale lanes split into two kinds: those an offline command could still
+    # cure (a real attention condition) and those only the operator can cure
+    # (a waiting condition). ``operator_gated_stale`` counts the latter.
+    actionable_stale = counts[STATE_STALE] - operator_gated_stale
     if counts[STATE_BLOCKED] > 0:
         return SYSTEM_BLOCKED
-    if counts[STATE_UNKNOWN] > 0 or counts[STATE_ATTENTION] > 0 or counts[STATE_STALE] > 0:
+    if counts[STATE_UNKNOWN] > 0 or counts[STATE_ATTENTION] > 0 or actionable_stale > 0:
         return SYSTEM_ATTENTION
-    if counts[STATE_WAITING] > 0:
+    if counts[STATE_WAITING] > 0 or operator_gated_stale > 0:
         return SYSTEM_WAITING
     if counts[STATE_NOMINAL] > 0:
         return SYSTEM_NOMINAL
