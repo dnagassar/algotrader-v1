@@ -3,94 +3,144 @@
 ## Classification
 
 - Milestone: `V5.42 — Stage 3 offline autonomy self-refresh cycle`.
-- Classification: `implemented`.
-- Operator action required for implementation: `false`.
-- Independent review required before merge to `main`: `true`.
-- This is an offline orchestration surface. It executes only the V5.39 executor's
-  frozen-allowlist offline commands, behind a credential/profile preflight. It is
-  not canary, broker, paper-order, activation, or live-trading evidence.
+- Review disposition: `accepted_after_corrections`.
+- Implementation correction commit: `3818224` (`V5.42 review: correct stale routing and secure interlock`).
+- Operator action required for this offline implementation: `false`.
+- Merge to `main`: not performed in this takeover; the current branch remains the reviewed source.
+- This is not strategy-profit, paper-order, broker-mutation, activation, or live-trading evidence.
 
-## Use This One Workspace
+## Current Checkout And Ownership
 
-- Implementation branch: `claude/v5.42-stage3-self-refresh` (created from
-  `main@82b1e07` in the primary checkout `C:\Users\danie\Desktop\algo_trader`).
-- `main` is preserved at `82b1e07` (origin/main). This branch is additive and
-  requires independent review before merge.
+- Branch: `claude/v5.42-stage3-self-refresh`.
+- Original Stage 3 commit: `38b90835bbdf181d892699a3d9b165cc691f7b8a`.
+- Review correction commit: `3818224`.
+- Base/main during review: `main@82b1e07` / `origin/main@82b1e07`.
+- Handoff author/temporary dirty-file owner: Codex `/root`. The implementation
+  correction is committed; this handoff is the sole finalization change until
+  its own commit. After that commit, no implementation file has a dirty owner.
+- The shared editable Python install was restored to
+  `C:\Users\danie\Desktop\algo_trader`; it no longer points at Claude's detached
+  review worktree.
 
-## What Stage 3 Delivers
+## Capability Actually Proven
 
-Closes the observe → decide → act → re-observe loop into one command,
-`autonomy-self-refresh-cycle`, and gives the loop a real trigger by enabling
-staleness on the offline daily-cycle lane.
+- `autonomy-self-refresh-cycle` deterministically composes supervisor → planner
+  → gated offline executor → supervisor and reports outcome/convergence.
+- Daily-cycle evidence older than 30h remains explicitly `stale`, including age
+  and membership in `stale_lanes`, but routes to
+  `operator_refresh_offline_daily_cycle_inputs` because the real M446 command is
+  pinned to 2026-06-08 and writes M447, not the supervised M444 artifact.
+- Operator-only stale remedies aggregate as `waiting`; on the real CLI stale
+  scenario, `--apply` produced `waiting → waiting`, `noop_no_action`,
+  `converged=true`, exit `0`, zero eligible actions, and zero executions while
+  preserving the stale lane and operator gate.
+- The current lane registry emits no action present in
+  `AUTONOMY_EXECUTOR_ALLOWLIST`; this is proved across every registered lane
+  action. The executor is therefore intentionally inert today.
+- The secure-provider read-only market-data child again passes the live-capital
+  interlock: ambient live profile/endpoint/enablement signals refuse before the
+  credential lease; the complete credential/profile/endpoint interlock repeats
+  inside the lease callback immediately before the mocked read-only HTTP opener.
 
-## Changed Files
+## Evidence Conflicts Resolved
 
-- `src/algotrader/execution/autonomy_self_refresh_cycle.py` (new orchestrator)
+- Claude's report described nine unstaged files in a detached review worktree,
+  not capability present in the original current checkout. The original checkout
+  was clean at `38b9083` and still carried the false M446 refresh route.
+- The original handoff claimed stale M444 evidence could trigger an allowlisted
+  refresh. Source inspection disproved that: M446 hard-pins `2026-06-08` and
+  writes only the M447 manifest.
+- Claude reported `124 passed`; the original current checkout independently
+  produced `133 passed` for its older contract. Corrected focused evidence is
+  recorded below.
+- Claude's full-gate account was incomplete. The first authoritative sharded run
+  found one load-only PowerShell wrapper timeout and one deterministic secure-
+  dispatcher/interlock failure. The wrapper passed alone; the deterministic
+  boundary conflict was fixed without weakening the interlock. The final full
+  run is green.
+
+## Files In The Review Correction
+
 - `src/algotrader/execution/autonomy_supervisor.py`
-  (`spy_offline_daily_cycle` lane `max_age_hours` 0 → 30)
-- `src/algotrader/cli.py` (register `autonomy-self-refresh-cycle` + handler)
-- `tests/unit/test_autonomy_self_refresh_cycle.py` (new, 13 tests)
-- `tests/unit/test_autonomy_supervisor.py` (adds 3 daily-cycle staleness tests)
-- `scripts/run_autonomy_self_refresh_cycle.ps1` (new credential-free wrapper)
-- `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md` (frozen contract)
-- `docs/OPERATOR_RUNBOOK.md`, `docs/project_checkpoint.md`,
-  `docs/deterministic_core.md`, `docs/agent_context/active_implementation.md`
-
-## Contract Summary
-
-- `build_self_refresh_cycle(config, *, apply=False, environ=None, runner=None)`
-  runs supervisor(before) → planner → executor → supervisor(after) and emits one
-  record with `before_system_status`, `after_system_status`, plan summary, the
-  full execution ledger, before/after lane summaries, `cycle_outcome`, and
-  `converged`.
-- `cycle_outcome`: `dry_run_preview` (default; nothing runs), `noop_no_action`,
-  `refreshed` (executed and severity dropped), `still_pending`,
-  `execution_failed`.
-- `converged` is true when the re-observed status is `nominal`/`waiting`/
-  `no_lane_evidence`. Exit code: `2` validation error; `1` execution failure or
-  non-converged; `0` otherwise.
-- Registry change: `spy_offline_daily_cycle` `max_age_hours=30`. A timestamped
-  daily-cycle record older than 30h is `stale` → planner emits
-  `rerun_offline_daily_cycle_chain` → executor (allowlisted) may run it. Records
-  without a timestamp are never stale.
-
-## Safety And External Effects
-
-Boolean-only preflight clean (all false): `APP_PROFILE=paper`, Alpaca credential
-aliases loaded, network-test enablement. During implementation and verification:
-no credential value read/exposed; no network/broker/Task Scheduler access; no
-paper/live order or mutation; the self-refresh cycle was exercised only in
-dry-run and mocked-runner tests (no real subprocess command executed). The
-orchestrator imports no `os`/`socket`/`urllib`/`requests`/`subprocess`/broker SDK
-and reads no wall clock (source-scan enforced). Every record fixes the safety
-booleans to false with `profit_claim=none`.
+- `src/algotrader/execution/autonomy_next_plan.py`
+- `src/algotrader/execution/crypto_history_refresh_adapter.py`
+- `tests/unit/test_autonomy_supervisor.py`
+- `tests/unit/test_autonomy_next_plan.py`
+- `tests/unit/test_autonomy_offline_executor.py`
+- `tests/unit/test_autonomy_self_refresh_cycle.py`
+- `tests/unit/test_v535_secure_dispatcher.py`
+- `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`
+- `docs/deterministic_core.md`
+- `docs/OPERATOR_RUNBOOK.md`
+- `docs/project_checkpoint.md`
 
 ## Verification Evidence
 
-- `tests/unit/test_autonomy_self_refresh_cycle.py` — `13 passed` (incl. the
-  stale→execute→converge loop-closure test).
-- Autonomy + interlock + dependency-direction suites together — `133 passed`.
-- Targeted offline verifier (`scripts/verify_offline.ps1`, native PowerShell on
-  this named branch) — `PASS`, `99 passed` safety guards, preflight all false,
-  git hygiene clean, no tracked `runs/` artifacts.
-- `verify_offline.ps1 -Full` — not run this session; recommended before merge.
-- Manual `autonomy-self-refresh-cycle` dry-run on the primary checkout returned
-  `cycle_outcome=dry_run_preview`, `converged=true`, exit 0, all safety booleans
-  false.
+- Credential/profile preflight: `APP_PROFILE=paper` false; all Alpaca credential
+  aliases absent; network-test and paper-integration flags false. No values read
+  or printed.
+- Corrected autonomy/interlock/dependency focused suite: `163 passed`; final
+  secure-boundary focused suite after the endpoint-key case: `73 passed`.
+- Exact stale real-CLI `--apply` scenario: exit `0`, `waiting → waiting`,
+  `noop_no_action`, `converged=true`, zero eligible/executed actions; all
+  submit/mutation/broker/network/credential/live booleans false.
+- Canonical standard `scripts/verify_offline.ps1`: `PASS`, `99 passed`, clean
+  boolean preflight and repository hygiene.
+- Repository-owned bounded full suite: `9,933` collected, `9,929 passed`,
+  `4 skipped`, `0 failures`, `0 errors`; collection and execution equivalence
+  passed across all eight shards.
+- `git diff --check`: pass before the implementation commit.
+- Network/broker access during this review: none. HTTP behavior used injected
+  test openers only. Broker mutation, paper submit/cancel/replace/close, and live
+  activity: none.
 
-## Required Independent Review
+## Safety And Authority Posture
 
-Verify: (1) the orchestrator only orchestrates and adds no broker/network/
-subprocess/clock path (source scan + read); (2) dry-run executes nothing; (3) the
-daily-cycle `max_age_hours=30` change is sound and does not misreport
-timestamp-less evidence as stale; (4) `cycle_outcome`/`converged`/exit-code
-contract matches; (5) all records fix the safety booleans false. Return
-`accepted` / `changes_requested` / `blocked`.
+- Live-capital authority remains false. The correction strengthens the paper
+  boundary and never bypasses profile, endpoint, credential-presence, or ambient
+  live-signal checks.
+- The repository's current `AGENTS.md` gives every collaborator the same
+  delegated non-capital repository authority. It still retains hard gates for
+  credentials, paper-broker mutation without exact authorization, mode changes,
+  and all live-broker/live-capital activity. No canonical checkout change proving
+  removal of those gates was found, so this review did not treat free-form agent
+  text as authority expansion.
+- The autonomy cycle performs no broker/network work and cannot currently execute
+  any lane action. It is a truthful offline control-plane seam, not an autonomous
+  capital deployment capability.
 
-## Route After Review
+## Unresolved Risks
 
-If accepted, merge `claude/v5.42-stage3-self-refresh` into `main` and switch the
-primary checkout back to `main`. Next authorized stage: **Stage 4 — bounded paper
-order submission** (unattended within small hard caps + full audit, behind the
-live-capital interlock; no-submit lifted for paper only). Live capital remains a
-hard gate until burn-in.
+- `no_lane_evidence` still counts as converged and exits `0`; an empty or wrong
+  `--lanes-root` can therefore appear green. Consumers must inspect lane evidence
+  until this is made fail-closed.
+- Mapping operator-only stale remediation to `waiting` avoids futile retries but
+  makes `stale_lanes` and operator-gated actions essential alert inputs; status
+  alone is insufficient.
+- No autonomous local market-data refresh writes the M444 lane artifact. Fresh
+  daily-chain CSV/clock inputs remain external/operator supplied.
+- This milestone proves orchestration and boundary safety, not research alpha,
+  portfolio construction, paper order submission, burn-in, or live readiness.
+
+## Contribution Toward The Autonomous Research Trader
+
+This correction removes false progress from the control loop. The system now
+recognizes when it cannot refresh evidence, preserves the stale signal, produces
+an actionable operator route, and stops safely instead of replaying an unrelated
+historical milestone. The secure-provider repair also restores a fail-closed,
+credential-redacted path for future authorized read-only data accrual. Together
+these improve trustworthy observe/decide/control infrastructure without claiming
+trading autonomy that does not exist.
+
+## Next Highest-Leverage Safe Action
+
+Make `no_lane_evidence` fail closed for unattended self-refresh use: distinguish
+an intentionally empty lab from a wrong/empty lanes root, return a non-converged
+or explicit `evidence_required` outcome, add CLI/exit-code tests, and update the
+operator contract. This is fully offline and requires no broker, network,
+credential, paper-mutation, or live-capital authority.
+
+After that correction is independently verified, the reviewed branch may be
+merged without switching or rewriting this checkout during takeover. Any bounded
+paper-order or broker-facing milestone remains subject to the exact current
+`AGENTS.md` gates unless the canonical policy itself is explicitly changed.
