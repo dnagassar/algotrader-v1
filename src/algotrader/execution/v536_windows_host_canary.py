@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from threading import RLock
 from typing import Protocol
 import uuid
 
@@ -101,6 +102,7 @@ _FORBIDDEN_PERSISTED_TOKENS = (
 )
 _LEAK_SCAN_MAX_FILE_BYTES = 8 * 1024 * 1024
 _LEAK_SCAN_MAX_TOTAL_BYTES = 64 * 1024 * 1024
+_EVIDENCE_IO_LOCK = RLock()
 
 
 class V536CanaryError(RuntimeError):
@@ -1664,10 +1666,11 @@ def _write_json_immutable(path: Path, payload: Mapping[str, object]) -> None:
         _write_json_immutable as v535_write_json_immutable,
     )
 
-    try:
-        v535_write_json_immutable(path, payload)
-    except V535CycleError as exc:
-        raise V536CanaryError(exc.classification) from None
+    with _EVIDENCE_IO_LOCK:
+        try:
+            v535_write_json_immutable(path, payload)
+        except V535CycleError as exc:
+            raise V536CanaryError(exc.classification) from None
 
 
 def _canonical_hash(payload: Mapping[str, object]) -> str:
@@ -1734,34 +1737,35 @@ def _structural_secret_leak_scan(root: Path) -> dict[str, object]:
     temporary_count = 0
     forbidden_count = 0
     total_bytes = 0
-    try:
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            if path.name.endswith(".tmp") or path.name.startswith("."):
-                temporary_count += 1
-            size = path.stat().st_size
-            total_bytes += size
-            if size > _LEAK_SCAN_MAX_FILE_BYTES or total_bytes > (
-                _LEAK_SCAN_MAX_TOTAL_BYTES
-            ):
-                raise V536CanaryError("secret_leak_scan_scope_exceeded")
-            if path.suffix.lower() not in {
-                ".json",
-                ".jsonl",
-                ".csv",
-                ".log",
-                ".txt",
-            }:
-                continue
-            content = path.read_bytes()
-            forbidden_count += sum(
-                content.count(token) for token in _FORBIDDEN_PERSISTED_TOKENS
-            )
-    except V536CanaryError:
-        raise
-    except OSError:
-        raise V536CanaryError("secret_leak_scan_failed") from None
+    with _EVIDENCE_IO_LOCK:
+        try:
+            for path in sorted(root.rglob("*")):
+                if not path.is_file():
+                    continue
+                if path.name.endswith(".tmp") or path.name.startswith("."):
+                    temporary_count += 1
+                size = path.stat().st_size
+                total_bytes += size
+                if size > _LEAK_SCAN_MAX_FILE_BYTES or total_bytes > (
+                    _LEAK_SCAN_MAX_TOTAL_BYTES
+                ):
+                    raise V536CanaryError("secret_leak_scan_scope_exceeded")
+                if path.suffix.lower() not in {
+                    ".json",
+                    ".jsonl",
+                    ".csv",
+                    ".log",
+                    ".txt",
+                }:
+                    continue
+                content = path.read_bytes()
+                forbidden_count += sum(
+                    content.count(token) for token in _FORBIDDEN_PERSISTED_TOKENS
+                )
+        except V536CanaryError:
+            raise
+        except OSError:
+            raise V536CanaryError("secret_leak_scan_failed") from None
     if temporary_count or forbidden_count:
         raise V536CanaryError("secret_persistence_detected")
     return {

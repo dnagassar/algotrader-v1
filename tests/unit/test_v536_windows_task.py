@@ -29,11 +29,19 @@ SCHEDULED_START = WINDOW_START + timedelta(hours=1, minutes=5)
 NAMESPACE = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
-def _authorization(root: Path):  # type: ignore[no-untyped-def]
+def _authorization(
+    root: Path,
+    *,
+    artifact_root: Path | None = None,
+):  # type: ignore[no-untyped-def]
     wrapper = root / "scripts" / "run_v536_windows_host_canary.ps1"
     wrapper.parent.mkdir(parents=True, exist_ok=True)
     wrapper.write_text("# safe test wrapper\n", encoding="utf-8")
-    artifact = root / "runs" / "v5_36" / "authorization.json"
+    artifact = (
+        root / "runs" / "v5_36" / "authorization.json"
+        if artifact_root is None
+        else artifact_root / "authorization.json"
+    )
     artifact.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object] = {
         "schema_version": V536_AUTHORIZATION_SCHEMA,
@@ -148,6 +156,102 @@ def test_task_spec_uses_absolute_paths_and_only_non_secret_arguments(
     assert "-ExecuteAuthorized" in spec.action_arguments
     assert "ALPACA_API_KEY" not in spec.action_arguments
     assert "ALPACA_SECRET_KEY" not in spec.action_arguments
+
+
+def test_task_spec_accepts_exact_external_operator_authorization_path(
+    tmp_path: Path,
+) -> None:
+    deployment_root = tmp_path / "deployment"
+    authorization = _authorization(
+        deployment_root,
+        artifact_root=tmp_path / "operator_grants",
+    )
+
+    spec = build_v536_task_spec(authorization)
+
+    expected_artifact = authorization.artifact_path
+    assert expected_artifact is not None
+    assert expected_artifact.parent != deployment_root.resolve()
+    assert (
+        f'-AuthorizationArtifact "{expected_artifact}"'
+        in spec.action_arguments
+    )
+    assert spec.working_directory == deployment_root.resolve()
+
+
+def test_task_spec_rejects_relative_authorization_path(
+    tmp_path: Path,
+) -> None:
+    authorization = replace(
+        _authorization(tmp_path),
+        artifact_path=Path("authorization.json"),
+    )
+
+    with pytest.raises(V536TaskError, match="task_authorization_path_missing"):
+        build_v536_task_spec(authorization)
+
+
+@pytest.mark.parametrize("artifact_kind", ("missing", "directory"))
+def test_task_spec_rejects_non_file_authorization_path(
+    tmp_path: Path,
+    artifact_kind: str,
+) -> None:
+    authorization = _authorization(tmp_path / "deployment")
+    invalid_path = (tmp_path / artifact_kind).resolve()
+    if artifact_kind == "directory":
+        invalid_path.mkdir()
+
+    with pytest.raises(V536TaskError, match="task_authorization_path_invalid"):
+        build_v536_task_spec(
+            replace(authorization, artifact_path=invalid_path)
+        )
+
+
+def test_task_spec_rejects_symlink_authorization_path_without_os_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorization = _authorization(tmp_path)
+    artifact_path = authorization.artifact_path
+    assert artifact_path is not None
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == artifact_path:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(V536TaskError, match="task_authorization_path_invalid"):
+        build_v536_task_spec(authorization)
+
+
+def test_task_spec_still_rejects_repository_wrapper_escape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deployment_root = tmp_path / "deployment"
+    authorization = _authorization(deployment_root)
+    wrapper = (
+        authorization.deployment_root
+        / "scripts"
+        / "run_v536_windows_host_canary.ps1"
+    )
+    escaped_wrapper = tmp_path / "outside" / wrapper.name
+    escaped_wrapper.parent.mkdir()
+    escaped_wrapper.write_text("# escaped test wrapper\n", encoding="utf-8")
+    original_resolve = Path.resolve
+
+    def fake_resolve(path: Path, strict: bool = False) -> Path:
+        if path == wrapper:
+            return escaped_wrapper
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    with pytest.raises(V536TaskError, match="task_path_escape"):
+        build_v536_task_spec(authorization)
 
 
 def test_rendered_task_is_one_time_least_privilege_and_disabled(

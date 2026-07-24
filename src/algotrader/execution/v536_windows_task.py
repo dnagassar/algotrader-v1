@@ -95,23 +95,31 @@ def build_v536_task_spec(
 ) -> V536TaskSpec:
     if not isinstance(authorization, V536CanaryAuthorization):
         raise V536TaskError("task_authorization_malformed")
-    if authorization.artifact_path is None or not authorization.artifact_path.is_absolute():
+    artifact_path = authorization.artifact_path
+    if artifact_path is None or not artifact_path.is_absolute():
         raise V536TaskError("task_authorization_path_missing")
-    wrapper = (
-        authorization.deployment_root
-        / "scripts"
-        / "run_v536_windows_host_canary.ps1"
-    ).resolve()
-    root = authorization.deployment_root.resolve()
     try:
+        root = authorization.deployment_root.resolve(strict=True)
+        wrapper = (
+            root / "scripts" / "run_v536_windows_host_canary.ps1"
+        ).resolve(strict=True)
+        if not root.is_dir() or not wrapper.is_file():
+            raise ValueError
         wrapper.relative_to(root)
-        authorization.artifact_path.resolve().relative_to(root)
-    except ValueError:
+    except (OSError, RuntimeError, ValueError):
         raise V536TaskError("task_path_escape") from None
+    try:
+        artifact_is_symlink = artifact_path.is_symlink()
+        resolved_artifact = artifact_path.resolve(strict=True)
+        artifact_is_file = resolved_artifact.is_file()
+    except (OSError, RuntimeError):
+        raise V536TaskError("task_authorization_path_invalid") from None
+    if artifact_is_symlink or not artifact_is_file:
+        raise V536TaskError("task_authorization_path_invalid")
     arguments = (
         '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass '
         f'-File "{wrapper}" -Mode execute '
-        f'-AuthorizationArtifact "{authorization.artifact_path.resolve()}" '
+        f'-AuthorizationArtifact "{resolved_artifact}" '
         "-TaskMutationAuthorized -CredentialReadAuthorized -ExecuteAuthorized"
     )
     return V536TaskSpec(

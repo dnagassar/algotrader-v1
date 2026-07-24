@@ -180,6 +180,43 @@ for the exact one native call. Address resolution fails as sanitized native
 setup failure, and immediate overwrite and clear must succeed without garbage
 collection after every return or exception. No fallback is permitted.
 
+### V5.36.5 external authorization path amendment
+
+The first post-provisioning canary preview returned
+`blocked_task_path_escape` before any Task Scheduler, credential, network, or
+broker boundary. The operator-owned authorization artifact correctly lived
+outside generated output under the local operator-grant directory, but the
+task builder incorrectly applied repository-root containment to that
+separately trusted artifact as well as to the repository-owned wrapper.
+
+V5.36.5 keeps the wrapper and working directory strictly contained within the
+exact deployment root. It separately requires the authorization artifact to
+be an absolute, existing, non-symlink regular file, resolves it strictly, and
+places only that exact resolved path in the task arguments. The authorization
+file may therefore remain outside the deployment root. Its schema, payload
+hash, source, principal, credential-reference, endpoint, timing, and
+authorization gates are still revalidated at each lifecycle boundary.
+
+The blocked authorization and window remain terminal. This amendment performs
+no Task Scheduler, credential, network, or broker operation and authorizes no
+retry. A fresh canary requires independent review of the exact repair commit
+and a new operator authorization with new times.
+
+### V5.36.5a concurrent evidence scan coordination amendment
+
+Broader credential-free verification exposed an order-dependent evidence race.
+Duplicate no-op executions persist fixed immutable receipts using atomic
+same-directory temporary files. One such active write could overlap the
+admitted execution's structural leak scan, causing the scanner to classify the
+repository-owned temporary file as residual secret persistence.
+
+V5.36.5a serializes V5.36 immutable evidence writes and the structural scan
+with one in-memory reentrant lock. The scanner's token, size, dot-file, and
+`.tmp` rules remain unchanged: any temporary file present while the scanner
+owns the lock still blocks. Duplicate invocations remain durable no-ops, and
+the SQLite claim remains the external-effect fence with exactly one admitted
+execution.
+
 ## Canary Authorization Gate
 
 The exact schema is `v5_36_scheduled_canary_authorization_v1`. It rejects

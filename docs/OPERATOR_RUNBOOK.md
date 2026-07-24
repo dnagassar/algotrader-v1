@@ -1115,7 +1115,16 @@ commit. Then create one strict, non-secret
 using the exact field contract in
 `docs/design/v5_36_credential_provisioning_and_windows_task_boundary.md`.
 Never put credential values or a raw account identity in that artifact or in
-chat.
+chat. V5.36.5 explicitly supports an operator-owned authorization file outside
+the deployment root. The file must be an absolute, existing, non-symlink
+regular file. The repository-owned wrapper and task working directory remain
+strictly contained within the exact deployment root.
+
+V5.36.5a also coordinates immutable canary evidence writes with the structural
+secret scan so an active repository-owned atomic write cannot be mistaken for
+a residual temporary artifact. The scan still blocks on every temporary file
+that exists while it owns the evidence boundary; operators must not delete,
+rename, or retry around such a result.
 
 From a normal credential-free shell owned by the exact task principal, preview
 the resolved task definition:

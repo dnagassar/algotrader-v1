@@ -648,7 +648,9 @@ def test_concurrent_execution_allows_one_real_dispatch_and_immutable_duplicates(
         for item in results
         if item["classification"] == "duplicate_canary_execution_no_op"
     ]
-    assert len(pending) == 1
+    assert len(pending) == 1, [
+        item["classification"] for item in results
+    ]
     assert len(duplicates) == 11
     assert runner.call_count == 1
     assert paper.call_count == 1
@@ -735,8 +737,17 @@ def test_execute_credential_failure_has_zero_process_network_or_broker_reads(
     assert scheduler.phase == "post_run"
 
 
+@pytest.mark.parametrize(
+    ("artifact_name", "artifact_content"),
+    (
+        ("unexpected.json", '{"api_secret_key":"not-a-real-secret"}'),
+        (".stale_evidence.json.tmp", "{}"),
+    ),
+)
 def test_structural_secret_field_or_temp_artifact_blocks_commissioning(
     tmp_path: Path,
+    artifact_name: str,
+    artifact_content: str,
 ) -> None:
     authorization, scheduler, store, provider, clock, _arm = _install_and_arm(
         tmp_path
@@ -744,8 +755,8 @@ def test_structural_secret_field_or_temp_artifact_blocks_commissioning(
     scheduler.phase = "running"
     clock.now = SCHEDULED_START + timedelta(minutes=1)
     output_root = tmp_path / "runs" / "v5_36_windows_host_canary"
-    (output_root / "unexpected.json").write_text(
-        '{"api_secret_key":"not-a-real-secret"}',
+    (output_root / artifact_name).write_text(
+        artifact_content,
         encoding="utf-8",
     )
     result = execute_v536_canary(
