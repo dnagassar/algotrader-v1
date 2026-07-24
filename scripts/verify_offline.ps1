@@ -12,16 +12,25 @@ exact-node bounded pytest suite after the targeted guard tests.
 Run the complete default pytest collection through the repository-owned
 exact-node bounded runner after the targeted offline safety guard tests.
 
+.PARAMETER Shards
+Override the parallel shard count for the -Full bounded runner. The default of
+0 lets the runner auto-scale to the detected logical CPU count (capped at 16).
+
 .EXAMPLE
 pwsh ./scripts/verify_offline.ps1
 
 .EXAMPLE
 pwsh ./scripts/verify_offline.ps1 -Full
+
+.EXAMPLE
+pwsh ./scripts/verify_offline.ps1 -Full -Shards 8
 #>
 
 [CmdletBinding()]
 param(
-    [switch]$Full
+    [switch]$Full,
+    [ValidateRange(0, 16)]
+    [int]$Shards = 0
 )
 
 Set-StrictMode -Version Latest
@@ -164,7 +173,11 @@ function Invoke-OfflineTestChecks {
     Invoke-CheckedCommand "targeted offline safety guard tests" "python" (@("-m", "pytest") + $GuardTestPaths)
 
     if ($Full) {
-        Invoke-CheckedCommand "bounded exact-node full offline pytest suite" "python" @("scripts/run_full_pytest_sharded.py")
+        $FullPytestArguments = @("scripts/run_full_pytest_sharded.py")
+        if ($Shards -gt 0) {
+            $FullPytestArguments += @("--shards", "$Shards")
+        }
+        Invoke-CheckedCommand "bounded exact-node full offline pytest suite" "python" $FullPytestArguments
     }
     else {
         Write-Section "full pytest"
