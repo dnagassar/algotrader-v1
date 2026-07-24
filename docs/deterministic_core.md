@@ -1275,3 +1275,30 @@ milestone that grants the system a new standing authority and therefore requires
 explicit operator authorization. This planner is the complete advisory layer up
 to, but not across, that gate. The detailed contract is in
 `docs/design/v5_38_offline_autonomy_next_action_planner.md`.
+
+## V5.39 Gated Offline Autonomy Executor
+
+V5.39 is the one operator-authorized step that acts on the plan: `autonomy-apply-plan`
+executes only the offline-runnable, allowlisted subset of the V5.38 plan, behind
+a hard gate. It is **dry-run by default** (spawns no subprocess); `--apply` runs
+the eligible allowlisted commands after a credential/profile preflight and writes
+a deterministic action ledger. The frozen `AUTONOMY_EXECUTOR_ALLOWLIST` holds
+only fully-defaulted offline commands whose producing modules import no network/
+broker/credential/profile surface (today: `etf-sma-offline-daily-cycle-rerun-m446`);
+the seed command that needs operator inputs is intentionally excluded. Before any
+execution it refuses (zero executions) if `APP_PROFILE` is `paper`/`live` or any
+Alpaca credential/network-test variable is loaded — reporting variable names only,
+never values — and it runs each command with a child environment that strips every
+credential/profile variable. Every ledger record fixes the same broker/submit/
+network/credential/live booleans to false with `profit_claim=none`; it performs no
+broker/paper/live action of its own. A source-scan permits `os`/`sys`/`subprocess`
+(execution needs them) but forbids every network/broker/credential-SDK import and
+broker mutation call.
+
+Honest current limitation: the sole allowlisted command triggers on the `stale`
+state of the SPY offline daily cycle lane, which sets `max_age_hours=0` (staleness
+disabled by V5.37 design), so the supervisor cannot currently emit that action and
+the executor's eligible set is **empty today** — the correct fail-closed outcome.
+The executor is the reviewed, tested seam all future autonomous execution passes
+through, active the moment a stale-capable offline lane is allowlisted. The detailed
+contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.

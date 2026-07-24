@@ -1398,3 +1398,38 @@ advanced without operator input or operator authority. Wiring the system to run
 even the offline commands unattended is a separate, higher milestone that
 requires explicit operator authorization. The detailed contract is in
 `docs/design/v5_38_offline_autonomy_next_action_planner.md`.
+
+## V5.39 Gated Offline Autonomy Executor
+
+The executor is the one authorized step that *acts* on the plan — running only
+the offline-runnable, allowlisted subset. It is dry-run by default; you must pass
+`-Apply` to actually execute.
+
+```powershell
+# Dry run: show what would run, execute nothing.
+.\scripts\run_autonomy_apply_plan.ps1 -RunId apply-<yyyymmdd> -AsOf <UTC> -Format text
+
+# Apply: actually run the eligible allowlisted offline commands.
+.\scripts\run_autonomy_apply_plan.ps1 -RunId apply-<yyyymmdd> -AsOf <UTC> -Apply `
+  -RunLog runs\autonomy_apply_plan\latest\ledger.jsonl -Format json
+```
+
+The wrapper and the executor both refuse to run under `APP_PROFILE=paper`/`live`
+or any Alpaca credential/network-test variable (reporting the variable name only,
+never its value), and each executed command runs with a child environment that
+strips every credential/profile variable. Only commands on the frozen
+`AUTONOMY_EXECUTOR_ALLOWLIST` are ever run — today just
+`etf-sma-offline-daily-cycle-rerun-m446`; the daily-cycle seed is excluded
+because it needs operator-supplied inputs (it is skipped with
+`requires_operator_input`). The ledger records eligible, skipped, and executed
+actions with exit codes and every safety boolean false.
+
+Exit code: `2` on input error or a preflight-refused `-Apply`; `1` on a failed
+execution or a dry run with eligible work pending; `0` otherwise.
+
+Note (current behaviour): the sole allowlisted command triggers on the SPY
+offline daily cycle lane being `stale`, which the supervisor does not currently
+report (that lane disables staleness by design), so in practice the eligible set
+is empty and `-Apply` executes nothing — the intended fail-closed state. The
+detailed contract is in
+`docs/design/v5_39_gated_offline_autonomy_executor.md`.

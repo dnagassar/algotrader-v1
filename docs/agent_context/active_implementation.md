@@ -3,13 +3,19 @@
 ## Classification
 
 - Milestone:
-  `V5.38 — offline autonomy next-action planner` (stacked on
+  `V5.39 — gated offline autonomy executor` (stacked on
+  `V5.38 — offline autonomy next-action planner` and
   `V5.37 — offline cross-lane autonomy supervisor`).
 - Classification: `implemented`.
-- Operator action required for implementation: `false`.
+- Operator action required for implementation: `false`. The operator explicitly
+  authorized building V5.39 (a gated executor restricted to a verified-offline
+  allowlist, dry-run by default, deterministic ledger).
 - Independent review required before merge to `main`: `true`.
-- This checkpoint is not canary, broker, paper, activation, or trading
-  readiness evidence. It is an offline read-only reporting/planning surface only.
+- V5.37 and V5.38 are read-only reporting/planning surfaces. V5.39 is the one
+  authorized executor seam; it is dry-run by default, allowlist-restricted, and
+  preflight-gated, and it is inert against the real supervisor today (see below).
+  This checkpoint is not canary, broker, paper, activation, or trading readiness
+  evidence.
 
 ## Use This One Workspace
 
@@ -38,15 +44,25 @@ action but never executes it.
 
 ## Changed Files
 
-- `src/algotrader/cli.py`
-  (registers `autonomy-next-plan` and its handler `_run_autonomy_next_plan`)
+V5.38 (planner):
 - `src/algotrader/execution/autonomy_next_plan.py` (new pure module)
 - `tests/unit/test_autonomy_next_plan.py` (new focused suite, 22 tests)
 - `scripts/run_autonomy_next_plan.ps1` (new credential-free wrapper)
 - `docs/design/v5_38_offline_autonomy_next_action_planner.md` (frozen contract)
-- `docs/deterministic_core.md` (current-contract section)
-- `docs/project_checkpoint.md` (ledger entry)
-- `docs/OPERATOR_RUNBOOK.md` (operator section)
+
+V5.39 (executor):
+- `src/algotrader/execution/autonomy_offline_executor.py` (new module)
+- `tests/unit/test_autonomy_offline_executor.py` (new focused suite, 21 tests)
+- `scripts/run_autonomy_apply_plan.ps1` (new credential-free wrapper)
+- `docs/design/v5_39_gated_offline_autonomy_executor.md` (frozen contract)
+
+Shared:
+- `src/algotrader/cli.py`
+  (registers `autonomy-next-plan`/`_run_autonomy_next_plan` and
+  `autonomy-apply-plan`/`_run_autonomy_apply_plan`)
+- `docs/deterministic_core.md` (current-contract sections)
+- `docs/project_checkpoint.md` (ledger entries)
+- `docs/OPERATOR_RUNBOOK.md` (operator sections)
 - `docs/agent_context/active_implementation.md` (this handoff)
 
 ## Contract Summary
@@ -72,18 +88,47 @@ action but never executes it.
 - Exit code: `0` when `plan_class` is `all_nominal_or_waiting` (nothing
   pending), `1` when any action is pending, `2` on validation error.
 
-## The Deliberate Operator Gate
+## V5.39 Contract Summary (Executor)
 
-Today the only offline-runnable lane is the SPY offline daily cycle chain
-(`etf-sma-offline-daily-cycle-run` needs operator-supplied inputs;
-`etf-sma-offline-daily-cycle-rerun-m446` is fully defaulted). Every other lane
-action is `noop` or `operator_gated`, so **no lane can be advanced without
-operator-supplied input or operator authority**. That is the honest whole-system
-finding and the hard gate at which autonomous advance stops. Wiring the system
-to run even the offline commands unattended grants it a new standing execution
-authority — a founder-level authority expansion under the Operating Charter — and
-therefore requires explicit operator authorization before it is built. This
-milestone is the complete advisory layer up to, but not across, that gate.
+- `autonomy-apply-plan` builds the V5.38 plan and partitions its actions into
+  eligible (offline-runnable AND on `AUTONOMY_EXECUTOR_ALLOWLIST`) and skipped
+  (with a reason). It is dry-run by default (`--apply` to execute).
+- The frozen allowlist holds only fully-defaulted offline commands verified to
+  import no network/broker/credential/profile surface; today just
+  `etf-sma-offline-daily-cycle-rerun-m446`. The seed
+  `etf-sma-offline-daily-cycle-run` is excluded (needs operator inputs) and
+  skipped with `requires_operator_input`.
+- `--apply` refuses (zero executions) if `execution_preflight` finds a paper/live
+  profile or any credential/network-test variable loaded, reporting variable
+  names only. Each command runs with a child env that strips every
+  credential/profile variable and sets only `PYTHONPATH`. `_execute` re-checks the
+  allowlist and argv before every run.
+- Every ledger record fixes the broker/submit/network/credential/live booleans to
+  false with `profit_claim=none`. Exit codes: `2` on validation error or a
+  preflight-refused `--apply`; `1` on a failed execution or a dry run with
+  eligible work pending; `0` otherwise.
+
+## The Operator Gate — Now Partially Lifted (Executor Authorized)
+
+Advisory stops were: no lane can advance without operator-supplied input or
+operator authority, and unattended execution of even offline commands is a
+standing execution authority (a founder-level authority expansion under the
+Operating Charter). The operator explicitly authorized building V5.39 as a gated
+executor over the verified-offline allowlist, dry-run by default. V5.39 is that
+seam and nothing more: it never executes a non-allowlisted command, never runs
+under a loaded profile/credential, and adds no operator-supplied-input execution
+path (the seed stays operator-run).
+
+Honest current limitation: the sole allowlisted command triggers on the SPY
+offline daily cycle lane being `stale`, but that lane sets `max_age_hours=0`
+(staleness disabled by V5.37 design), so the supervisor cannot emit
+`rerun_offline_daily_cycle_chain`. Wired to the real supervisor the executor's
+eligible set is **empty today** and `--apply` executes nothing — the correct,
+fail-closed outcome. The executor is the reviewed, tested seam all future
+autonomous execution passes through, active the moment a stale-capable offline
+lane (or another fully-defaulted offline command) is allowlisted. Giving the
+daily-cycle lane a staleness bound, or adding a seed execution path, are operator
+decisions, not autonomous ones.
 
 ## Safety And External Effects
 
@@ -99,30 +144,39 @@ During implementation and verification:
 - no credential value was loaded, read, enumerated, or exposed;
 - no network, broker, or Task Scheduler access occurred;
 - no paper mutation, order action, canary, or live activation occurred;
-- no subprocess was spawned and no planned command was executed.
+- the executor was exercised only in dry-run and mocked-runner tests plus one
+  real `--apply` on a clean checkout that had zero eligible actions, so no real
+  subprocess command was ever executed.
 
-Every emitted record fixes `submitted`, `mutated`, `broker_action_performed`,
-`broker_actions_performed`, `broker_mutation_allowed`, `network_access_attempted`,
-`credential_access_attempted`, and `live_authorized` to false with
-`profit_claim=none`. The module imports no `os`, `socket`, `urllib`, `requests`,
-`subprocess`, or broker SDK, and reads no wall clock; a source-scan test enforces
-this. It records command strings as inert data and never executes them.
+Every emitted record (planner and executor) fixes `submitted`, `mutated`,
+`broker_action_performed`, `broker_actions_performed`, `broker_mutation_allowed`,
+`network_access_attempted`, `credential_access_attempted`, and `live_authorized`
+to false with `profit_claim=none`. The V5.38 planner imports no `os`, `socket`,
+`urllib`, `requests`, `subprocess`, or broker SDK and never executes. The V5.39
+executor necessarily imports `os`/`sys`/`subprocess` to run allowlisted commands,
+but imports no network/broker/credential SDK, runs only frozen-allowlist argv,
+refuses under a loaded profile/credential, and strips every credential/profile
+variable from the child environment; source-scan tests enforce the import/call
+bounds for both modules.
 
 ## Verification Evidence
 
-- Focused suite: `tests/unit/test_autonomy_next_plan.py` — `22 passed`.
-- V5.37 supervisor suite: `tests/unit/test_autonomy_supervisor.py` — `25 passed`.
+- Focused suites: `tests/unit/test_autonomy_offline_executor.py` — `21 passed`;
+  `tests/unit/test_autonomy_next_plan.py` — `22 passed`;
+  `tests/unit/test_autonomy_supervisor.py` — `25 passed`.
 - Dependency direction: `tests/unit/test_dependency_direction.py` — `34 passed`.
 - Targeted offline verifier (`scripts/verify_offline.ps1`, native PowerShell on
-  this named branch): `PASS`, `99 passed` safety guards in 53.84s,
-  credential/network preflight all false, git hygiene clean, no tracked `runs/`
-  artifacts.
+  this named branch): `PASS`, `99 passed` safety guards, credential/network
+  preflight all false, git hygiene clean, no tracked `runs/` artifacts — re-run
+  with V5.39 in place and still green.
 - Full bounded offline suite (`scripts/verify_offline.ps1 -Full`): not run in
   this session (many-minute four-shard run). Recommended before merge.
-- Manual `autonomy-next-plan` run on a clean checkout returned
-  `plan_class=offline_action_available` with `next_offline_action_lane=
-  spy_offline_daily_cycle` (the seed command, needing operator inputs) and the
-  other five lanes operator-gated, exit code `1`, all safety booleans false.
+- Manual `autonomy-next-plan` (clean checkout): `plan_class=
+  offline_action_available`, `next_offline_action_lane=spy_offline_daily_cycle`,
+  five lanes operator-gated, exit `1`, all safety booleans false.
+- Manual `autonomy-apply-plan` (clean checkout, both dry-run and `--apply`):
+  `eligible_count=0`, `execution_count=0`, exit `0`, all safety booleans false —
+  the executor is inert against the real supervisor today.
 
 ## Required Independent Review
 
@@ -148,15 +202,31 @@ Review this worktree and its branch HEAD. Verify:
 7. `plan_class`, `next_offline_action` severity selection, and the exit-code
    contract (`0`/`1`/`2`) match this handoff.
 
+For the V5.39 executor specifically, verify:
+
+8. `AUTONOMY_EXECUTOR_ALLOWLIST` contains only fully-defaulted offline commands
+   whose producing modules import no network/broker/credential/profile surface,
+   and the operator-input seed is excluded;
+9. dry-run spawns no subprocess; `--apply` runs only allowlisted argv and
+   `_execute` re-checks the allowlist/argv before every run;
+10. `execution_preflight` refuses under a loaded profile/credential and reports
+    variable names only (never values), and the child environment strips every
+    credential/profile variable;
+11. the executor performs no broker/paper/live action of its own and the ledger
+    fixes all safety booleans false;
+12. the "inert today" limitation (daily-cycle lane disables staleness, so the
+    allowlisted trigger is unreachable) is accurate and the fail-closed behaviour
+    is correct.
+
 Return one classification: `accepted`, `changes_requested`, or `blocked`, with
 sanitized findings and evidence.
 
 ## Route After Review
 
-If accepted, this additive `claude/*` branch (V5.37 + V5.38) may be merged into
-`main` under the canonical layout. No merge, push to `main`, credential read,
+If accepted, this additive `claude/*` branch (V5.37 + V5.38 + V5.39) may be merged
+into `main` under the canonical layout. No merge, push to `main`, credential read,
 network request, broker request, paper mutation, order action, Task Scheduler
-operation, or trading activation follows automatically from this handoff.
-Autonomous unattended execution of the planned offline commands is a separate,
-higher milestone requiring explicit operator authorization; it is out of scope
-here.
+operation, or trading activation follows automatically from this handoff. The
+V5.39 executor is authorized and present but inert against the real supervisor
+today; activating it in practice (e.g. giving an offline lane a staleness bound,
+or adding a seed execution path) remains an explicit operator decision.

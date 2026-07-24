@@ -15131,3 +15131,31 @@ and no-network defaults for normal test runs.
   `tests/unit/test_autonomy_next_plan.py` (22 tests) plus the V5.37 supervisor and
   dependency-direction guards are green. The detailed immutable contract is in
   `docs/design/v5_38_offline_autonomy_next_action_planner.md`.
+
+- V5.39 adds `autonomy-apply-plan`, the one operator-authorized executor over the
+  V5.38 plan (`src/algotrader/execution/autonomy_offline_executor.py`). It runs
+  only the offline-runnable, allowlisted subset of the plan and is **dry-run by
+  default** (spawns no subprocess); `--apply` executes the eligible allowlisted
+  commands after a credential/profile preflight and writes a deterministic action
+  ledger. The frozen `AUTONOMY_EXECUTOR_ALLOWLIST` holds only fully-defaulted
+  offline commands verified to import no network/broker/credential/profile surface
+  (today just `etf-sma-offline-daily-cycle-rerun-m446`); the seed command that
+  needs operator inputs is excluded and skipped with `requires_operator_input`.
+  Before any execution it refuses (zero executions, `execution_refused_reason=
+  preflight_failed`) if `APP_PROFILE` is paper/live or any credential/network-test
+  variable is loaded, reporting variable names only; each command runs with a child
+  environment that strips every credential/profile variable and sets only
+  `PYTHONPATH`. `_execute` re-checks the allowlist and argv before every run. Every
+  ledger record fixes the broker/submit/network/credential/live booleans to false
+  with `profit_claim=none`; the executor performs no broker/paper/live action of
+  its own. A source-scan permits `os`/`sys`/`subprocess` but forbids every
+  network/broker/credential-SDK import and broker mutation call. Exit codes: `2`
+  on validation error or a preflight-refused `--apply`, `1` on a failed execution
+  or a dry run with eligible work pending, `0` otherwise. Honest current
+  limitation: the sole allowlisted command triggers on the daily-cycle `stale`
+  state, which the supervisor cannot emit because that lane disables staleness
+  (`max_age_hours=0`), so the eligible set is empty today — the correct fail-closed
+  outcome; the executor is the reviewed seam all future autonomous execution passes
+  through. Focused suite `tests/unit/test_autonomy_offline_executor.py` (21 tests)
+  plus the V5.37/V5.38 and dependency-direction guards are green. The detailed
+  immutable contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.
