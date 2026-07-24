@@ -25,6 +25,8 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert '$FullPytestArguments = @("scripts/run_full_pytest_sharded.py")' in script
     assert '"python" $FullPytestArguments' in script
     assert '"--shards", "$Shards"' in script
+    assert "Assert-WorktreeBinding" in script
+    assert "bind_worktree_python.ps1" in script
     assert '"python" @("-m", "pytest")' not in script
     assert "git\" @(\"diff\", \"--check\")" in script
     assert "git\" @(\"ls-files\", \"runs\")" in script

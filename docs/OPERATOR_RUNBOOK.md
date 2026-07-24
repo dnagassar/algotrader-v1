@@ -221,6 +221,11 @@ test still passes (pytest's `pythonpath=["src"]` shadows the broken install).
 package management only: no credentials, broker, paper, trading-network, or Task
 Scheduler action. Use `-WithDependencies` for a first-time machine setup.
 
+`verify_offline.ps1 -Full` runs this binding check automatically and auto-binds
+the current worktree by default before executing the suite, so the normal flow
+is just `.\scripts\verify_offline.ps1 -Full`. Pass `-NoAutoBind` to require an
+explicit prior bind and fail fast instead of auto-binding.
+
 ### Complete Offline Verification
 
 Run the canonical full default collection with bounded deterministic sharding:

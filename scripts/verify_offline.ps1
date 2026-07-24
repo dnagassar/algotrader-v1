@@ -16,6 +16,12 @@ exact-node bounded runner after the targeted offline safety guard tests.
 Override the parallel shard count for the -Full bounded runner. The default of
 0 lets the runner auto-scale to the detected logical CPU count (capped at 16).
 
+.PARAMETER NoAutoBind
+For -Full, do not auto-bind the registered interpreter to this worktree. Instead
+fail fast if the editable algotrader install does not already point here. Without
+this switch, -Full auto-binds the current worktree before running the suite so
+the trusted-interpreter subprocess wrappers import this worktree's code.
+
 .EXAMPLE
 pwsh ./scripts/verify_offline.ps1
 
@@ -30,7 +36,8 @@ pwsh ./scripts/verify_offline.ps1 -Full -Shards 8
 param(
     [switch]$Full,
     [ValidateRange(0, 16)]
-    [int]$Shards = 0
+    [int]$Shards = 0,
+    [switch]$NoAutoBind
 )
 
 Set-StrictMode -Version Latest
@@ -169,10 +176,86 @@ function Invoke-CredentialProfilePrecheck {
     }
 }
 
+function Resolve-RegisteredInterpreter {
+    try {
+        $ViaLauncher = & py -3 -c "import sys; print(sys.executable)" 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($ViaLauncher)) {
+            return $ViaLauncher.Trim()
+        }
+    }
+    catch {
+        # The py launcher is optional; fall back to PATH below.
+    }
+    $OnPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if ([string]::IsNullOrWhiteSpace($OnPath)) {
+        throw "No registered Python interpreter found (tried 'py -3' and 'python')."
+    }
+    return $OnPath
+}
+
+function Get-AlgotraderEditableLocation {
+    param([string]$Python)
+
+    $Line = & $Python -m pip show algotrader 2>$null |
+        Select-String -Pattern "Editable project location"
+    if ($null -eq $Line) {
+        return $null
+    }
+    return ($Line.ToString() -replace "^Editable project location:\s*", "").Trim()
+}
+
+function Test-BindingMatchesWorktree {
+    param([string]$EditableLocation)
+
+    if ([string]::IsNullOrWhiteSpace($EditableLocation)) {
+        return $false
+    }
+    try {
+        $Actual = [System.IO.Path]::GetFullPath($EditableLocation).TrimEnd('\')
+        $Expected = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
+        return $Actual -ieq $Expected
+    }
+    catch {
+        return $false
+    }
+}
+
+function Assert-WorktreeBinding {
+    Write-Section "Worktree interpreter binding"
+    $Python = Resolve-RegisteredInterpreter
+    $Editable = Get-AlgotraderEditableLocation -Python $Python
+    Write-Host "registered_interpreter: $Python"
+    Write-Host "algotrader_editable_location: $(if ($null -ne $Editable) { $Editable } else { '<not installed>' })"
+    Write-Host "expected_worktree: $RepoRoot"
+
+    if (Test-BindingMatchesWorktree -EditableLocation $Editable) {
+        Write-Host "binding_matches_worktree: True"
+        return
+    }
+    Write-Host "binding_matches_worktree: False"
+
+    if ($NoAutoBind) {
+        Stop-OfflineVerification "Offline verification blocked: the registered interpreter's editable algotrader install does not point at this worktree. Run .\scripts\bind_worktree_python.ps1, or omit -NoAutoBind to auto-bind."
+    }
+
+    Write-Host "Auto-binding the registered interpreter to this worktree..."
+    & (Join-Path $PSScriptRoot "bind_worktree_python.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        Stop-OfflineVerification "Offline verification blocked: auto-bind failed. Run .\scripts\bind_worktree_python.ps1 -WithDependencies."
+    }
+
+    $Editable = Get-AlgotraderEditableLocation -Python $Python
+    if (-not (Test-BindingMatchesWorktree -EditableLocation $Editable)) {
+        Stop-OfflineVerification "Offline verification blocked: interpreter binding still does not point at this worktree after auto-bind."
+    }
+    Write-Host "binding_matches_worktree: True (after auto-bind)"
+}
+
 function Invoke-OfflineTestChecks {
     Invoke-CheckedCommand "targeted offline safety guard tests" "python" (@("-m", "pytest") + $GuardTestPaths)
 
     if ($Full) {
+        Assert-WorktreeBinding
         $FullPytestArguments = @("scripts/run_full_pytest_sharded.py")
         if ($Shards -gt 0) {
             $FullPytestArguments += @("--shards", "$Shards")
