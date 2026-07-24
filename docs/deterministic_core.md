@@ -1296,9 +1296,26 @@ broker/paper/live action of its own. A source-scan permits `os`/`sys`/`subproces
 broker mutation call.
 
 Honest current limitation: the sole allowlisted command triggers on the `stale`
-state of the SPY offline daily cycle lane, which sets `max_age_hours=0` (staleness
-disabled by V5.37 design), so the supervisor cannot currently emit that action and
-the executor's eligible set is **empty today** — the correct fail-closed outcome.
-The executor is the reviewed, tested seam all future autonomous execution passes
-through, active the moment a stale-capable offline lane is allowlisted. The detailed
+state of the SPY offline daily cycle lane. Under V5.37 that lane set
+`max_age_hours=0` (staleness disabled), so the eligible set was empty; V5.42
+(Stage 3) sets it to 30h, giving the loop a real trigger. The executor is the
+reviewed, tested seam all future autonomous execution passes through. The detailed
 contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.
+
+## V5.42 Offline Autonomy Self-Refresh Cycle (Stage 3)
+
+V5.42 closes the autonomy loop into one command, `autonomy-self-refresh-cycle`
+(`src/algotrader/execution/autonomy_self_refresh_cycle.py`): observe (supervisor)
+→ decide (planner) → act (gated offline executor) → re-observe (supervisor). It
+emits `before_system_status`, `after_system_status`, the plan summary, the full
+execution ledger, before/after lane summaries, a `cycle_outcome`
+(`dry_run_preview`/`noop_no_action`/`refreshed`/`still_pending`/
+`execution_failed`), and `converged`. It is dry-run by default (spawns no
+subprocess); `--apply` runs the eligible allowlisted offline refresh actions
+behind the executor's credential/profile preflight. The `spy_offline_daily_cycle`
+supervisor lane now has a 30h staleness bound so aged daily-cycle evidence becomes
+`stale` and eligible for the offline rerun (timestamp-less records are never
+stale). The orchestrator imports no os/socket/urllib/requests/subprocess/broker
+SDK and reads no wall clock; every record fixes the safety booleans false with
+`profit_claim=none`. The detailed contract is in
+`docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.

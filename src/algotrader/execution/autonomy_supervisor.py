@@ -255,7 +255,10 @@ AUTONOMY_SUPERVISOR_LANES: tuple[LaneSpec, ...] = (
             "state_rollup_status",
         ),
         as_of_fields=("generated_at", "as_of", "validated_at"),
-        max_age_hours=0,
+        # V5.42 Stage 3: a daily cycle whose latest accepted evidence carries a
+        # timestamp older than 30h is stale and should be re-run. Records without
+        # a timestamp are never stale, so seeded/absent evidence is unaffected.
+        max_age_hours=30,
         state_map={
             "accepted_observe_hold_noop": STATE_NOMINAL,
             "accepted_current_cycle_hold_noop": STATE_NOMINAL,

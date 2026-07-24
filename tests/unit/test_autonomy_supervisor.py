@@ -272,6 +272,57 @@ def test_fresh_nominal_soak_is_not_stale(tmp_path: Path) -> None:
     assert payload["system_status"] == "nominal"
 
 
+def test_daily_cycle_stale_after_30h(tmp_path: Path) -> None:
+    # V5.42 Stage 3: a timestamped daily-cycle record older than 30h is stale.
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path, as_of="2026-07-24T00:00:00Z"),
+        {
+            "spy_offline_daily_cycle": {
+                "daily_chain_state": "accepted_observe_hold_noop",
+                "generated_at": "2026-07-20T00:00:00Z",
+            }
+        },
+    )
+
+    summary = _lane_summary(payload, "spy_offline_daily_cycle")
+    assert summary["stale"] is True
+    assert summary["normalized_state"] == "stale"
+    assert summary["next_action"] == "rerun_offline_daily_cycle_chain"
+
+
+def test_daily_cycle_fresh_is_nominal(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path, as_of="2026-07-24T00:00:00Z"),
+        {
+            "spy_offline_daily_cycle": {
+                "daily_chain_state": "accepted_observe_hold_noop",
+                "generated_at": "2026-07-23T18:00:00Z",
+            }
+        },
+    )
+
+    summary = _lane_summary(payload, "spy_offline_daily_cycle")
+    assert summary["stale"] is False
+    assert summary["normalized_state"] == "nominal"
+
+
+def test_daily_cycle_without_timestamp_is_not_stale(tmp_path: Path) -> None:
+    # No timestamp -> staleness cannot be computed -> never stale (seeded/absent
+    # evidence is unaffected by the 30h bound).
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path, as_of="2026-07-24T00:00:00Z"),
+        {
+            "spy_offline_daily_cycle": {
+                "daily_chain_state": "accepted_observe_hold_noop",
+            }
+        },
+    )
+
+    summary = _lane_summary(payload, "spy_offline_daily_cycle")
+    assert summary["stale"] is False
+    assert summary["normalized_state"] == "nominal"
+
+
 def test_file_based_reading_json_object_and_jsonl_last(tmp_path: Path) -> None:
     soak_path = tmp_path / "paper_lab" / "spy_adjusted_market_data_soak_report.json"
     soak_path.parent.mkdir(parents=True)

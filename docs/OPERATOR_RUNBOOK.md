@@ -1427,12 +1427,35 @@ actions with exit codes and every safety boolean false.
 Exit code: `2` on input error or a preflight-refused `-Apply`; `1` on a failed
 execution or a dry run with eligible work pending; `0` otherwise.
 
-Note (current behaviour): the sole allowlisted command triggers on the SPY
-offline daily cycle lane being `stale`, which the supervisor does not currently
-report (that lane disables staleness by design), so in practice the eligible set
-is empty and `-Apply` executes nothing — the intended fail-closed state. The
-detailed contract is in
+Note: the sole allowlisted command triggers on the SPY offline daily cycle lane
+being `stale`. As of V5.42 (Stage 3) that lane has a 30h staleness bound, so a
+daily cycle whose evidence is older than 30h now becomes eligible for the offline
+rerun; before V5.42 the lane disabled staleness and the eligible set was always
+empty. The detailed contract is in
 `docs/design/v5_39_gated_offline_autonomy_executor.md`.
+
+## V5.42 Autonomy Self-Refresh Cycle
+
+The self-refresh cycle runs the whole loop in one command: observe (supervisor)
+→ decide (planner) → act (executor) → re-observe (supervisor), and reports
+whether the system converged. It is dry-run by default; pass `-Apply` to actually
+execute the eligible allowlisted offline refresh actions.
+
+```powershell
+# Dry run: preview the whole cycle, execute nothing.
+.\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId cycle-<yyyymmdd> -AsOf <UTC> -Format text
+
+# Apply: run the eligible offline refresh actions and re-observe.
+.\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId cycle-<yyyymmdd> -AsOf <UTC> -Apply `
+  -RunLog runs\autonomy_self_refresh_cycle\latest\cycle.jsonl -Format json
+```
+
+`cycle_outcome` is one of `dry_run_preview`, `noop_no_action`, `refreshed`,
+`still_pending`, `execution_failed`. `converged` is true when the re-observed
+system status is `nominal`/`waiting`/`no_lane_evidence`. Exit code: `2` on input
+error; `1` on execution failure or a non-converged cycle; `0` otherwise. Same
+credential/profile refusal and safety guarantees as the executor. The detailed
+contract is in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
 
 ## V5.40 Live-Capital Interlock Boundary Verification
 

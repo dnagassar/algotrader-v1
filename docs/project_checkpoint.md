@@ -15159,3 +15159,24 @@ and no-network defaults for normal test runs.
   through. Focused suite `tests/unit/test_autonomy_offline_executor.py` (21 tests)
   plus the V5.37/V5.38 and dependency-direction guards are green. The detailed
   immutable contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.
+
+- V5.42 (Stage 3) adds `autonomy-self-refresh-cycle`
+  (`src/algotrader/execution/autonomy_self_refresh_cycle.py`), which closes the
+  observe→decide→act→re-observe loop in one command: it builds the supervisor
+  report (before), plans, runs the gated offline executor over the plan, rebuilds
+  the supervisor report (after), and classifies `cycle_outcome`
+  (`dry_run_preview`/`noop_no_action`/`refreshed`/`still_pending`/
+  `execution_failed`) and `converged`. Dry-run by default; `--apply` executes the
+  eligible allowlisted offline refresh actions behind the executor preflight. To
+  give the loop a real trigger, the `spy_offline_daily_cycle` supervisor lane's
+  `max_age_hours` moved 0→30: a timestamped daily-cycle record older than 30h is
+  now `stale` → planner emits `rerun_offline_daily_cycle_chain` → executor may run
+  it; records without a timestamp are never stale. The orchestrator imports no
+  os/socket/urllib/requests/subprocess/broker SDK and reads no wall clock; every
+  record fixes the safety booleans false with `profit_claim=none`. Focused suite
+  `tests/unit/test_autonomy_self_refresh_cycle.py` (13 tests, incl. the
+  stale→execute→converge loop-closure test) plus the autonomy/interlock/
+  dependency-direction guards (133 together) and the targeted offline verifier
+  (99 guards) are green. Built on `claude/v5.42-stage3-self-refresh` from
+  `main@82b1e07`; independent review required before merge. The detailed immutable
+  contract is in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.

@@ -1786,6 +1786,58 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Execution ledger output format.",
     )
+    autonomy_self_refresh_parser = subparsers.add_parser(
+        "autonomy-self-refresh-cycle",
+        help=(
+            "Run one observe->decide->act->re-observe autonomy cycle over the "
+            "local lanes. Dry-run by default; pass --apply to execute the "
+            "eligible allowlisted offline refresh actions."
+        ),
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the cycle record.",
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Explicit ISO-8601 UTC evaluation time used for staleness checks.",
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--lanes-root",
+        default="runs",
+        help="Local root for default per-lane artifact paths. Default: runs.",
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--lane",
+        action="append",
+        default=None,
+        metavar="LANE_ID=PATH",
+        dest="lane_overrides",
+        help="Explicit local artifact path override for one lane id. Repeatable.",
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually execute the eligible allowlisted offline refresh actions. "
+            "Without this flag the cycle is a dry run and executes nothing."
+        ),
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Write exactly one deterministic cycle JSONL record to PATH.",
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Self-refresh cycle output format.",
+    )
     paper_boundary_check_parser = subparsers.add_parser(
         "paper-boundary-check",
         help=(
@@ -4307,6 +4359,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_autonomy_next_plan(args)
     if command == "autonomy-apply-plan":
         return _run_autonomy_apply_plan(args)
+    if command == "autonomy-self-refresh-cycle":
+        return _run_autonomy_self_refresh_cycle(args)
     if command == "paper-boundary-check":
         return _run_paper_boundary_check(args)
     if command == "etf-sma-cycle":
@@ -6089,6 +6143,60 @@ def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
         return 1
     # Dry run with eligible offline work pending signals "there is work to do".
     if not args.apply and payload["eligible_count"] > 0:
+        return 1
+    return 0
+
+
+def _run_autonomy_self_refresh_cycle(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.autonomy_self_refresh_cycle import (
+        build_self_refresh_cycle,
+        render_self_refresh_cycle_json,
+        render_self_refresh_cycle_text,
+        write_self_refresh_cycle_jsonl,
+    )
+    from .execution.autonomy_supervisor import AutonomySupervisorConfig
+
+    try:
+        overrides: dict[str, str] = {}
+        for raw in args.lane_overrides or []:
+            if "=" not in raw:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            lane_id, _, path_text = raw.partition("=")
+            lane_id = lane_id.strip()
+            path_text = path_text.strip()
+            if not lane_id or not path_text:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            overrides[lane_id] = path_text
+        payload = build_self_refresh_cycle(
+            AutonomySupervisorConfig(
+                run_id=args.run_id,
+                as_of=args.as_of,
+                lanes_root=args.lanes_root,
+                lane_artifact_overrides=overrides,
+            ),
+            apply=args.apply,
+        )
+        if args.run_log is not None:
+            write_self_refresh_cycle_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_self_refresh_cycle_json(payload))
+    else:
+        print(render_self_refresh_cycle_text(payload))
+
+    # An executed action that failed is a hard error.
+    if payload["execution_count"] > 0 and not payload["all_executions_succeeded"]:
+        return 1
+    # Not converged (something still needs attention) signals work remains.
+    if not payload["converged"]:
         return 1
     return 0
 
