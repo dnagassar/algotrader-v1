@@ -789,6 +789,7 @@ def test_default_trading_client_factory_constructs_without_network(
     monkeypatch.setattr(socket, "create_connection", fail_on_network)
     monkeypatch.setattr(socket, "socket", fail_on_network)
     monkeypatch.setattr(requests.sessions.Session, "request", fail_on_network)
+    _paper_execution_env(monkeypatch)
 
     client = _create_trading_client(valid_config())
 
@@ -805,6 +806,7 @@ def test_default_crypto_data_client_factory_constructs_without_network(
     monkeypatch.setattr(socket, "create_connection", fail_on_network)
     monkeypatch.setattr(socket, "socket", fail_on_network)
     monkeypatch.setattr(requests.sessions.Session, "request", fail_on_network)
+    _paper_execution_env(monkeypatch)
 
     client = _create_crypto_data_client(valid_config())
 
@@ -873,3 +875,42 @@ def test_alpaca_sdk_client_does_not_expose_sensitive_config_surfaces(
 
     assert SENSITIVE_API_KEY not in surfaces
     assert SENSITIVE_SECRET_KEY not in surfaces
+
+
+def _paper_execution_env(monkeypatch) -> None:
+    monkeypatch.setenv("APP_PROFILE", "paper")
+    monkeypatch.setenv("ALPACA_API_KEY", "paper-key")
+    monkeypatch.setenv("ALPACA_SECRET_KEY", "paper-secret")
+    monkeypatch.setenv("ALPACA_PAPER_BASE_URL", "https://paper-api.alpaca.markets")
+
+
+def test_create_trading_client_enforces_live_capital_interlock(monkeypatch) -> None:
+    from algotrader.execution.live_capital_interlock import LiveCapitalGateError
+
+    _paper_execution_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_LIVE_TRADING", "true")
+
+    # The interlock fires before alpaca-py is imported, so this refuses even
+    # when the SDK is unavailable.
+    with pytest.raises(LiveCapitalGateError):
+        _create_trading_client(valid_config())
+
+
+def test_create_crypto_data_client_enforces_live_capital_interlock(monkeypatch) -> None:
+    from algotrader.execution.live_capital_interlock import LiveCapitalGateError
+
+    _paper_execution_env(monkeypatch)
+    monkeypatch.setenv("ALPACA_BASE_URL", "https://api.alpaca.markets")
+
+    with pytest.raises(LiveCapitalGateError):
+        _create_crypto_data_client(valid_config())
+
+
+def test_create_trading_client_refuses_when_profile_not_paper(monkeypatch) -> None:
+    from algotrader.execution.live_capital_interlock import LiveCapitalGateError
+
+    _paper_execution_env(monkeypatch)
+    monkeypatch.setenv("APP_PROFILE", "live")
+
+    with pytest.raises(LiveCapitalGateError):
+        _create_trading_client(valid_config())

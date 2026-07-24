@@ -270,6 +270,8 @@ class AlpacaSdkClient(AlpacaClient):
 
 
 def _create_trading_client(config: AlpacaPaperConfig) -> Any:
+    require_live_capital_interlock(os.environ)
+
     from alpaca.trading.client import TradingClient
 
     return TradingClient(
@@ -281,6 +283,8 @@ def _create_trading_client(config: AlpacaPaperConfig) -> Any:
 
 
 def _create_crypto_data_client(config: AlpacaPaperConfig) -> Any:
+    require_live_capital_interlock(os.environ)
+
     from alpaca.data.historical import CryptoHistoricalDataClient
 
     return CryptoHistoricalDataClient(

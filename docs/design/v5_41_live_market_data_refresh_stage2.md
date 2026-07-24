@@ -27,7 +27,11 @@ This stage allows autonomous and operator-initiated market data refresh loops to
 
 - [`src/algotrader/execution/crypto_history_refresh_adapter.py`](file:///C:/Users/danie/Desktop/algo_trader/src/algotrader/execution/crypto_history_refresh_adapter.py): Composes `require_live_capital_interlock` before `_run_market_data_fetch_mode`.
 - [`src/algotrader/execution/crypto_read_only_paper_observation_adapter.py`](file:///C:/Users/danie/Desktop/algo_trader/src/algotrader/execution/crypto_read_only_paper_observation_adapter.py): Composes `evaluate_live_capital_interlock` in `validate_preflight_gates`.
-- [`src/algotrader/execution/alpaca_sdk_client.py`](file:///C:/Users/danie/Desktop/algo_trader/src/algotrader/execution/alpaca_sdk_client.py): Requires valid paper profile configuration (`require_paper_profile`).
+- [`src/algotrader/execution/alpaca_sdk_client.py`](file:///C:/Users/danie/Desktop/algo_trader/src/algotrader/execution/alpaca_sdk_client.py): Requires valid paper profile configuration (`require_paper_profile`) at construction, and — completed in the V5.41a independent-review remediation — calls `require_live_capital_interlock(os.environ)` at the top of both real network factories (`_create_trading_client`, `_create_crypto_data_client`) so every live Alpaca client construction fails closed on any live signal before alpaca-py is imported. Injected mock clients/factories (tests) bypass the real factories and are unaffected.
+
+## V5.41a Independent-Review Remediation
+
+An orchestrator review of the merged V5.41 found `alpaca_sdk_client.py` importing `require_live_capital_interlock` (and `os`) without calling them — the SDK-seam interlock was intended but left unwired. V5.41a completes it: the interlock is now enforced inside `_create_trading_client` and `_create_crypto_data_client`, guarding exactly the real broker-connection seams while leaving mock-injecting tests untouched. Tests: `test_alpaca_sdk_client.py` adds `test_create_trading_client_enforces_live_capital_interlock`, `test_create_crypto_data_client_enforces_live_capital_interlock`, and `test_create_trading_client_refuses_when_profile_not_paper`; the two existing default-factory construction tests now set a paper execution env first.
 
 ## Verification & AST Invariants
 
