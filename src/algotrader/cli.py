@@ -1688,6 +1688,51 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Supervisor output format.",
     )
+    autonomy_next_plan_parser = subparsers.add_parser(
+        "autonomy-next-plan",
+        help=(
+            "Classify each cross-lane supervisor recommendation into a concrete "
+            "offline next-action plan (read-only; never executes)."
+        ),
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the next-plan record.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="Explicit ISO-8601 UTC evaluation time used for staleness checks.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--lanes-root",
+        default="runs",
+        help="Local root for default per-lane artifact paths. Default: runs.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--lane",
+        action="append",
+        default=None,
+        metavar="LANE_ID=PATH",
+        dest="lane_overrides",
+        help=(
+            "Explicit local artifact path override for one lane id. "
+            "Repeatable. Example: --lane spy_offline_daily_cycle=runs/.../run.jsonl"
+        ),
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Write exactly one deterministic next-plan JSONL record to PATH.",
+    )
+    autonomy_next_plan_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Next-plan output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -4190,6 +4235,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_state_rollup(args)
     if command == "autonomy-supervisor-status":
         return _run_autonomy_supervisor(args)
+    if command == "autonomy-next-plan":
+        return _run_autonomy_next_plan(args)
     if command == "etf-sma-cycle":
         return _run_etf_sma_cycle(args)
     if command == "etf-sma-cycle-brief":
@@ -5865,6 +5912,56 @@ def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
     if payload["system_status"] in ("blocked", "attention_required"):
         return 1
     return 0
+
+
+def _run_autonomy_next_plan(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.autonomy_next_plan import (
+        PLAN_ALL_NOMINAL_OR_WAITING,
+        build_autonomy_next_plan,
+        render_autonomy_next_plan_json,
+        render_autonomy_next_plan_text,
+        write_autonomy_next_plan_jsonl,
+    )
+    from .execution.autonomy_supervisor import AutonomySupervisorConfig
+
+    try:
+        overrides: dict[str, str] = {}
+        for raw in args.lane_overrides or []:
+            if "=" not in raw:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            lane_id, _, path_text = raw.partition("=")
+            lane_id = lane_id.strip()
+            path_text = path_text.strip()
+            if not lane_id or not path_text:
+                raise ValidationError(
+                    "each --lane override must be LANE_ID=PATH."
+                )
+            overrides[lane_id] = path_text
+        payload = build_autonomy_next_plan(
+            AutonomySupervisorConfig(
+                run_id=args.run_id,
+                as_of=args.as_of,
+                lanes_root=args.lanes_root,
+                lane_artifact_overrides=overrides,
+            )
+        )
+        if args.run_log is not None:
+            write_autonomy_next_plan_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_autonomy_next_plan_json(payload))
+    else:
+        print(render_autonomy_next_plan_text(payload))
+
+    if payload["plan_class"] == PLAN_ALL_NOMINAL_OR_WAITING:
+        return 0
+    return 1
 
 
 def _run_etf_sma_cycle(args: argparse.Namespace) -> int:

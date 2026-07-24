@@ -15104,3 +15104,30 @@ and no-network defaults for normal test runs.
   suite `tests/unit/test_autonomy_supervisor.py` (25 tests) plus the targeted
   offline safety guards (99 tests) are green. The detailed immutable contract is
   in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+
+- V5.38 adds `autonomy-next-plan`, one deterministic offline planner over the
+  V5.37 supervisor report (`src/algotrader/execution/autonomy_next_plan.py`). It
+  classifies each lane's abstract `recommended_next_action` token against the
+  frozen registry `AUTONOMY_ACTION_CLASSIFICATION` into an execution class
+  (`noop`, `auto_offline`, `offline_operator_input`, `operator_gated`) with the
+  exact offline command when one exists, the operator-supplied inputs it still
+  needs, its preconditions, and — when no offline path exists — the specific
+  operator gate. It aggregates one whole-system `plan_class`
+  (`offline_action_available`, `operator_authority_required`, or
+  `all_nominal_or_waiting`), the highest-severity `next_offline_action`, and the
+  full set of operator-gated actions; the command exits `0` when nothing is
+  pending, `1` when an action is pending, and `2` on validation error. It has the
+  same safety profile as the supervisor and, critically, spawns no subprocess: it
+  plans commands and never executes them; every record fixes the same safety
+  booleans to false with `profit_claim=none`, and an unclassified token fails
+  closed to an operator-review gate. `AUTONOMY_ACTION_CLASSIFICATION` provably
+  covers every action the supervisor can emit. Today the only offline-runnable
+  lane is the SPY offline daily cycle chain; every other action is `noop` or
+  operator-gated, so **no lane can be advanced without operator-supplied input or
+  operator authority**. Autonomous unattended execution of even the offline
+  commands is a deliberate, higher milestone that grants the system a new standing
+  authority and requires explicit operator authorization; this planner is the
+  complete advisory layer up to, but not across, that gate. Focused suite
+  `tests/unit/test_autonomy_next_plan.py` (22 tests) plus the V5.37 supervisor and
+  dependency-direction guards are green. The detailed immutable contract is in
+  `docs/design/v5_38_offline_autonomy_next_action_planner.md`.

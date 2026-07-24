@@ -1350,3 +1350,51 @@ Known lane ids: `spy_market_data_soak`, `spy_offline_daily_cycle`,
 `recommended_next_action` is always an offline, read-only, or operator-review
 follow-up; it never authorizes or names a broker mutation. The detailed contract
 is in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+
+## V5.38 Offline Autonomy Next-Action Planner
+
+The supervisor tells you *what state* each lane is in; the planner tells you
+*what to do next*. Run it from the same credential-free shell to turn the
+supervisor's abstract recommendations into a concrete, safety-classified plan.
+
+```powershell
+.\scripts\run_autonomy_next_plan.ps1 `
+  -RunId plan-<yyyymmdd> `
+  -AsOf <CURRENT_UTC_TIMESTAMP> `
+  -Format text
+```
+
+Like the supervisor, the wrapper refuses to run under a loaded profile or any
+Alpaca credential/network-test variable, `-AsOf` is the only time source, and it
+reads only local evidence. Add `-Format json` and `-RunLog
+runs\autonomy_next_plan\latest\plan.jsonl` for a machine-readable record, and
+`-Lane "lane_id=path"` (repeatable) to point a lane at an exact artifact.
+
+For each lane the plan reports an execution class and, when applicable, the exact
+offline command to run:
+
+- `noop` — lane nominal or healthily waiting; nothing to run.
+- `offline_operator_input` — an offline command exists but needs operator-supplied
+  inputs (listed under `required_operator_inputs`). Today: the SPY offline daily
+  cycle seed `etf-sma-offline-daily-cycle-run` (needs `--validated-at` and
+  `--daily-bars-csv`).
+- `auto_offline` — a fully-defaulted offline command exists (today:
+  `etf-sma-offline-daily-cycle-rerun-m446`, which needs the refreshed M446 CSV
+  present). Only unattended-execution authority remains.
+- `operator_gated` — no offline path; the `gate` names why
+  (`network_market_data_fetch`, `broker_observation`, `operator_review`,
+  `task_scheduler_health`, `no_offline_command_available`).
+
+The whole-system `plan_class` is `offline_action_available`,
+`operator_authority_required`, or `all_nominal_or_waiting`; `next_offline_action`
+names the single highest-leverage offline-runnable action. Exit code is `0` when
+nothing is pending, `1` when an action is pending, and `2` on input error — a
+pending-action signal distinct from the supervisor's severity signal.
+
+Important gate: the planner **plans** commands but never runs them. In a clean
+checkout it will show one offline-runnable action (the daily-cycle seed) that
+still needs operator inputs, plus operator-gated lanes — i.e. no lane can be
+advanced without operator input or operator authority. Wiring the system to run
+even the offline commands unattended is a separate, higher milestone that
+requires explicit operator authorization. The detailed contract is in
+`docs/design/v5_38_offline_autonomy_next_action_planner.md`.

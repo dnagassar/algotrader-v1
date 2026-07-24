@@ -1239,3 +1239,39 @@ name a broker mutation. The supervisor adds no strategy-performance evidence and
 changes no live-capital, paper-mutation, credential, network, or Task Scheduler
 authority. The detailed contract is in
 `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+
+## V5.38 Offline Autonomy Next-Action Planner
+
+V5.38 adds one deterministic, offline planner over the V5.37 supervisor report.
+`autonomy-next-plan` builds (or accepts) a supervisor report and classifies each
+lane's abstract `recommended_next_action` token against a frozen registry into a
+concrete plan: the exact offline command to run when one exists, the
+operator-supplied inputs it still needs, its preconditions, and — when no offline
+path exists — the specific operator gate (`network_market_data_fetch`,
+`broker_observation`, `operator_review`, `task_scheduler_health`,
+`no_offline_command_available`, or `unclassified_action_operator_review`). It
+aggregates one whole-system plan with a `plan_class`
+(`offline_action_available`, `operator_authority_required`, or
+`all_nominal_or_waiting`), the single highest-leverage `next_offline_action`, and
+the full set of operator-gated actions.
+
+It is read-only planning with the exact same safety profile as the supervisor:
+it loads no profile, reads no environment or credential, imports no broker SDK,
+opens no socket, reads no wall clock, and — critically — **spawns no subprocess**;
+it records command strings as inert data and never executes them. Every record
+fixes the same safety booleans to false with `profit_claim=none`, and an
+unclassified action token fails closed to an operator-review gate. Exit code `0`
+means nothing is pending (`all_nominal_or_waiting`); `1` means an action is
+pending; `2` is an input-validation error.
+
+`AUTONOMY_ACTION_CLASSIFICATION` covers every action the frozen supervisor lane
+registry can emit (proven by test). Today the only offline-runnable lane is the
+SPY offline daily cycle chain (`etf-sma-offline-daily-cycle-run` needs
+operator-supplied inputs; `etf-sma-offline-daily-cycle-rerun-m446` is fully
+defaulted); every other action is `noop` or operator-gated. **No lane can be
+advanced without operator-supplied input or operator authority**, and autonomous
+(unattended) execution of even the offline commands is a deliberate, higher
+milestone that grants the system a new standing authority and therefore requires
+explicit operator authorization. This planner is the complete advisory layer up
+to, but not across, that gate. The detailed contract is in
+`docs/design/v5_38_offline_autonomy_next_action_planner.md`.
