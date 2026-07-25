@@ -9,6 +9,8 @@
   contract`).
 - Merge commit: `29068c7` (`Merge origin/main (V5.40a, V5.41b) into the
   accepted autonomy frontier`).
+- Independent verification classification: `accepted on the feature branch`
+  after the canonical bounded full suite passed on `2026-07-25`.
 - V5.41b contract doc correction commit: same merge commit `29068c7` (amended
   the gained `docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`
   in place, see below).
@@ -22,8 +24,11 @@
 
 - Worktree
   `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\main-frontier-reconciliation-prep`,
-  branch `claude/main-frontier-reconciliation-prep`, `HEAD=29068c7`.
-- Writer: `Claude Code`. Scope of claim: this working tree only.
+  branch `claude/main-frontier-reconciliation-prep`, `HEAD=52e0018` before
+  this handoff-only update.
+- Implementation writer: `Claude Code`; independent verification and this
+  handoff-only acceptance update: `Codex`. Scope of claim: this working tree
+  only.
 - Started at the exact accepted frontier tip `0917083`, verified before any
   edit (branch, HEAD, `git status`, `git diff --cached`/`--stat`, all
   worktrees, credential/profile booleans — all clean/false).
@@ -192,48 +197,33 @@ Resolution, per the frozen contract:
 - Credential/profile precheck: every boolean `False`.
 - Repository hygiene precheck and final check: clean. `git diff --check`: clean.
 
-### Bounded Full Suite (`-Full`) — Attempted, Not Completed: Environmental Blocker
+### Bounded Full Suite (`-Full`) — PASS
 
-Four consecutive attempts to run `.\scripts\verify_offline.ps1 -Full` in the
-background (two via the Bash tool, one via the PowerShell tool, one more via
-the Bash tool again) were each externally terminated (`status: killed`,
-`"was stopped"`) before the sharded full suite could finish, at
-progressively *earlier* points each time:
+- Command: `.\scripts\verify_offline.ps1 -Full -Shards 4`.
+- Exit: `0`; final offline verification result: `PASS`.
+- Credential/profile and network preflight: every boolean `False`.
+- Targeted safety guards inside the wrapper: `99 passed` in `109.44s`.
+- Editable interpreter binding:
+  `algotrader_editable_location` matched this worktree.
+- Canonical collection: `9,978` nodes in `494` files.
+- Exact partition: `2,495`, `2,495`, `2,494`, and `2,494` nodes.
+- Collection equivalence: `PASS`.
+- Per-shard execution: all four exited `0`; none timed out.
+- Execution equivalence: `PASS`.
+- Aggregate: `9,978` executed, `9,973 passed`, `5 skipped`, `0 failures`,
+  `0 errors`.
+- `bounded_full_suite=PASS`.
+- Final hygiene: `git diff --check`, `git status --short`, staged files,
+  changed `src` files, untracked `src/tests` files, and tracked `runs/`
+  checks were all clean/empty as applicable.
 
-1. Reached the full sharded run: all 8 shards' collection phase failed
-   simultaneously with Windows exit code `3221225794`
-   (`0xC0000142`/`STATUS_DLL_INIT_FAILED`) — a signature consistent with
-   Python subprocesses failing to initialize under severe memory pressure,
-   not a code defect (all 8 shards failing identically at the same instant
-   is not explainable by any content difference between shards).
-2. Killed immediately after the interpreter-binding check, before any shard
-   produced output.
-3. Killed mid-way through the targeted safety-guard tests that run before
-   sharding.
-4. Killed before the targeted safety-guard tests produced any output at all.
-
-At the time of investigation, `Get-CimInstance Win32_OperatingSystem` showed
-`FreePhysicalMemory` of only `~1.04 GB` out of `~8.14 GB`
-(`TotalVisibleMemorySize`) — roughly `13%` free — with numerous other
-`pwsh`/`powershell` background processes already running, consistent with
-several other concurrent worktree sessions active on this machine (the
-sibling `agent-handoff-execution-579196` worktree is confirmed live; the
-repository's own history already documents that `-Full` runs contend for a
-single shared registered Python interpreter across worktrees). The `-Full`
-suite spawns 8 parallel full-interpreter pytest shards; on a memory-
-constrained host with concurrent sessions this is the more likely explanation
-than a defect introduced by this merge, especially given the standard
-verifier and all 191 targeted test results (which exercise every file this
-merge touched) passed cleanly.
-
-`Interpreter binding was confirmed correct before each attempt`
-(`algotrader_editable_location` matched this worktree, verified via
-`importlib.util.find_spec`/`pip show algotrader`), ruling out the specific
-binding-hijack hazard the prior handoff (V5.42a) documented as a known cause
-of `-Full` instability.
-
-The working tree remained clean (`git status --short` empty) after every
-killed attempt; no partial state was left behind.
+One lower-concurrency diagnostic attempt,
+`.\scripts\verify_offline.ps1 -Full -Shards 1`, proved canonical collection
+equivalence for all `9,978` nodes and reached `37%` with no test failure, but
+its sole shard hit the runner's fixed `1,800s` timeout. That is a shard-size/
+bound mismatch, not conflicting test evidence. Earlier eight-shard Windows
+`0xC0000142` loader failures remain classified as host memory pressure; both
+incomplete modes are superseded by the complete four-shard pass above.
 
 ## Safety And External Effects
 
@@ -250,20 +240,18 @@ paper profile was entered and no paper mutation or order action occurred;
 no canary, strategy, paper automation, live access, or trading effect was
 activated. All tests used deterministic offline fixtures and fake
 boundaries. `main` was not updated, force-updated, reset, or pushed.
+Effective paper quantity/position/order-notional/portfolio-notional caps:
+`not applicable` because no paper operation was attempted. Broker receipt,
+reconciliation, and action-audit outcome: `not applicable`. Live-authorized
+state: `false`.
 
 ## Unresolved Risks
 
-- **The bounded full suite (`-Full`) has not completed on this merge.** This
-  is the one required check from the task's step 3 that could not be
-  discharged, for the environmental reasons documented above, not a
-  correctness concern discovered in the merge itself. Every other required
-  check (targeted suites across every overlapping surface, dependency
-  direction, the standard verifier, `git diff --check`, and all status/
-  changed-src/untracked checks) is green.
-- **Two branches now exist for the same reconciliation** (this one, merged;
-  `claude/agent-handoff-execution-579196`, contract-only). An operator should
-  decide which is promoted and treat the other as superseded, rather than
-  independently re-merging from the sibling branch's contract.
+- `claude/agent-handoff-execution-579196` remains an unpushed, contract-only
+  audit branch for the same reconciliation. It is superseded by this
+  implemented and independently verified branch; its matching keyword-
+  argument API decision remains useful corroboration, but it must not be
+  independently re-merged.
 - `--allow-empty-lab` remains a caller assertion rather than proof of intent
   (carried over from V5.41b/V5.42a; unchanged by this merge).
 - The vacuous `all_executions_succeeded=true` aggregate at
@@ -275,21 +263,10 @@ boundaries. `main` was not updated, force-updated, reset, or pushed.
 
 ## Next Highest-Leverage Safe Action
 
-Re-run `.\scripts\verify_offline.ps1 -Full` on this branch (`29068c7`) at a
-time of lower concurrent load on this machine — ideally after confirming
-via `Get-CimInstance Win32_OperatingSystem` that free physical memory is
-comfortably above the level observed during this session's four killed
-attempts, and/or after other concurrent worktree sessions (in particular
-`agent-handoff-execution-579196`) have gone idle. No code change is expected
-to be needed first: the standard verifier and all 191 targeted test results
-already prove the merge correct on every surface `-Full` would additionally
-exercise beyond what the targeted suites already cover. If `-Full` passes,
-record its exact metrics in this file in place of the "Attempted, Not
-Completed" section above, and treat the reconciliation as complete and ready
-for operator review toward `main` promotion (still not performed by any
-collaborator without an explicit operator decision).
-
-If `-Full` fails for a reason other than environment/resource exhaustion the
-next time it is run, treat that as a genuine finding under the two-stage
-rule: freeze a contract doc first, then repair, then re-verify with the
-targeted suites plus the standard verifier plus `-Full` again.
+Operator review and explicit authorization for promotion of the accepted
+feature branch to protected `main`. The integration implementation, targeted
+tests, standard verifier, canonical bounded full suite, and repository
+hygiene are complete and green; no further implementation repair is
+indicated. Until that operator decision, do not merge, force-update, or push
+`main`, and do not independently re-merge the superseded contract-only
+branch.
