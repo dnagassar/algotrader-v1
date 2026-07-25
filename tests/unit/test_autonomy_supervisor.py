@@ -518,6 +518,15 @@ def test_render_text_lists_lanes_and_safety(tmp_path: Path) -> None:
     assert "live_authorized: false" in text
 
 
+def test_text_render_surfaces_empty_lab_contract(tmp_path: Path) -> None:
+    text = render_autonomy_supervisor_text(
+        build_autonomy_supervisor_report(_config(tmp_path))
+    )
+
+    assert "allow_empty_lab: false" in text
+    assert "evidence_required: true" in text
+
+
 def test_report_is_deterministic_for_same_records(tmp_path: Path) -> None:
     records = {
         "spy_market_data_soak": {
@@ -621,6 +630,45 @@ def test_no_lane_evidence_allows_explicit_empty_lab(tmp_path: Path) -> None:
     assert payload["system_status"] == "no_lane_evidence"
     assert payload["allow_empty_lab"] is True
     assert payload["evidence_required"] is False
+
+
+def test_declared_empty_lab_does_not_rescue_a_blocked_lane(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path),
+        {"crypto_bounded_paper_probe_review": {"classification": "blocked_by_x"}},
+        allow_empty_lab=True,
+    )
+
+    assert payload["system_status"] == "blocked"
+    assert payload["system_blocked"] is True
+    assert payload["system_attention_required"] is True
+    assert payload["evidence_required"] is False
+
+
+def test_declared_empty_lab_does_not_rescue_an_unknown_lane(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path),
+        {"crypto_bounded_paper_probe_review": {"classification": "surprising_value"}},
+        allow_empty_lab=True,
+    )
+
+    assert payload["system_status"] == "attention_required"
+    assert payload["system_attention_required"] is True
+    assert payload["evidence_required"] is False
+
+
+def test_both_report_builders_agree_on_empty_lab_flag(tmp_path: Path) -> None:
+    for allow in (False, True):
+        config = _config(tmp_path)
+        from_disk = build_autonomy_supervisor_report(config, allow_empty_lab=allow)
+        from_records = build_autonomy_supervisor_report_from_records(
+            config, {}, allow_empty_lab=allow
+        )
+        assert from_disk["allow_empty_lab"] == from_records["allow_empty_lab"] == allow
+        assert from_disk["evidence_required"] == from_records["evidence_required"]
+        assert from_disk["system_attention_required"] == (
+            from_records["system_attention_required"]
+        )
 
 
 def test_evidence_required_false_when_lane_evidence_present(tmp_path: Path) -> None:
@@ -799,6 +847,36 @@ def test_cli_allows_explicit_empty_lab(tmp_path: Path) -> None:
     assert payload["recommended_next_action"] == ALL_LANES_ABSENT_ACTION
     assert payload["recommended_next_action_lane"] == ""
     assert exit_code == 0
+
+
+def test_cli_declared_empty_lab_still_fails_on_blocked_lane(tmp_path: Path) -> None:
+    review_path = tmp_path / "review.json"
+    review_path.write_text(
+        json.dumps({"classification": "blocked_by_operational_evidence"}),
+        encoding="utf-8",
+    )
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = cli_module.main(
+            [
+                "autonomy-supervisor-status",
+                "--run-id",
+                "cli-test",
+                "--as-of",
+                AS_OF,
+                "--lanes-root",
+                str(tmp_path),
+                "--lane",
+                f"crypto_bounded_paper_probe_review={review_path}",
+                "--allow-empty-lab",
+                "--format",
+                "json",
+            ]
+        )
+
+    assert exit_code == 1
+    payload = json.loads(buffer.getvalue().strip())
+    assert payload["system_status"] == "blocked"
 
 
 def test_powershell_wrapper_forwards_allow_empty_lab() -> None:

@@ -273,25 +273,29 @@ def _fake_python_env(
     receipt_exit_code: int,
     latest_run_json: str = '{"latest_run_version":"test"}',
 ) -> dict[str, str]:
+    # The shim dispatches on its command line with Windows ``find``. Call it by
+    # absolute path: a Git-for-Windows ``find.exe`` earlier on PATH is GNU find,
+    # which reads the pattern as a path, exits nonzero, and silently collapses
+    # every branch below into the trailing ``exit /B 0``.
     fake_python = tmp_path / "python.cmd"
     fake_python.write_text(
         "@echo off\r\n"
         ">> \"%PYTHON_ARG_CAPTURE%\" echo %*\r\n"
-        "echo %* | find \"daily_paper_lab_status_receipt\" > nul\r\n"
+        "echo %* | \"%SystemRoot%\\System32\\find.exe\" \"daily_paper_lab_status_receipt\" > nul\r\n"
         "if not errorlevel 1 (\r\n"
         "  echo validation_status=passed\r\n"
         "  echo broker_read_performed=false\r\n"
         "  echo broker_mutation_performed=false\r\n"
         "  exit /B %FAKE_RECEIPT_EXIT_CODE%\r\n"
         ")\r\n"
-        "echo %* | find \"etf_sma_adjusted_spy_data_refresh\" > nul\r\n"
+        "echo %* | \"%SystemRoot%\\System32\\find.exe\" \"etf_sma_adjusted_spy_data_refresh\" > nul\r\n"
         "if not errorlevel 1 (\r\n"
         "  echo Automatic Adjusted SPY Data Refresh\r\n"
         "  echo refresh_state: dry_run_refresh_plan_built\r\n"
         "  echo network_access_attempted: false\r\n"
         "  exit /B 0\r\n"
         ")\r\n"
-        "echo %* | find \"etf-sma-daily-paper-lab\" > nul\r\n"
+        "echo %* | \"%SystemRoot%\\System32\\find.exe\" \"etf-sma-daily-paper-lab\" > nul\r\n"
         "if not errorlevel 1 (\r\n"
         "  if not exist \"%FAKE_OUTPUT_ROOT%\" mkdir \"%FAKE_OUTPUT_ROOT%\"\r\n"
         "  > \"%FAKE_OUTPUT_ROOT%\\latest_run.json\" echo %FAKE_LATEST_RUN_JSON%\r\n"

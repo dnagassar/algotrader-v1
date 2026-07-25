@@ -1347,7 +1347,11 @@ When `evidence_required=true` the report also carries
 needed attention and nothing blocked, even while the exit code correctly said
 `1`. If you have automation or notes that read the record's rollup booleans
 rather than the exit code, this is the field pair to trust now. A declared empty
-lab (`-AllowEmptyLab`) keeps both quiet, as before.
+lab (`-AllowEmptyLab`) keeps both quiet, as before. `main`'s V5.41b
+(`docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`) reached this
+identical `evidence_required`/`system_attention_required`/
+`system_no_lane_evidence` fix independently, which corroborates it as a defect
+repair rather than a matter of taste.
 
 Staleness splits in two. A lane whose `stale_requires_operator_action` is true
 (today: `spy_offline_daily_cycle` and `spy_market_data_soak`) has no offline
@@ -1358,8 +1362,8 @@ nothing to run and hands you the exact remediation it needs. Only a stale lane t
 allowlisted offline command *could* advance escalates to `attention_required`.
 
 In a clean checkout every lane reads `absent` because its `runs/` evidence is
-generated and gitignored; run the individual lane commands first to seed
-evidence. To point a lane at an exact artifact instead of its default path, pass
+generated and gitignored, so the first run exits `1` by design; run the
+individual lane commands first to seed evidence. To point a lane at an exact artifact instead of its default path, pass
 `-Lane "lane_id=path"` (repeatable), for example:
 
 ```powershell

@@ -126,6 +126,14 @@ is exported alongside it as the frozen whole-system status vocabulary, ordered
 most to least severe, for consumers that must rank a status. See
 `docs/design/v5_42a_whole_system_rollup_truthfulness_contract.md`.
 
+`main`'s [V5.41b](v5_41b_standalone_supervisor_empty_lab_contract.md) reached
+the identical `evidence_required`/`system_attention_required` fail-closed
+empty-lab fix independently, converging on the same
+`system_no_lane_evidence` blocker token. That is corroborating evidence the
+fix is a defect repair rather than a matter of taste; see
+`docs/design/v5_43_main_frontier_reconciliation_contract.md` for the
+reconciliation between the two lineages.
+
 ## Frozen Lane Registry
 
 `AUTONOMY_SUPERVISOR_LANES` is the frozen classification contract. Each lane
