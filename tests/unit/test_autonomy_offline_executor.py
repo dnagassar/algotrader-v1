@@ -349,6 +349,22 @@ def test_rejects_bad_plan_report(tmp_path: Path) -> None:
         )
 
 
+def test_rejects_supervisor_report_with_unrankable_lane_state(tmp_path: Path) -> None:
+    # V5.38a: the executor's external-plan seam re-plans a supervisor report, so
+    # it must inherit the planner's state-vocabulary guard rather than build a
+    # ledger from a plan that claims an offline action and names none.
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    for lane in report["lanes"]:
+        if lane["lane_id"] == "spy_offline_daily_cycle":
+            lane["normalized_state"] = "healthy"
+            lane["next_action"] = "run_offline_daily_cycle_chain_to_seed_evidence"
+
+    with pytest.raises(ValidationError):
+        build_offline_execution_ledger(
+            _config(tmp_path), apply=False, plan_report=report
+        )
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #

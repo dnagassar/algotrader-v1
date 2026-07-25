@@ -87,18 +87,26 @@ reason `requires_operator_input`. Operator-gated actions are skipped with
 
 ## Honest Current Limitation
 
-The sole allowlisted command's trigger is the `stale` state of the SPY offline
-daily cycle lane. That lane sets `max_age_hours=0` in the frozen supervisor
-registry (staleness disabled, by V5.37 design, so healthy waiting is not
-misreported), so the supervisor cannot currently emit
-`rerun_offline_daily_cycle_chain`. Consequently, wired to the real supervisor,
-the executor's eligible set is **empty today** and `--apply` executes nothing —
-which is the correct, safe, fail-closed outcome. The executor is nonetheless the
-reviewed, tested seam that all future autonomous execution must pass through, and
-it becomes active the moment a stale-capable offline lane (or another
-fully-defaulted offline command) is added to the allowlist. Whether to give the
-daily-cycle lane a staleness bound, or to add an operator-supplied-input
-execution path for the seed, are operator decisions, not autonomous ones.
+No state of any lane in the frozen supervisor registry emits
+`rerun_offline_daily_cycle_chain`, the sole allowlisted token. Consequently,
+wired to the real supervisor, the executor's eligible set is **empty today** and
+`--apply` executes nothing — which is the correct, safe, fail-closed outcome.
+
+The reason is *not* that daily-cycle staleness is disabled. V5.42 Stage 3 gave
+the `spy_offline_daily_cycle` lane `max_age_hours=30`, so it does reach `stale`;
+its `stale` action routes to the operator-gated
+`operator_refresh_offline_daily_cycle_inputs`, because the pinned M446 rerun
+reproduces one historical dataset and writes a different artifact, so it cannot
+cure staleness. Re-enabling or widening a staleness bound therefore does **not**
+activate the executor; only adding a fully-defaulted offline command that some
+reachable lane state actually recommends would.
+
+The executor is nonetheless the reviewed, tested seam that all future autonomous
+execution must pass through. Whether to add such a command, or an
+operator-supplied-input execution path for the seed, are operator decisions, not
+autonomous ones. A plan supplied directly to `build_offline_execution_ledger`
+(rather than derived from lane evidence) may still name the allowlisted token, so
+the allowlist entry is exercised and tested rather than dead.
 
 ## What This Milestone Does Not Do
 

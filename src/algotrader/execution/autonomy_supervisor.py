@@ -28,6 +28,7 @@ __all__ = [
     "ALL_LANES_ABSENT_ACTION",
     "AUTONOMY_SUPERVISOR_LABELS",
     "AUTONOMY_SUPERVISOR_LANES",
+    "AUTONOMY_SUPERVISOR_STATES",
     "AutonomySupervisorConfig",
     "AutonomySupervisorWriteResult",
     "LaneSpec",
@@ -71,7 +72,11 @@ STATE_WAITING = "waiting"
 STATE_NOMINAL = "nominal"
 STATE_ABSENT = "absent"
 
-_STATE_SEVERITY = (
+# The frozen normalized-state vocabulary, ordered most to least severe. Public
+# because downstream planners rank lanes by this exact order; a consumer that
+# re-declared it could drift from the supervisor and silently fail to rank a
+# state the supervisor emits.
+AUTONOMY_SUPERVISOR_STATES = (
     STATE_BLOCKED,
     STATE_UNKNOWN,
     STATE_ATTENTION,
@@ -80,6 +85,8 @@ _STATE_SEVERITY = (
     STATE_NOMINAL,
     STATE_ABSENT,
 )
+
+_STATE_SEVERITY = AUTONOMY_SUPERVISOR_STATES
 
 # Aggregate recommended action for a lane set in which every lane is absent. No
 # single lane is the remedy, so the report names no lane and recommends seeding

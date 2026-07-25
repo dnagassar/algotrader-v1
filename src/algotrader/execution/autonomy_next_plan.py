@@ -37,14 +37,8 @@ from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
     ALL_LANES_ABSENT_ACTION,
     AUTONOMY_SUPERVISOR_LANES,
+    AUTONOMY_SUPERVISOR_STATES,
     AutonomySupervisorConfig,
-    STATE_ABSENT,
-    STATE_ATTENTION,
-    STATE_BLOCKED,
-    STATE_NOMINAL,
-    STATE_STALE,
-    STATE_UNKNOWN,
-    STATE_WAITING,
     build_autonomy_supervisor_report,
 )
 
@@ -104,17 +98,12 @@ PLAN_OFFLINE_ACTION_AVAILABLE = "offline_action_available"
 PLAN_OPERATOR_AUTHORITY_REQUIRED = "operator_authority_required"
 PLAN_ALL_NOMINAL_OR_WAITING = "all_nominal_or_waiting"
 
-# Supervisor normalized-state severity, most to least severe. Reused to pick the
-# highest-leverage offline-runnable lane and break ties toward attention.
-_STATE_SEVERITY = (
-    STATE_BLOCKED,
-    STATE_UNKNOWN,
-    STATE_ATTENTION,
-    STATE_STALE,
-    STATE_WAITING,
-    STATE_NOMINAL,
-    STATE_ABSENT,
-)
+# Supervisor normalized-state severity, most to least severe. Used to pick the
+# highest-leverage offline-runnable lane and break ties toward attention. This is
+# the supervisor's own exported vocabulary rather than a local copy: a state the
+# supervisor can emit but this tuple does not rank would be silently skipped by
+# ``_highest_priority_action`` while still counting toward ``plan_class``.
+_STATE_SEVERITY = AUTONOMY_SUPERVISOR_STATES
 
 # Gate vocabulary. A non-empty gate names the single blocker that stops the
 # system from advancing this lane autonomously right now.
@@ -599,9 +588,7 @@ def build_autonomy_next_plan_from_report(
 
 def _plan_lane(summary: Mapping[str, object]) -> dict[str, object]:
     lane_id = _required_string(summary.get("lane_id"), "lane_id")
-    normalized_state = _required_string(
-        summary.get("normalized_state"), "normalized_state"
-    )
+    normalized_state = _required_state(summary.get("normalized_state"))
     recommended_action = _required_string(
         summary.get("next_action"), "next_action"
     )
@@ -621,6 +608,24 @@ def _plan_lane(summary: Mapping[str, object]) -> dict[str, object]:
         "gate_detail": classified.gate_detail,
         "blockers": _string_list(summary.get("blockers")),
     }
+
+
+def _required_state(value: object) -> str:
+    """Return a lane state the severity loop can rank, else fail closed.
+
+    A state outside the supervisor's frozen vocabulary would match nothing in
+    ``_highest_priority_action`` and be silently skipped, while still counting
+    toward ``offline_runnable_lanes`` and ``plan_class`` — yielding a plan that
+    claims an offline action exists and simultaneously names none. Reject it here
+    instead, mirroring the unknown-lane-id rejection in ``_report_lanes``.
+    """
+
+    state = _required_string(value, "normalized_state")
+    if state not in AUTONOMY_SUPERVISOR_STATES:
+        raise ValidationError(
+            f"normalized_state must be a supervisor state: {state}"
+        )
+    return state
 
 
 def _highest_priority_action(

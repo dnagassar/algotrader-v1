@@ -9,10 +9,12 @@ from pathlib import Path
 import pytest
 
 import algotrader.cli as cli_module
+import algotrader.execution.autonomy_next_plan as plan_module
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
     ALL_LANES_ABSENT_ACTION,
     AUTONOMY_SUPERVISOR_LANES,
+    AUTONOMY_SUPERVISOR_STATES,
     AutonomySupervisorConfig,
     build_autonomy_supervisor_report,
     build_autonomy_supervisor_report_from_records,
@@ -122,6 +124,92 @@ def test_every_supervisor_action_is_classified() -> None:
         tokens.update(lane.next_actions.values())
     missing = sorted(t for t in tokens if t not in AUTONOMY_ACTION_CLASSIFICATION)
     assert missing == [], f"unclassified supervisor actions: {missing}"
+
+
+# --------------------------------------------------------------------------- #
+# V5.38a: state vocabulary is a hard input contract
+# --------------------------------------------------------------------------- #
+def _report_with_lane_state(
+    tmp_path: Path, lane_id: str, state: str, next_action: str
+) -> dict:
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    for lane in report["lanes"]:
+        if lane["lane_id"] == lane_id:
+            lane["normalized_state"] = state
+            lane["next_action"] = next_action
+    return report
+
+
+def test_out_of_vocabulary_lane_state_is_rejected(tmp_path: Path) -> None:
+    # Previously this produced a self-contradictory plan: plan_class
+    # offline_action_available with next_offline_action null, because the severity
+    # loop could not rank "healthy" while plan_class still counted the lane.
+    report = _report_with_lane_state(
+        tmp_path,
+        "spy_offline_daily_cycle",
+        "healthy",
+        "run_offline_daily_cycle_chain_to_seed_evidence",
+    )
+
+    with pytest.raises(ValidationError):
+        build_autonomy_next_plan_from_report(report)
+
+
+def test_every_supervisor_state_is_accepted(tmp_path: Path) -> None:
+    # The guard must reject only genuinely out-of-vocabulary values.
+    for state in AUTONOMY_SUPERVISOR_STATES:
+        report = _report_with_lane_state(
+            tmp_path,
+            "spy_offline_daily_cycle",
+            state,
+            "run_offline_daily_cycle_chain_to_seed_evidence",
+        )
+        plan = build_autonomy_next_plan_from_report(report)
+        assert _action(plan, "spy_offline_daily_cycle")["normalized_state"] == state
+
+
+def test_planner_severity_order_is_the_supervisor_vocabulary() -> None:
+    # A state the supervisor can emit but the planner cannot rank would be
+    # silently skipped by selection while still counting toward plan_class.
+    assert plan_module._STATE_SEVERITY is AUTONOMY_SUPERVISOR_STATES
+
+
+def test_plan_class_and_next_offline_action_agree(tmp_path: Path) -> None:
+    # plan_class == offline_action_available iff a next offline action exists.
+    records: list[dict[str, object] | None] = [
+        {},
+        {"crypto_supervised_readiness_trial": {"trial_classification": "accepted"}},
+        {
+            "crypto_bounded_paper_probe_review": {
+                "classification": "blocked_by_operational_evidence"
+            }
+        },
+        {
+            "crypto_forward_shadow_cycle": {
+                "classification": "waiting_for_tournament_terminal"
+            },
+            "crypto_capability_production": {
+                "classification": "candidate_deferred_pending_terminal_winner"
+            },
+        },
+        {"spy_offline_daily_cycle": {"daily_chain_state": "review_only"}},
+    ]
+    for lane_records in records:
+        plan = build_autonomy_next_plan_from_report(
+            build_autonomy_supervisor_report_from_records(
+                _config(tmp_path), lane_records or {}
+            )
+        )
+        offline_available = plan["plan_class"] == PLAN_OFFLINE_ACTION_AVAILABLE
+        assert offline_available is (plan["next_offline_action"] is not None), (
+            plan["plan_class"],
+            plan["next_offline_action_lane"],
+        )
+        assert offline_available is (plan["next_offline_action_lane"] != "")
+        if offline_available:
+            assert "No offline action is available" not in str(
+                plan["operator_summary"]
+            )
 
 
 def test_all_lanes_absent_action_is_classified_operator_gated() -> None:

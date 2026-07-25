@@ -46,6 +46,12 @@ It grants no new authority.
 - An unclassified action token fails closed to an operator-review gate. The
   planner never invents an offline-runnable path for an action it does not
   recognize.
+- A lane's `normalized_state` is a hard input contract: it must be one of the
+  supervisor's exported `AUTONOMY_SUPERVISOR_STATES`, and anything else is
+  rejected with a `ValidationError` rather than planned. The planner ranks lanes
+  by that exact exported vocabulary instead of a local copy, so a state the
+  supervisor can emit can never be silently unrankable. See
+  `docs/design/v5_38a_planner_state_vocabulary_fail_closed_contract.md`.
 
 ## Module And Command Surface
 
@@ -89,6 +95,11 @@ Each lane's recommended action resolves to exactly one execution class:
 - `next_offline_action` is the highest-severity offline-runnable lane's planned
   action (severity ordered blocked→unknown→attention→stale→waiting→nominal→
   absent; ties break by registry order), or `null` when none exists.
+- Invariant: `plan_class` is `offline_action_available` **if and only if**
+  `next_offline_action` is non-null and `next_offline_action_lane` is non-empty.
+  The whole-system class and the named action are two views of one fact and can
+  never disagree; `operator_summary` therefore never reports "no offline action
+  is available" for an `offline_action_available` plan.
 - `operator_gated_actions` lists every operator-gated lane with its gate.
 - `supervisor_system_status`, `supervisor_recommended_action`, and
   `supervisor_recommended_action_lane` are carried through unchanged.
