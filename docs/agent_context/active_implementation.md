@@ -2,252 +2,153 @@
 
 ## Classification
 
-- Milestone: `V5.44 — zero-execution outcome truthfulness in the gated
-  offline autonomy executor and self-refresh cycle`.
+- Milestone: `V5.45 — read-only executor reachability boundary audit`.
 - Date: `2026-07-25`.
-- Contract commit: `d7dfecc` (`V5.44: freeze zero-execution outcome
-  truthfulness contract`,
-  `docs/design/v5_44_zero_execution_outcome_truthfulness_contract.md`).
-- Repair commit: `c17a40e` (`V5.44: tri-state all_executions_succeeded,
-  never vacuously true`).
-- Independent verification classification: `accepted`. Codex independently
-  reviewed contract `d7dfecc` and implementation `c17a40e` on `2026-07-25`
-  (see "Independent Codex Acceptance" below).
-- This is not strategy-profit, paper-order, broker-mutation, activation, or
+- Audit document: `docs/design/v5_45_executor_reachability_boundary_audit.md`
+  (frozen standalone; zero `src`/`tests` files touched).
+- This is a read-only audit, not an implementation milestone. No
+  executor, planner, supervisor, CLI, or test behavior changed. No
+  operator gate applies (inspection/documentation is standing
+  collaborator authority under `AGENTS.md`).
+- Not strategy-profit, paper-order, broker-mutation, activation, or
   live-trading evidence.
 
 ## Current Checkout And Ownership
 
 - Worktree
-  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v544-zero-execution-truthfulness`,
-  branch `worktree-v544-zero-execution-truthfulness`, `HEAD=5e18cf7` before
-  this handoff-only update.
-- Implementation writer: `Claude Code`; independent verification and this
-  handoff-only acceptance update: `Codex`. Scope of claim: this working tree
-  only.
-- Started at `135da69` (the V5.43-accepted tip with the V5.44 next-action
-  recorded), verified before any edit: branch, HEAD, `git status`,
-  `git diff --cached`/unstaged, untracked files, and credential/profile
-  presence booleans were all clean/false.
-- Clean at handoff: `git status --short`, `git diff --check`, and
-  `git ls-files --others --exclude-standard src tests` are all empty.
-  `git diff --name-only HEAD -- src` is empty (no uncommitted `src` changes;
-  the source repair is committed at `c17a40e`).
+  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v545-executor-reachability-audit`,
+  branch `claude/v5.45-executor-reachability-audit`.
+- Implementation writer: `Claude Code`. Scope of claim: this working
+  tree only.
+- Started at `1394be0` (the V5.44-accepted tip on `main`), verified
+  before any edit: branch, `HEAD`, `git status`, staged/unstaged/
+  untracked diffs, and credential/profile presence booleans were all
+  clean/absent/false.
+- Clean at handoff: `git status --short` shows only the two new/changed
+  docs files below; `git diff --check` is clean; no `src` or `tests`
+  file was touched (`git diff --name-only HEAD -- src` and
+  `git diff --name-only HEAD -- tests` are both empty).
 
 ## What This Milestone Did
 
-`build_offline_execution_ledger` in
-`src/algotrader/execution/autonomy_offline_executor.py` computed
-`all_executions_succeeded` as `all(...)` over the `executed_actions` list.
-Python's `all()` over an empty list is vacuously `True`, so every ledger
-with `execution_count == 0` reported `all_executions_succeeded=true` —
-whether that zero came from a dry run, a genuine no-op (nothing eligible),
-or a **preflight refusal** (a paper/live profile or credential/network-test
-variable was loaded). The third case was the sharpest: a safety refusal
-could be misread as a success claim by any consumer that reads the boolean
-without also checking `execution_refused_reason`.
+Executed exactly the audit V5.44 recorded as its next action: enumerated
+every `AUTONOMY_EXECUTOR_ALLOWLIST` token (exactly one:
+`rerun_offline_daily_cycle_chain`), every `LaneSpec.next_actions`
+producer across all 6 lanes in `AUTONOMY_SUPERVISOR_LANES` (42 emittable
+tokens total), the registry -> planner -> executor -> CLI path
+connecting them, and every test exercising that path.
 
-This was recorded as deliberately deferred, out-of-scope work in two prior
-contracts (`docs/design/v5_38a_planner_state_vocabulary_fail_closed_contract.md`
-and `docs/design/v5_42a_whole_system_rollup_truthfulness_contract.md`) on the
-grounds that no `cycle_outcome` depended on the vacuous value — true, but the
-raw field is still published in the JSON/text record schema and readable
-directly.
+Proved both reachability directions are empty, re-deriving (not just
+re-citing) `test_allowlisted_actions_are_unreachable_from_current_lane_registry`
+and `test_every_supervisor_action_is_classified`:
 
-Full audit and design decision:
-`docs/design/v5_44_zero_execution_outcome_truthfulness_contract.md` (frozen
-standalone at `d7dfecc`, zero source files touched by that commit).
+- **Direction 1** (allowlist -> emittable): the sole allowlist token is
+  not emitted by any lane in the current registry.
+- **Direction 2** (emittable -> allowlist): of 42 emittable tokens, only
+  one is even classified `EXECUTION_AUTO_OFFLINE` (the only class
+  eligible for the allowlist), and it is the same unreachable token from
+  Direction 1.
 
-**Resolution: tri-state, not `false`.** `false` was rejected because zero
-executions is not a failure — encoding it as `false` would replace one
-misleading claim with another (implying an executed command failed, when
-none was even attempted) and would make a preflight refusal indistinguishable
-from an actual non-zero exit code. `all_executions_succeeded` is now:
+Considered and rejected three ways to close the gap — full reasoning in
+the audit doc:
 
-- `None` ("not applicable") if and only if `execution_count == 0`, for any
-  of the three causes (dry run, no-op, preflight refusal) — those causes
-  remain distinguishable from each other via the fields that already exist
-  for that purpose (`apply`/`dry_run`, `eligible_count`,
-  `execution_refused_reason`); the boolean does not try to do that
-  disambiguation.
-- A real `bool`, computed from actual exit codes, if and only if
-  `execution_count > 0` — unchanged from before.
+1. Point the SPY daily-cycle lane's `stale` state at the m446 rerun —
+   rejected, it doesn't cure staleness and writes a different artifact
+   (already documented in-code; reaffirmed here).
+2. Allowlist the SPY seed command — rejected, its required operator
+   inputs (clock, CSV path) cannot be accepted into a frozen fixed-argv
+   allowlist entry without weakening "exact argv allowlisting" into an
+   argv-substitution model.
+3. Allowlist `crypto-readiness-verify` (fully-defaulted, deterministic,
+   no broker call under default args, writes exactly the artifact its
+   lane reads) — the closest real candidate, but **rejected**: its
+   import chain (`crypto_supervised_readiness_trial` ->
+   `tomorrow_crypto_trader_demo` -> `alpaca_sdk_client` ->
+   `AlpacaPaperConfig`/`require_paper_profile`/
+   `live_capital_interlock`) fails the executor's own docstring
+   invariant that every allowlisted command's producing module is
+   "verified to import no network, broker, credential, or profile
+   surface" — an import-graph property, not a runtime-behavior one.
+   Allowlisting it would silently narrow that guarantee from "cannot
+   reach a broker surface" to "does not currently exercise the broker
+   surface it can reach", which is what the existing
+   `no_offline_command_available` gate exists to prevent even though its
+   comment text is, read literally, no longer accurate for this one
+   lane.
 
-## Implementation Detail
-
-- `src/algotrader/execution/autonomy_offline_executor.py`:
-  `build_offline_execution_ledger` now sets `all_succeeded = None` when
-  `executed` is empty, `all(...)` over real exit codes otherwise. Text
-  rendering (`render_offline_execution_ledger_text`) uses a new
-  `_tri_bool_text` helper (`not_applicable` for `None`) instead of the
-  boolean-only `_bool_text`, only for this one field. JSON rendering needed
-  no change: `None` already serializes to `null` through the existing
-  `json.dumps`/`_json_safe` path.
-- `src/algotrader/execution/autonomy_self_refresh_cycle.py`:
-  `build_self_refresh_cycle` forwards the ledger's tri-state value verbatim
-  (removed a `bool(...)` coercion that would have silently turned `None`
-  into `False`). `_classify_outcome`'s `all_succeeded` parameter is now
-  `bool | None`; its one branch that reads it (`execution_count > 0`, so the
-  producer contract guarantees a real bool) tests `all_succeeded is not True`
-  rather than `not all_succeeded` — fail-closed to `OUTCOME_EXECUTION_FAILED`
-  if a contract-violating `None` ever reached that branch, matching the
-  existing fail-closed idiom already used for `_system_rank`'s unrankable
-  status. `OUTCOME_NOOP_NO_ACTION` classification is unchanged: it is still
-  selected purely by `execution_count == 0`, evaluated before
-  `all_succeeded` is read. Same `_tri_bool_text` addition for text
-  rendering.
-- `src/algotrader/cli.py`: both exit-code guards
-  (`_run_autonomy_apply_plan`, `_run_autonomy_self_refresh_cycle`) changed
-  from `payload["execution_count"] > 0 and not payload["all_executions_succeeded"]`
-  to `... and payload["all_executions_succeeded"] is not True`, for the same
-  fail-closed reason. No exit code changes for any existing test case: both
-  guards are already short-circuited by `execution_count > 0`, which is
-  never true at the same time as a `None` value under the new contract.
-- Tests: added 6 new tests across
-  `tests/unit/test_autonomy_offline_executor.py` (4) and
-  `tests/unit/test_autonomy_self_refresh_cycle.py` (2) covering: dry run,
-  clean-checkout apply, and preflight-refusal all reporting
-  `all_executions_succeeded is None`; the executed-action cases still
-  reporting a real `bool`; `_classify_outcome`'s new fail-closed branch for
-  the contract-violating `None`-with-nonzero-count combination; and both
-  text (`not_applicable`) and JSON (`null`) rendering of the tri-state
-  value at zero execution count. All pre-existing assertions in both files
-  were verified unaffected (no test previously asserted a specific value
-  for `all_executions_succeeded` at `execution_count == 0`).
-
-## Capability Preserved
-
-| Contract | Proof |
-| --- | --- |
-| `OUTCOME_NOOP_NO_ACTION` still selected purely by `execution_count == 0` | `test_stale_daily_cycle_converges_to_operator_wait`, `test_noop_when_nothing_eligible` — pass, now with an added `all_executions_succeeded is None` assertion |
-| `evidence_required`/`converged`/`no_lane_evidence` fail-closed default unchanged | `test_no_lane_evidence_fails_closed_by_default`, `test_explicit_empty_lab_can_converge` — pass, unedited |
-| Existing exit codes unchanged for every prior CLI test case | `test_cli_dry_run_default_executes_nothing`, `test_cli_apply_on_clean_checkout_is_safe`, `test_cli_dry_run`, `test_cli_no_lane_evidence_exits_one_by_default`, `test_cli_allows_explicit_empty_lab` — pass |
-| Executor allowlist/inertness untouched | `test_allowlist_is_the_verified_offline_command_only`, `test_allowlisted_actions_are_unreachable_from_current_lane_registry` — pass, unedited |
-| Fail-closed idiom extended, not invented | new `test_classify_outcome_fails_closed_on_none_with_nonzero_count` mirrors the existing `test_unrankable_system_status_fails_closed` pattern |
-
-## Independent Codex Acceptance (2026-07-25)
-
-Codex independently reviewed and accepted contract `d7dfecc` and
-implementation `c17a40e` on `2026-07-25`:
-
-- Direct diff and consumer review (`src/algotrader/execution/autonomy_offline_executor.py`,
-  `src/algotrader/execution/autonomy_self_refresh_cycle.py`, `src/algotrader/cli.py`,
-  and both test files, against the frozen contract) found no implementation
-  defect.
-- An isolated credential/profile preflight found `APP_PROFILE`, every listed
-  Alpaca credential alias, `ALGO_TRADER_ALLOW_NETWORK_TESTS`, and
-  `RUN_ALPACA_PAPER_INTEGRATION_TESTS` all absent.
-- `python -m pytest tests/unit/test_autonomy_offline_executor.py tests/unit/test_autonomy_self_refresh_cycle.py tests/unit/test_dependency_direction.py`
-  — `98 passed` in `12.03s`.
+**Conclusion: no-change audit.** No safe candidate exists today; no
+contract was frozen because there is nothing safe to freeze. The audit
+records the structural condition a future milestone would need to meet
+(a new, import-pure, fully-defaulted, deterministic CLI subcommand
+factored out of the broker-SDK-importing chain) without starting that
+work here.
 
 ## Verification Evidence
 
-### Targeted Suites (all offline, credential-free; preflight booleans false throughout)
-
-- `tests/unit/test_autonomy_offline_executor.py` +
-  `tests/unit/test_autonomy_self_refresh_cycle.py` — `64 passed` in `3.56s`.
-- `tests/unit/test_autonomy_next_plan.py` +
-  `tests/unit/test_autonomy_offline_executor.py` +
-  `tests/unit/test_autonomy_self_refresh_cycle.py` +
-  `tests/unit/test_autonomy_supervisor.py` +
-  `tests/unit/test_dependency_direction.py` — `176 passed` in `10.42s`.
-
-### Standard Offline Verifier
-
-- `.\scripts\verify_offline.ps1` — `PASS`.
-- Targeted offline safety guards inside the script
-  (`test_dependency_direction.py` + `test_broker_mutation_surface_invariant.py`
-  + `test_default_pytest_network_guard.py` + `test_strategy_challenger_factory.py`
-  + `test_preview_candidate_review.py`) — `99 passed` in `111.49s`.
-- Credential/profile precheck: every boolean `False`.
-- Repository hygiene precheck and final check: clean. `git diff --check`:
-  clean.
-
-### Bounded Full Suite (`-Full -Shards 4`) — PASS
-
-- Run as a detached process (the interactive tool's own 10-minute command
-  timeout is shorter than this suite's wall-clock time; the run was
-  monitored to completion via log-file polling rather than the tool's
-  synchronous wait).
-- Exit: `0`; final offline verification result: `PASS`.
-- Credential/profile and network preflight: every boolean `False`.
-- Targeted safety guards inside the wrapper: `99 passed` in `100.90s`.
-- Editable interpreter binding: auto-bound and matched this worktree.
-- Canonical collection: `9,984` nodes in `494` files (6 more than V5.43's
-  `9,978` — exactly the 6 new tests this milestone added).
-- Exact partition: `2,496`, `2,496`, `2,496`, and `2,496` nodes.
-- Collection equivalence: `PASS`.
-- Per-shard execution: all four exited `0`; none timed out (wall times
-  `1452s`/`1418s`/`1310s`/`1140s`).
-- Execution equivalence: `PASS`.
-- Aggregate: `9,984` executed, `9,979 passed`, `5 skipped`, `0 failures`,
-  `0 errors`.
-- `bounded_full_suite=PASS`.
-- Final hygiene: `git diff --check`, `git status --short`, staged files,
-  changed `src` files, untracked `src/tests` files, and tracked `runs/`
-  checks were all clean/empty as applicable.
+- `python -m pytest tests/unit/test_autonomy_offline_executor.py tests/unit/test_autonomy_next_plan.py tests/unit/test_autonomy_supervisor.py tests/unit/test_autonomy_self_refresh_cycle.py tests/unit/test_dependency_direction.py`
+  — `176 passed` in `19.09s`. Run to confirm every test citation in the
+  audit document is accurate and that this audit changed no test
+  outcome; not a claim of new coverage (no test was added or edited).
+- `git diff --check` — clean.
+- `git status --short` — only the two docs files this milestone wrote.
+- Credential/profile precheck at session start: `APP_PROFILE`, every
+  listed Alpaca credential alias, `ALGO_TRADER_ALLOW_NETWORK_TESTS`, and
+  `RUN_ALPACA_PAPER_INTEGRATION_TESTS` all absent/false.
 
 ## Safety And External Effects
 
-Boolean-only preflight was clean before and after every step:
-
-- `APP_PROFILE=paper`: `false`
-- supported credential/profile aliases present: `false`
-- network-test enablement present: `false`
-
-During this session: no credential value was loaded, read, enumerated,
-created, replaced, renamed, deleted, or exposed; no Task Scheduler read or
-mutation occurred; no network, broker, or market-data request occurred; no
-paper profile was entered and no paper mutation or order action occurred;
-no canary, strategy, paper automation, live access, or trading effect was
-activated. All tests used deterministic offline fixtures and fake
-boundaries. The executor's allowlist, its documented inertness under the
-current lane registry, and its subprocess/network safety surface are
-unchanged — no new lane action became reachable and no new import was
-added. Effective paper quantity/position/order-notional/portfolio-notional
-caps: `not applicable` because no paper operation was attempted. Broker
-receipt, reconciliation, and action-audit outcome: `not applicable`.
-Live-authorized state: `false`.
+No credential value was read, enumerated, created, replaced, renamed,
+deleted, or exposed. No network, broker, or market-data request
+occurred. No paper profile was entered and no paper mutation or order
+action occurred. No canary, strategy, paper automation, live access, or
+trading effect was activated. No `src` or `tests` file was modified; the
+executor's allowlist, its documented inertness under the current lane
+registry, and its subprocess/network safety surface are byte-for-byte
+unchanged. Effective paper caps: not applicable (no paper operation was
+attempted). Live-authorized state: `false`.
 
 ## Unresolved Risks
 
-- `--allow-empty-lab` remains a caller assertion rather than proof of intent
-  (carried over from V5.41b/V5.42a; unchanged by this milestone).
-- The executor remains provably inert under the current lane registry
-  (`test_allowlisted_actions_are_unreachable_from_current_lane_registry`);
-  this milestone changes what a zero-execution ledger *reports*, not
-  whether any execution is currently reachable. Whether that inertness
-  should change at all, and if so how, is exactly the question the next
-  action below answers — read-only, with no behavior change.
-
-The feature branch `claude/v5.44-zero-execution-truthfulness` was already
-pushed in the prior session; `origin/claude/v5.44-zero-execution-truthfulness`
-equaled `5e18cf7` before this handoff-only update (verified by fetch at the
-start of this session). The "not yet independently reviewed" and "not yet
-pushed" risks recorded in the prior version of this file are stale and are
-removed here: independent review is recorded above, and the push predates
-this session.
+- Same as recorded in the prior (`V5.44`) handoff, unchanged by this
+  audit: `--allow-empty-lab` remains a caller assertion rather than
+  proof of intent; the executor remains provably inert under the
+  current lane registry.
+- New, recorded here: the `no_offline_command_available` gate's comment
+  text for the four crypto rerun/seed tokens
+  (`rerun_supervised_readiness_trial`,
+  `run_supervised_readiness_trial_to_seed_r1_evidence`, and their
+  forward-shadow/bounded-paper-probe-review/capability-production
+  counterparts) says "no offline command exists"; for the readiness
+  trial specifically, a fully-defaulted CLI command (`crypto-readiness-verify`)
+  does exist and does write the exact artifact the lane reads. It is
+  correctly excluded from autonomous execution today because its import
+  chain reaches the broker SDK, not because no such command exists. This
+  audit made no source change to fix the comment text; the next
+  milestone that touches this lane's classification should either
+  correct the comment to name the real reason (import impurity, not
+  absence) or factor a broker-import-free variant out of
+  `tomorrow_crypto_trader_demo` if unattended reachability is ever
+  wanted here.
 
 ## Next Highest-Leverage Safe Action
 
-`V5.45 — read-only executor reachability boundary audit`. Enumerate every
-`AUTONOMY_EXECUTOR_ALLOWLIST` token, every lane `next_actions` producer, the
-registry path connecting them, every CLI consumer, and every test that
-exercises that path. Prove both directions of reachability: allowlist token
--> at least one lane that can emit it (or proof that none can, as today),
-and lane-emitted action token -> whether it lands on the allowlist. From that
-map, identify whether one bounded, offline-only action can safely become
-reachable without weakening any existing guard.
+No safe executor-reachability change is available today (this audit's
+conclusion). The next highest-leverage safe action is either:
 
-This is a read-only audit: it must not change executor, planner, supervisor,
-or CLI behavior, and it needs no operator gate under `AGENTS.md` (inspection
-and documentation are within standing collaborator authority). If a safe
-candidate is identified, freeze a standalone contract before any
-implementation — preserving exact argv allowlisting (no new command may be
-added without being fully specified in the frozen allowlist), the
-credential/profile preflight refusal, the sanitized child environment, the
-no-credentials/no-network/no-broker/no-paper/no-live invariants, deterministic
-action-ledger audit evidence, and the fact that no LLM sits in the trading
-hot path. If no safe candidate exists, record a no-change audit with the
-reasoning. Any scope expansion beyond read-only inspection must be judged
-against that later frozen contract, not assumed here.
+1. **Documentation-only**: correct the `no_offline_command_available`
+   gate comment/reasoning for the crypto readiness-trial lane in
+   `autonomy_next_plan.py` to name the real blocker (broker-SDK import
+   reachability, not command absence) — a small, low-risk clarity fix
+   that changes no behavior and needs no operator gate.
+2. **A genuinely new offline command**: if unattended crypto-lane
+   progress is ever wanted, factor a broker-import-free path out of
+   `tomorrow_crypto_trader_demo`/`crypto_supervised_readiness_trial` (or
+   write a new, narrower module) that the readiness trial's offline
+   replay can run without transitively importing `alpaca_sdk_client`,
+   then freeze a standalone contract classifying that new token
+   `EXECUTION_AUTO_OFFLINE` and adding it to the allowlist. This is
+   production-execution-code work, not a read-only audit, and needs its
+   own contract before any implementation.
+
+Either is safe to start without further operator input; neither is
+started by this milestone.
