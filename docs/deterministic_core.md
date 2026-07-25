@@ -1311,18 +1311,22 @@ V5.42 closes the autonomy loop into one command, `autonomy-self-refresh-cycle`
 → decide (planner) → act (gated offline executor) → re-observe (supervisor). It
 emits `before_system_status`, `after_system_status`, the plan summary, the full
 execution ledger, before/after lane summaries, a `cycle_outcome`
-(`dry_run_preview`/`noop_no_action`/`refreshed`/`still_pending`/
-`execution_failed`), and `converged`. It is dry-run by default (spawns no
-subprocess); `--apply` can run only eligible allowlisted offline actions behind
-the executor's credential/profile preflight. The `spy_offline_daily_cycle` lane
+(`evidence_required`/`dry_run_preview`/`noop_no_action`/`refreshed`/
+`still_pending`/`execution_failed`), `allow_empty_lab`, `evidence_required`, and
+`converged`. It is dry-run by default (spawns no subprocess); `--apply` can run
+only eligible allowlisted offline actions behind the executor's
+credential/profile preflight. The `spy_offline_daily_cycle` lane
 has a 30h staleness bound, but its stale remedy needs an operator-supplied
 refreshed CSV and chain clock: stale remains visible in `stale_lanes`, aggregates
 as `waiting`, and emits `operator_refresh_offline_daily_cycle_inputs` rather than
 the pinned M446 rerun. No current lane action reaches the executor allowlist, so
-`--apply` performs zero executions and converges truthfully to waiting. The
-orchestrator imports no os/socket/urllib/requests/subprocess/broker SDK and reads
-no wall clock; every record fixes the safety booleans false with
-`profit_claim=none`.
+`--apply` performs zero executions and converges truthfully to waiting. An
+all-absent lane set is different: `no_lane_evidence` now fails closed with
+`cycle_outcome=evidence_required`, `converged=false`, and exit `1`. Only the
+explicit `--allow-empty-lab` bootstrap exception permits that status to converge,
+and the exception is recorded in the payload. The orchestrator imports no
+os/socket/urllib/requests/subprocess/broker SDK and reads no wall clock; every
+record fixes the safety booleans false with `profit_claim=none`.
 
 Independent full-gate review also repaired the V5.35 secure-provider read-only
 market-data path after the live-capital interlock was added. The child keeps its

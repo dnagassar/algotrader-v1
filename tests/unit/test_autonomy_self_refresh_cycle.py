@@ -13,6 +13,7 @@ from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import AutonomySupervisorConfig
 from algotrader.execution.autonomy_self_refresh_cycle import (
     OUTCOME_DRY_RUN_PREVIEW,
+    OUTCOME_EVIDENCE_REQUIRED,
     OUTCOME_EXECUTION_FAILED,
     OUTCOME_NOOP_NO_ACTION,
     OUTCOME_REFRESHED,
@@ -26,6 +27,7 @@ from algotrader.execution.autonomy_self_refresh_cycle import (
 
 
 MODULE_PATH = Path("src/algotrader/execution/autonomy_self_refresh_cycle.py")
+SCRIPT_PATH = Path("scripts/run_autonomy_self_refresh_cycle.ps1")
 AS_OF = "2026-07-24T00:00:00Z"
 STALE_AT = "2026-07-20T00:00:00Z"
 
@@ -162,6 +164,34 @@ def test_stale_apply_cycle_is_inert(tmp_path: Path) -> None:
     assert cycle["execution_count"] == 0
 
 
+def test_no_lane_evidence_fails_closed_by_default(tmp_path: Path) -> None:
+    cycle = build_self_refresh_cycle(_config(tmp_path), apply=False, environ={})
+
+    assert cycle["before_system_status"] == "no_lane_evidence"
+    assert cycle["after_system_status"] == "no_lane_evidence"
+    assert cycle["cycle_outcome"] == OUTCOME_EVIDENCE_REQUIRED
+    assert cycle["allow_empty_lab"] is False
+    assert cycle["evidence_required"] is True
+    assert cycle["converged"] is False
+    _assert_safety_false(cycle)
+
+
+def test_explicit_empty_lab_can_converge(tmp_path: Path) -> None:
+    cycle = build_self_refresh_cycle(
+        _config(tmp_path),
+        apply=False,
+        allow_empty_lab=True,
+        environ={},
+    )
+
+    assert cycle["after_system_status"] == "no_lane_evidence"
+    assert cycle["cycle_outcome"] == OUTCOME_DRY_RUN_PREVIEW
+    assert cycle["allow_empty_lab"] is True
+    assert cycle["evidence_required"] is False
+    assert cycle["converged"] is True
+    _assert_safety_false(cycle)
+
+
 @pytest.mark.parametrize(
     ("apply_flag", "count", "ok", "before", "after", "expected"),
     (
@@ -268,6 +298,14 @@ def test_rejects_non_bool_apply(tmp_path: Path) -> None:
         build_self_refresh_cycle(_config(tmp_path), apply="yes")  # type: ignore[arg-type]
 
 
+def test_rejects_non_bool_allow_empty_lab(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        build_self_refresh_cycle(
+            _config(tmp_path),
+            allow_empty_lab="yes",  # type: ignore[arg-type]
+        )
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
@@ -298,6 +336,62 @@ def test_cli_dry_run(tmp_path: Path) -> None:
     assert "spy_offline_daily_cycle" in payload["after_report"]["stale_lanes"]
     assert exit_code == 0
     _assert_safety_false(payload)
+
+
+def test_cli_no_lane_evidence_exits_one_by_default(tmp_path: Path) -> None:
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = cli_module.main(
+            [
+                "autonomy-self-refresh-cycle",
+                "--run-id",
+                "cli-empty",
+                "--as-of",
+                AS_OF,
+                "--lanes-root",
+                str(tmp_path),
+                "--format",
+                "json",
+            ]
+        )
+
+    payload = json.loads(buffer.getvalue().strip())
+    assert payload["cycle_outcome"] == OUTCOME_EVIDENCE_REQUIRED
+    assert payload["evidence_required"] is True
+    assert payload["converged"] is False
+    assert exit_code == 1
+
+
+def test_cli_allows_explicit_empty_lab(tmp_path: Path) -> None:
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = cli_module.main(
+            [
+                "autonomy-self-refresh-cycle",
+                "--run-id",
+                "cli-empty",
+                "--as-of",
+                AS_OF,
+                "--lanes-root",
+                str(tmp_path),
+                "--allow-empty-lab",
+                "--format",
+                "json",
+            ]
+        )
+
+    payload = json.loads(buffer.getvalue().strip())
+    assert payload["allow_empty_lab"] is True
+    assert payload["evidence_required"] is False
+    assert payload["converged"] is True
+    assert exit_code == 0
+
+
+def test_powershell_wrapper_forwards_allow_empty_lab() -> None:
+    script = SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "[switch]$AllowEmptyLab" in script
+    assert '$Arguments += "--allow-empty-lab"' in script
 
 
 def test_cli_bad_lane_override_returns_validation_exit(tmp_path: Path) -> None:

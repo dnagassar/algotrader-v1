@@ -1400,11 +1400,10 @@ nothing is pending, `1` when an action is pending, and `2` on input error — a
 pending-action signal distinct from the supervisor's severity signal.
 
 Important gate: the planner **plans** commands but never runs them. In a clean
-checkout it will show one offline-runnable action (the daily-cycle seed) that
-still needs operator inputs, plus operator-gated lanes — i.e. no lane can be
-advanced without operator input or operator authority. Wiring the system to run
-even the offline commands unattended is a separate, higher milestone that
-requires explicit operator authorization. The detailed contract is in
+checkout it may identify offline work or operator-input lanes, but execution is
+a separate step through the gated executor. Unattended offline execution must
+remain within the explicit task scope and the current `AGENTS.md` safety
+boundaries. The detailed contract is in
 `docs/design/v5_38_offline_autonomy_next_action_planner.md`.
 
 ## V5.39 Gated Offline Autonomy Executor
@@ -1435,11 +1434,13 @@ actions with exit codes and every safety boolean false.
 Exit code: `2` on input error or a preflight-refused `-Apply`; `1` on a failed
 execution or a dry run with eligible work pending; `0` otherwise.
 
-Note: the sole allowlisted command triggers on the SPY offline daily cycle lane
-being `stale`. As of V5.42 (Stage 3) that lane has a 30h staleness bound, so a
-daily cycle whose evidence is older than 30h now becomes eligible for the offline
-rerun; before V5.42 the lane disabled staleness and the eligible set was always
-empty. The detailed contract is in
+Note: the allowlist retains the pinned
+`etf-sma-offline-daily-cycle-rerun-m446` reproduction command, but the current
+SPY daily-cycle stale route is
+`operator_refresh_offline_daily_cycle_inputs`. M446 writes the M447 manifest,
+not the supervised M444 artifact, so it cannot cure this lane. No current lane
+action reaches the executor allowlist; the executor is intentionally inert
+today. The detailed contract is in
 `docs/design/v5_39_gated_offline_autonomy_executor.md`.
 
 ## V5.42 Autonomy Self-Refresh Cycle
@@ -1453,17 +1454,26 @@ execute the eligible allowlisted offline refresh actions.
 # Dry run: preview the whole cycle, execute nothing.
 .\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId cycle-<yyyymmdd> -AsOf <UTC> -Format text
 
+# Explicit bootstrap exception: accept an intentionally empty lab.
+.\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId empty-<yyyymmdd> -AsOf <UTC> `
+  -LanesRoot <empty-lab-root> -AllowEmptyLab -Format json
+
 # Apply: run the eligible offline refresh actions and re-observe.
 .\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId cycle-<yyyymmdd> -AsOf <UTC> -Apply `
   -RunLog runs\autonomy_self_refresh_cycle\latest\cycle.jsonl -Format json
 ```
 
-`cycle_outcome` is one of `dry_run_preview`, `noop_no_action`, `refreshed`,
-`still_pending`, `execution_failed`. `converged` is true when the re-observed
-system status is `nominal`/`waiting`/`no_lane_evidence`. Exit code: `2` on input
-error; `1` on execution failure or a non-converged cycle; `0` otherwise. Same
-credential/profile refusal and safety guarantees as the executor. The detailed
-contract is in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
+`cycle_outcome` is one of `evidence_required`, `dry_run_preview`,
+`noop_no_action`, `refreshed`, `still_pending`, or `execution_failed`.
+`converged` is true when the re-observed system status is `nominal` or
+`waiting`. `no_lane_evidence` fails closed by default with
+`evidence_required=true`, `converged=false`, and exit `1`. Use
+`-AllowEmptyLab` only when an all-absent lane set is intentional; the exception
+is recorded as `allow_empty_lab=true`. Exit code is `2` on input error, `1` on
+execution failure or any non-converged cycle, and `0` otherwise. The same
+credential/profile refusal and safety guarantees as the executor apply. The
+detailed contract is in
+`docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
 
 What to expect today: no lane state currently emits an allowlisted action, so
 `-Apply` executes nothing and the cycle reports `noop_no_action` with
@@ -1476,9 +1486,11 @@ runs\paper_lab\m444_offline_daily_cycle_run.jsonl`. Do **not** expect
 reproduction of the 2026-06-08 M446/M447 milestone and writes a different
 artifact.
 
-Caveat: a wrong or empty `-LanesRoot` reports `no_lane_evidence` with
-`converged: true` and exit `0`. Confirm the lane count in the record before
-treating a green exit as healthy.
+A wrong or empty `-LanesRoot` now reports `no_lane_evidence` with
+`cycle_outcome: evidence_required`, `converged: false`, and exit `1`. Do not
+suppress this result in unattended automation. `-AllowEmptyLab` is the explicit,
+auditable exception for a deliberately empty bootstrap lab; it must not be used
+to make an unknown lane root appear healthy.
 
 ## V5.40 Live-Capital Interlock Boundary Verification
 

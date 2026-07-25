@@ -23,6 +23,7 @@ param(
     [string]$LanesRoot = "runs",
     [string[]]$Lane = @(),
     [switch]$Apply,
+    [switch]$AllowEmptyLab,
     [string]$RunLog,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -75,6 +76,9 @@ foreach ($Override in $Lane) {
 }
 if ($Apply.IsPresent) {
     $Arguments += "--apply"
+}
+if ($AllowEmptyLab.IsPresent) {
+    $Arguments += "--allow-empty-lab"
 }
 if (-not [string]::IsNullOrWhiteSpace($RunLog)) {
     $Arguments += @("--run-log", $RunLog)

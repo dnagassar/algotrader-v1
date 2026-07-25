@@ -1827,6 +1827,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     autonomy_self_refresh_parser.add_argument(
+        "--allow-empty-lab",
+        action="store_true",
+        default=False,
+        help=(
+            "Explicitly treat an all-absent lane set as an intentional empty "
+            "lab. Without this flag, no_lane_evidence fails closed."
+        ),
+    )
+    autonomy_self_refresh_parser.add_argument(
         "--run-log",
         default=None,
         help="Write exactly one deterministic cycle JSONL record to PATH.",
@@ -6180,6 +6189,7 @@ def _run_autonomy_self_refresh_cycle(args: argparse.Namespace) -> int:
                 lane_artifact_overrides=overrides,
             ),
             apply=args.apply,
+            allow_empty_lab=args.allow_empty_lab,
         )
         if args.run_log is not None:
             write_self_refresh_cycle_jsonl(payload, args.run_log)

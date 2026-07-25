@@ -46,7 +46,8 @@ a genuinely offline-runnable refresh is a deliberate change.
 
 ## The Cycle
 
-`build_self_refresh_cycle(config, *, apply=False, environ=None, runner=None)`:
+`build_self_refresh_cycle(config, *, apply=False, allow_empty_lab=False,
+environ=None, runner=None)`:
 
 1. **Observe** — `build_autonomy_supervisor_report(config)` → `before`.
 2. **Decide** — `build_autonomy_next_plan_from_report(before)`.
@@ -58,10 +59,13 @@ a genuinely offline-runnable refresh is a deliberate change.
 
 The record carries `before_system_status`, `after_system_status`, the plan
 summary, the full execution ledger, compact before/after lane summaries, a
-`cycle_outcome`, and `converged`.
+`cycle_outcome`, `allow_empty_lab`, `evidence_required`, and `converged`.
 
 ## Outcomes
 
+- `evidence_required` — the re-observed status is `no_lane_evidence` and the
+  caller did not explicitly allow an intentionally empty lab; the cycle fails
+  closed even in dry-run mode.
 - `dry_run_preview` — `apply=False`; nothing executed, `before == after`.
 - `noop_no_action` — `apply=True` but no eligible offline action; system already
   steady.
@@ -70,10 +74,12 @@ summary, the full execution ledger, compact before/after lane summaries, a
 - `still_pending` — executed successfully but the system status did not improve.
 - `execution_failed` — an executed action returned non-zero.
 
-`converged` is `True` when the re-observed `system_status` is `nominal`,
-`waiting`, or `no_lane_evidence` (nothing needs attention). Exit code: `2` on
-validation error; `1` on execution failure or a non-converged cycle; `0`
-otherwise.
+`converged` is `True` when the re-observed `system_status` is `nominal` or
+`waiting`. `no_lane_evidence` is non-converged by default and exits `1` with
+`cycle_outcome=evidence_required`. An intentionally empty lab may opt in with
+`allow_empty_lab=True` / `--allow-empty-lab`, which is recorded in the payload
+and permits that state to converge. Exit code is `2` on validation error, `1` on
+execution failure or any non-converged cycle, and `0` otherwise.
 
 ## Non-Negotiable Safety Contract
 
@@ -101,13 +107,17 @@ executes nothing and exits `0`: the loop has converged on the correct
 conclusion that only the operator can advance this lane. It changes no live-capital, paper-mutation, credential, or network
 authority.
 
-## Known Gap (not addressed here)
+## Fail-Closed Empty-Lab Contract
 
-`converged` treats `no_lane_evidence` as success, so a wrong or empty
-`--lanes-root` exits `0` "healthy". This is inherited from the V5.37
-supervisor-status exit convention rather than introduced here, but it is more
-dangerous in an unattended loop and should be fixed before anything gates
-unattended authority on this cycle's exit code.
+`no_lane_evidence` is not proof of a healthy system. The self-refresh cycle now
+returns `cycle_outcome=evidence_required`, `evidence_required=true`,
+`converged=false`, and exit `1` by default when every registered lane is absent.
+This makes a wrong or empty `--lanes-root` fail closed for unattended callers.
+
+A deliberately empty bootstrap lab must opt in with `--allow-empty-lab` (or
+`-AllowEmptyLab` through the PowerShell wrapper). The record then fixes
+`allow_empty_lab=true` and may converge with `no_lane_evidence`; the explicit
+exception is therefore auditable rather than inferred from an empty directory.
 
 ## Full-gate secure-provider boundary correction
 
@@ -126,12 +136,14 @@ persisted, logged, or returned, and no broker-mutation or live authority changes
 ## Verification
 
 - `tests/unit/test_autonomy_self_refresh_cycle.py` proves dry-run inertness,
-  convergence-to-waiting on operator-curable staleness, executor inertness under
+  convergence-to-waiting on operator-curable staleness, default fail-closed
+  `no_lane_evidence`, the explicit empty-lab exception, executor inertness under
   the current lane registry, full `cycle_outcome` classification coverage
   (including the `refreshed`/`still_pending`/`execution_failed` paths that stay
-  correct but are currently unreachable), executor preflight refusal under a live
-  signal, deterministic JSON/text rendering, single-record JSONL write, input
-  validation, CLI exit codes, and a source-scan.
+  correct but are currently unreachable), executor preflight refusal under a
+  live signal, deterministic JSON/text rendering, single-record JSONL write,
+  input validation, CLI and PowerShell-wrapper contracts, exit codes, and a
+  source-scan.
 - `tests/unit/test_autonomy_supervisor.py` adds daily-cycle staleness tests
   (stale after 30h, fresh nominal, no-timestamp never stale) and proves stale
   operator-curable lanes aggregate as `waiting` while still appearing in
