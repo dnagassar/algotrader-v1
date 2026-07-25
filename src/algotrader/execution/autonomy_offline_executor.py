@@ -190,9 +190,15 @@ def build_offline_execution_ledger(
                 executed.append(_execute(action, active_runner, environ))
 
     execution_count = len(executed)
-    all_succeeded = all(
-        record["exit_code"] == 0 for record in executed
-    )
+    # V5.44: zero executions is not a success claim about anything that
+    # happened (dry run, genuine no-op, and preflight refusal all reach
+    # here), so it is represented as `None` rather than the vacuous
+    # `all([]) is True`. A real bool is reported only once something ran.
+    all_succeeded: bool | None
+    if executed:
+        all_succeeded = all(record["exit_code"] == 0 for record in executed)
+    else:
+        all_succeeded = None
 
     return {
         "milestone": _MILESTONE,
@@ -363,7 +369,7 @@ def render_offline_execution_ledger_text(payload: Mapping[str, object]) -> str:
         f"eligible_count: {payload.get('eligible_count', 0)}",
         f"execution_count: {payload.get('execution_count', 0)}",
         f"execution_refused_reason: {payload.get('execution_refused_reason', '') or 'none'}",
-        f"all_executions_succeeded: {_bool_text(payload.get('all_executions_succeeded'))}",
+        f"all_executions_succeeded: {_tri_bool_text(payload.get('all_executions_succeeded'))}",
         "eligible_actions:",
     ]
     for action in _mapping_list(payload.get("eligible_actions")):
@@ -490,6 +496,14 @@ def _text(value: object) -> str:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _tri_bool_text(value: object) -> str:
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "not_applicable"
 
 
 def _joined(values: list[str]) -> str:

@@ -131,7 +131,10 @@ def build_self_refresh_cycle(
     before_status = str(before["system_status"])
     after_status = str(after["system_status"])
     execution_count = int(ledger["execution_count"])
-    all_succeeded = bool(ledger["all_executions_succeeded"])
+    # V5.44: the ledger's all_executions_succeeded is tri-state (bool | None);
+    # forward it verbatim rather than coercing None to False, which would
+    # turn "not applicable, nothing ran" into a false failure claim.
+    all_succeeded = ledger["all_executions_succeeded"]
 
     outcome = _classify_outcome(
         apply=apply,
@@ -194,7 +197,7 @@ def _classify_outcome(
     *,
     apply: bool,
     execution_count: int,
-    all_succeeded: bool,
+    all_succeeded: bool | None,
     before_status: str,
     after_status: str,
     allow_empty_lab: bool = False,
@@ -205,7 +208,10 @@ def _classify_outcome(
         return OUTCOME_DRY_RUN_PREVIEW
     if execution_count == 0:
         return OUTCOME_NOOP_NO_ACTION
-    if not all_succeeded:
+    # execution_count > 0 guarantees a real bool by producer contract (V5.44);
+    # `is not True` fails closed to execution_failed rather than treating an
+    # unexpected None as success if that contract is ever violated.
+    if all_succeeded is not True:
         return OUTCOME_EXECUTION_FAILED
     if _system_rank(after_status) < _system_rank(before_status):
         return OUTCOME_REFRESHED
@@ -262,7 +268,7 @@ def render_self_refresh_cycle_text(payload: Mapping[str, object]) -> str:
         f"before_system_status: {payload.get('before_system_status', '')}",
         f"eligible_count: {payload.get('eligible_count', 0)}",
         f"execution_count: {payload.get('execution_count', 0)}",
-        f"all_executions_succeeded: {_bool_text(payload.get('all_executions_succeeded'))}",
+        f"all_executions_succeeded: {_tri_bool_text(payload.get('all_executions_succeeded'))}",
         f"after_system_status: {payload.get('after_system_status', '')}",
         f"cycle_outcome: {payload.get('cycle_outcome', '')}",
         f"evidence_required: {_bool_text(payload.get('evidence_required'))}",
@@ -339,6 +345,14 @@ def _string_list(value: object) -> list[str]:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _tri_bool_text(value: object) -> str:
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "not_applicable"
 
 
 def _joined(values: list[str]) -> str:

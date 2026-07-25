@@ -163,6 +163,8 @@ def test_dry_run_executes_nothing_even_when_eligible(tmp_path: Path) -> None:
     assert ledger["execution_count"] == 0
     assert ledger["executed_actions"] == []
     assert ledger["labels"] == list(AUTONOMY_EXECUTOR_LABELS)
+    # V5.44: zero executions is not a vacuous success claim.
+    assert ledger["all_executions_succeeded"] is None
     _assert_safety_booleans_false(ledger)
 
 
@@ -181,6 +183,71 @@ def test_clean_checkout_seed_is_skipped_not_eligible(tmp_path: Path) -> None:
         if s["lane_id"] == "spy_market_data_soak"
     ]
     assert gated and gated[0]["reason"] == SKIP_NOT_OFFLINE_RUNNABLE
+
+
+# --------------------------------------------------------------------------- #
+# V5.44: zero executions is tri-state (True/False/None), never vacuously true
+# --------------------------------------------------------------------------- #
+def test_apply_on_clean_checkout_reports_not_applicable(tmp_path: Path) -> None:
+    # Genuine no-op: apply=True, preflight passes, nothing eligible.
+    def _forbidden_runner(argv, environ):  # pragma: no cover - must not run
+        raise AssertionError("nothing eligible must not execute")
+
+    ledger = build_offline_execution_ledger(
+        _config(tmp_path), apply=True, environ={}, runner=_forbidden_runner
+    )
+    assert ledger["eligible_count"] == 0
+    assert ledger["execution_count"] == 0
+    assert ledger["execution_refused_reason"] == ""
+    assert ledger["preflight_ok"] is True
+    assert ledger["all_executions_succeeded"] is None
+
+
+def test_preflight_refusal_reports_not_applicable_not_true(tmp_path: Path) -> None:
+    plan = _stale_rerun_plan(_config(tmp_path))
+
+    def _forbidden_runner(argv, environ):  # pragma: no cover - must not run
+        raise AssertionError("must not execute when preflight fails")
+
+    ledger = build_offline_execution_ledger(
+        _config(tmp_path),
+        apply=True,
+        plan_report=plan,
+        environ={"APP_PROFILE": "live"},
+        runner=_forbidden_runner,
+    )
+    assert ledger["execution_count"] == 0
+    assert ledger["execution_refused_reason"] == "preflight_failed"
+    # A safety refusal must never read as a vacuous success.
+    assert ledger["all_executions_succeeded"] is None
+
+
+def test_execution_count_zero_iff_all_succeeded_is_none(tmp_path: Path) -> None:
+    plan = _stale_rerun_plan(_config(tmp_path))
+
+    def _runner(argv, environ):
+        return {"exit_code": 0, "stdout": "", "stderr": "", "timed_out": False}
+
+    for apply_flag, environ in (
+        (False, {}),
+        (True, {"APP_PROFILE": "live"}),
+    ):
+        ledger = build_offline_execution_ledger(
+            _config(tmp_path),
+            apply=apply_flag,
+            plan_report=plan,
+            environ=environ,
+            runner=_runner if apply_flag else None,
+        )
+        assert ledger["execution_count"] == 0
+        assert ledger["all_executions_succeeded"] is None
+
+    ledger = build_offline_execution_ledger(
+        _config(tmp_path), apply=True, plan_report=plan, environ={}, runner=_runner
+    )
+    assert ledger["execution_count"] > 0
+    assert ledger["all_executions_succeeded"] is not None
+    assert isinstance(ledger["all_executions_succeeded"], bool)
 
 
 # --------------------------------------------------------------------------- #
@@ -319,6 +386,17 @@ def test_render_text_reports_apply_and_safety(tmp_path: Path) -> None:
     text = render_offline_execution_ledger_text(ledger)
     assert "Gated offline autonomy execution ledger" in text
     assert "live_authorized: false" in text
+    # V5.44: zero executions renders distinctly from true/false.
+    assert "all_executions_succeeded: not_applicable" in text
+
+
+def test_render_json_nulls_all_executions_succeeded_at_zero_count(
+    tmp_path: Path,
+) -> None:
+    ledger = build_offline_execution_ledger(_config(tmp_path), apply=False, environ={})
+    reparsed = json.loads(render_offline_execution_ledger_json(ledger))
+    assert reparsed["execution_count"] == 0
+    assert reparsed["all_executions_succeeded"] is None
 
 
 def test_write_jsonl_writes_exactly_one_record(tmp_path: Path) -> None:
@@ -387,6 +465,7 @@ def test_cli_dry_run_default_executes_nothing(tmp_path: Path) -> None:
     payload = json.loads(buffer.getvalue().strip())
     assert payload["dry_run"] is True
     assert payload["execution_count"] == 0
+    assert payload["all_executions_succeeded"] is None
     # Clean checkout: nothing eligible -> exit 0.
     assert exit_code == 0
     _assert_safety_booleans_false(payload)
@@ -416,6 +495,7 @@ def test_cli_apply_on_clean_checkout_is_safe(tmp_path: Path) -> None:
     record = json.loads(run_log.read_text(encoding="utf-8").strip())
     assert record["apply"] is True
     assert record["execution_count"] == 0
+    assert record["all_executions_succeeded"] is None
 
 
 def test_cli_bad_lane_override_returns_validation_exit(tmp_path: Path) -> None:

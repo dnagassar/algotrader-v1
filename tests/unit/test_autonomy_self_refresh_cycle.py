@@ -115,6 +115,8 @@ def test_dry_run_preview_executes_nothing(tmp_path: Path) -> None:
     assert cycle["cycle_outcome"] == OUTCOME_DRY_RUN_PREVIEW
     assert cycle["dry_run"] is True
     assert cycle["execution_count"] == 0
+    # V5.44: zero executions is not a vacuous success claim.
+    assert cycle["all_executions_succeeded"] is None
     # Dry run does not change lane evidence, so before == after.
     assert cycle["before_system_status"] == cycle["after_system_status"]
     _assert_safety_false(cycle)
@@ -145,6 +147,7 @@ def test_stale_daily_cycle_converges_to_operator_wait(tmp_path: Path) -> None:
     # Nothing was eligible, nothing ran, and the system waits on the operator.
     assert cycle["eligible_count"] == 0
     assert cycle["execution_count"] == 0
+    assert cycle["all_executions_succeeded"] is None
     assert cycle["before_system_status"] == "waiting"
     assert cycle["after_system_status"] == "waiting"
     assert cycle["cycle_outcome"] == OUTCOME_NOOP_NO_ACTION
@@ -166,6 +169,7 @@ def test_stale_apply_cycle_is_inert(tmp_path: Path) -> None:
     )
     assert cycle["eligible_count"] == 0
     assert cycle["execution_count"] == 0
+    assert cycle["all_executions_succeeded"] is None
 
 
 def test_no_lane_evidence_fails_closed_by_default(tmp_path: Path) -> None:
@@ -271,6 +275,25 @@ def test_seeding_an_empty_lab_is_a_refresh() -> None:
     )
 
 
+# --------------------------------------------------------------------------- #
+# V5.44: zero executions is tri-state (True/False/None), never vacuously true
+# --------------------------------------------------------------------------- #
+def test_classify_outcome_fails_closed_on_none_with_nonzero_count() -> None:
+    # execution_count > 0 with all_succeeded=None violates the producer
+    # contract; classification must fail closed to execution_failed rather
+    # than treat the absent claim as success.
+    assert (
+        _classify_outcome(
+            apply=True,
+            execution_count=1,
+            all_succeeded=None,
+            before_status="attention_required",
+            after_status="attention_required",
+        )
+        == OUTCOME_EXECUTION_FAILED
+    )
+
+
 @pytest.mark.parametrize("bad_status", ("", "degraded", "NOMINAL", "unknown"))
 def test_unrankable_system_status_fails_closed(bad_status: str) -> None:
     # Defaulting here would let an unranked status decide whether the cycle
@@ -303,6 +326,7 @@ def test_noop_when_nothing_eligible(tmp_path: Path) -> None:
     )
     assert cycle["eligible_count"] == 0
     assert cycle["execution_count"] == 0
+    assert cycle["all_executions_succeeded"] is None
     assert cycle["cycle_outcome"] == OUTCOME_NOOP_NO_ACTION
     assert cycle["converged"] is True
 
@@ -321,6 +345,7 @@ def test_apply_refuses_execution_under_live_signal(tmp_path: Path) -> None:
     )
     # Executor refused at preflight; nothing ran and the lane stays stale.
     assert cycle["execution_count"] == 0
+    assert cycle["all_executions_succeeded"] is None
     assert cycle["execution_ledger"]["preflight_ok"] is False
     assert "spy_offline_daily_cycle" in cycle["after_report"]["stale_lanes"]
 
@@ -343,6 +368,17 @@ def test_render_text_reports_outcome_and_safety(tmp_path: Path) -> None:
     assert "Offline autonomy self-refresh cycle" in text
     assert "cycle_outcome:" in text
     assert "live_authorized: false" in text
+    # V5.44: zero executions renders distinctly from true/false.
+    assert "all_executions_succeeded: not_applicable" in text
+
+
+def test_render_json_nulls_all_executions_succeeded_at_zero_count(
+    tmp_path: Path,
+) -> None:
+    cycle = build_self_refresh_cycle(_config(tmp_path), apply=False, environ={})
+    reparsed = json.loads(render_self_refresh_cycle_json(cycle))
+    assert reparsed["execution_count"] == 0
+    assert reparsed["all_executions_succeeded"] is None
 
 
 def test_write_jsonl_one_record(tmp_path: Path) -> None:
@@ -396,6 +432,7 @@ def test_cli_dry_run(tmp_path: Path) -> None:
     assert payload["record_type"] == "autonomy_self_refresh_cycle"
     assert payload["dry_run"] is True
     assert payload["execution_count"] == 0
+    assert payload["all_executions_succeeded"] is None
     # The stale lane is operator-curable only, so the loop has converged on a
     # correct waiting state: exit 0, with the staleness still reported.
     assert payload["converged"] is True

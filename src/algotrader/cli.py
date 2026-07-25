@@ -6163,8 +6163,10 @@ def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
     # A refused apply (preflight failed) is a safety refusal.
     if args.apply and not payload["preflight_ok"]:
         return 2
-    # An executed action that failed is a hard error.
-    if payload["execution_count"] > 0 and not payload["all_executions_succeeded"]:
+    # An executed action that failed is a hard error. execution_count > 0
+    # guarantees a real bool (V5.44); `is not True` fails closed instead of
+    # treating an unexpected non-bool as success.
+    if payload["execution_count"] > 0 and payload["all_executions_succeeded"] is not True:
         return 1
     # Dry run with eligible offline work pending signals "there is work to do".
     if not args.apply and payload["eligible_count"] > 0:
@@ -6218,8 +6220,10 @@ def _run_autonomy_self_refresh_cycle(args: argparse.Namespace) -> int:
     else:
         print(render_self_refresh_cycle_text(payload))
 
-    # An executed action that failed is a hard error.
-    if payload["execution_count"] > 0 and not payload["all_executions_succeeded"]:
+    # An executed action that failed is a hard error. execution_count > 0
+    # guarantees a real bool (V5.44); `is not True` fails closed instead of
+    # treating an unexpected non-bool as success.
+    if payload["execution_count"] > 0 and payload["all_executions_succeeded"] is not True:
         return 1
     # Not converged (something still needs attention) signals work remains.
     if not payload["converged"]:
