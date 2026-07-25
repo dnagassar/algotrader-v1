@@ -5,14 +5,14 @@
 - Milestone: `V5.42a — whole-system rollup truthfulness in the autonomy
   supervisor and self-refresh cycle`.
 - Date: `2026-07-25`.
-- Review disposition: not yet independently reviewed.
+- Review disposition: independently reviewed and accepted, `2026-07-25`.
 - Contract commit: `e0ce9de` (`V5.42a: freeze whole-system rollup truthfulness
   contract`).
 - Implementation commit: `c828307` (`V5.42a: bind the whole-system rollup
   booleans to one rule`).
 - Preceding milestone on this branch: `V5.38a` (contract `4506a42`,
-  implementation `86c394f`, handoff `09cef66`) — also not yet independently
-  reviewed.
+  implementation `86c394f`, handoff `09cef66`) — also independently reviewed
+  and accepted, `2026-07-25`.
 - Operator action required for this offline implementation: `false`.
 - Merge to `main`: not performed. `origin/main@6b5dde6` contains none of V5.37a,
   V5.38a, or V5.42a.
@@ -277,16 +277,37 @@ correct.
 Nothing on the `cee521e` branch was modified, reverted, or overwritten by this
 session.
 
+## Independent Review Verdict — 2026-07-25
+
+V5.42a (contract `e0ce9de`, implementation `c828307`) was independently
+reviewed and accepted on `2026-07-25`. The review inspected the contract,
+code, tests, and docs; reproduced the disputed base behavior directly; and
+independently ran the complete focused groups at final handoff:
+`tests/unit/test_autonomy_supervisor.py` +
+`tests/unit/test_autonomy_self_refresh_cycle.py` — `80 passed` in `2.88s`;
+and `tests/unit/test_autonomy_next_plan.py` +
+`test_autonomy_offline_executor.py` + `test_verify_offline_script.py` +
+`tests/unit/test_dependency_direction.py` — `89 passed` in `130.72s`, after a
+clean credential/profile/network-test boolean preflight.
+
+The base `09cef66` was reproduced directly: `evidence_required=true` with
+`system_attention_required=false` and empty `aggregate_blockers`. With
+`allow_empty_lab=true`, `nominal -> no_lane_evidence` reproduced as
+`refreshed` and `no_lane_evidence -> nominal` reproduced as `still_pending`;
+the repair returns `still_pending` and `refreshed` respectively.
+
+V5.38a (contract `4506a42`, implementation `86c394f`, handoff `09cef66`) was
+also independently reviewed and accepted on `2026-07-25`.
+
+`cee521e` is a superseded docs-only no-defect audit and must not become the
+active handoff. It correctly proved act-phase branches are currently
+unreachable, but it missed the cross-boolean invariant (`evidence_required`
+disagreeing with `system_attention_required` at the same `system_status`) and
+did not evaluate `_SYSTEM_SEVERITY` ordering. It is preserved above as
+historical evidence only, not as an open conflict.
+
 ## Unresolved Risks
 
-- V5.42a has not been independently reviewed. Review should inspect `c828307`
-  against the frozen contract `e0ce9de`, and should explicitly adjudicate the
-  conflict with `cee521e` recorded above.
-- Two pushed branches now carry contradictory audit conclusions for the same
-  surface (`cee521e`: no defect; this branch: three findings, one live). Until an
-  operator or reviewer resolves that, an agent reading only one of them will draw
-  the wrong conclusion about whether this surface is sound.
-- V5.38a has not been independently reviewed either (inherited).
 - **The `main`-versus-frontier divergence remains the largest standing
   integration risk.** `main` carries Finding 1's repair independently as V5.41b
   (`3fa2acb`), with identical semantics and the identical
@@ -318,25 +339,40 @@ construction rather than by the executor happening to be inert.
 
 ## Next Highest-Leverage Safe Action
 
-The sweep for this defect class is now complete across all four aggregates:
-supervisor recommended action (V5.37a), supervisor rollup booleans (V5.42a),
-planner selection (V5.38a), and cycle outcome (V5.42a). The remaining known
-truthfulness gap in the same family is the one deliberately deferred twice:
+V5.37a, V5.38a, and V5.42a are now all independently reviewed and accepted.
+The highest-leverage remaining action is no longer another defect sweep on
+this frontier — it is preparing the long-deferred reconciliation between
+`origin/main@6b5dde6` and the accepted autonomy frontier on this branch.
 
-- `all_executions_succeeded` in `autonomy_offline_executor.py` is `all([])` and
-  therefore `true` when nothing ran, alongside `execution_count=0` and an empty
-  `execution_refused_reason`. Fix it the same way as the others: make the claim
-  conditional on having executed something, or add an explicit
-  `executions_attempted` companion so the pair cannot disagree. Then check every
-  consumer — the cycle record surfaces the raw flag, and both
-  `_classify_outcome` and the cycle CLI read it behind an `execution_count > 0`
-  guard that would no longer be load-bearing. Note this changes the reviewed
-  V5.39 record schema and one V5.42 consumer, so it needs its own frozen
-  contract and its own review; that is exactly why it was deferred, not an
-  argument against doing it.
+Prepare that reconciliation in a new isolated branch/worktree. Start
+read-only:
 
-Treat any finding under the two-stage rule: freeze a contract doc first, then
-implement, then verify with the targeted suites plus
+- Enumerate main-only and frontier-only commits between `origin/main@6b5dde6`
+  and this accepted frontier tip.
+- Map semantic overlap in `autonomy_supervisor.py`, `cli.py`, and the
+  relevant contracts, tests, and handoffs on both sides.
+- Use a trial merge or `git merge-tree` to identify textual and semantic
+  conflicts before attempting any real merge.
+- Require a deterministic integration contract and a focused acceptance
+  matrix before doing any conflict resolution.
+- Preserve V5.37a, V5.38a, and V5.42a while recognizing that `main`'s V5.41b
+  (`3fa2acb`) already carries equivalent empty-lab semantics for the one
+  overlapping edit identified so far (the `system_no_lane_evidence` blocker
+  token) — that line may be taken from either side.
+- Do not update or push `main`; prepare only a reviewable integration branch.
+
+Do not treat the vacuous `all_executions_succeeded=true` observation in
+`autonomy_offline_executor.py` (`all([])` when nothing ran, alongside
+`execution_count=0`) as the next action; keep it as a deferred risk. Current
+consumers already guard on `execution_count > 0`, so it is not load-bearing
+today — but an unreconciled merge that favors `main`'s side of
+`autonomy_supervisor.py` or the executor without carrying this frontier's
+fixes could silently reintroduce the three defects V5.37a, V5.38a, and
+V5.42a already closed. Reconciliation must be sequenced ahead of that fix for
+this reason.
+
+Treat any new finding under the two-stage rule: freeze a contract doc first,
+then implement, then verify with the targeted suites plus
 `.\scripts\verify_offline.ps1`.
 
 An explicitly scoped paper-order or broker-facing milestone may proceed under
