@@ -1463,3 +1463,12 @@ Exit codes:
 - `1` — Paper boundary refused / live signal detected (`paper_boundary_ok: false`).
 
 Detailed contract: `docs/design/v5_40_live_capital_interlock_contract.md`.
+
+Secure-provider child note: the scheduler intentionally strips profile and
+credential environment variables and passes the exact paper profile/endpoints as
+non-secret arguments. The history adapter preserves any ambient key instead of
+overriding it, refuses live profile/endpoint/enablement signals before opening
+the credential lease, and performs the complete interlock again inside the lease
+callback immediately before read-only HTTP. A refusal must leave both provider
+open count and HTTP call count at zero. This path grants no broker mutation or
+live-capital authority.

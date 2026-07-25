@@ -25,6 +25,14 @@ This interlock bridges the operator's standing charter limits and the runtime co
 4. **Composition & Defense-in-Depth**:
    - Composes existing boundary check `algotrader.config.require_paper_profile`. Any config validation disagreement produces a explicit blocker (`config_paper_boundary_rejected`).
 
+5. **Secure-Provider Callers (amendment)**:
+   - The V5.35 secure dispatcher deliberately strips profile and credential environment variables from the child and passes its validated paper profile and endpoints as explicit non-secret arguments. Deriving the profile solely from that stripped environment made the interlock refuse a legitimate read-only path as `app_profile_not_paper:dev`.
+   - `crypto_history_refresh_adapter` therefore builds a non-secret interlock view that layers the explicit `app_profile` and `paper_endpoint` arguments in **only where the environment does not already supply them**, so an ambient live signal can never be masked by an argument.
+   - Before opening a credential lease it refuses any profile, endpoint, or live-enable conflict. Credential *presence* is the only condition deferred, because the lease supplies those values later.
+   - Inside the lease callback the resolved credentials are bound to a temporary in-memory view so the complete canonical check runs again immediately before the read-only HTTP opener.
+   - A refusal must leave both the provider open count and the HTTP call count at zero. This path grants no broker mutation and no live-capital authority.
+   - Ported to `main` from `3818224` on the `claude/v5.42-stage3-self-refresh` lane.
+
 ## API and Module Surface
 
 - **Module**: `src/algotrader/execution/live_capital_interlock.py`

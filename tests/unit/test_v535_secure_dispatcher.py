@@ -14,6 +14,7 @@ from algotrader.execution.crypto_history_refresh_adapter import (
     CryptoHistoryRefreshConfig,
     run_crypto_history_refresh,
 )
+from algotrader.execution.live_capital_interlock import LiveCapitalGateError
 from algotrader.execution.secure_credential_provider import (
     CREDENTIAL_RECORD_SCHEMA,
     CredentialFamily,
@@ -304,6 +305,51 @@ def test_child_side_provider_resolves_only_at_read_only_http_boundary(
     assert SECRET_SENTINEL not in persisted
     assert KEY_SENTINEL not in json.dumps(result, sort_keys=True)
     assert SECRET_SENTINEL not in json.dumps(result, sort_keys=True)
+
+
+@pytest.mark.parametrize(
+    "unsafe_env",
+    (
+        {"APP_PROFILE": "live"},
+        {"APCA_API_BASE_URL": "https://api.alpaca.markets"},
+        {"ALPACA_PAPER_BASE_URL": "https://api.alpaca.markets"},
+        {"ALGO_TRADER_ALLOW_LIVE": "1"},
+    ),
+)
+def test_secure_child_interlock_refuses_ambient_live_signal_before_provider_or_http(
+    tmp_path: Path,
+    unsafe_env: dict[str, str],
+) -> None:
+    provider = RecordProvider()
+    opener_calls: list[object] = []
+
+    with pytest.raises(LiveCapitalGateError):
+        run_crypto_history_refresh(
+            CryptoHistoryRefreshConfig(
+                mode="market_data_fetch",
+                symbols=("BTCUSD",),
+                output_path=tmp_path / "delta.csv",
+                packet_path=tmp_path / "packet.json",
+                raw_response_path=tmp_path / "raw.json",
+                as_of="2026-07-18T21:00:00Z",
+                start="2026-07-18T20:00:00Z",
+                end="2026-07-18T20:00:00Z",
+                market_data_fetch_authorized=True,
+                allow_network=True,
+                data_intake_only=True,
+            ),
+            env=unsafe_env,
+            opener=lambda *args, **kwargs: opener_calls.append((args, kwargs)),
+            credential_provider=provider,
+            credential_reference=REFERENCE,
+            app_profile="paper",
+            paper_endpoint="https://paper-api.alpaca.markets",
+            market_data_endpoint="https://data.alpaca.markets",
+        )
+
+    assert provider.open_count == 0
+    assert opener_calls == []
+    assert list(tmp_path.rglob("*")) == []
 
 
 def test_secure_child_rejects_environment_alias_before_provider_or_http(
