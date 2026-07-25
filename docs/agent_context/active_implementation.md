@@ -2,229 +2,172 @@
 
 ## Classification
 
-- Milestone: `V5.43 — reconciliation merge of origin/main@6b5dde6 into the
-  accepted autonomy frontier`.
+- Milestone: `V5.44 — zero-execution outcome truthfulness in the gated
+  offline autonomy executor and self-refresh cycle`.
 - Date: `2026-07-25`.
-- Contract commit: `d6b84b9` (`V5.43: freeze main/frontier reconciliation
-  contract`).
-- Merge commit: `29068c7` (`Merge origin/main (V5.40a, V5.41b) into the
-  accepted autonomy frontier`).
-- Independent verification classification: `accepted on the feature branch`
-  after the canonical bounded full suite passed on `2026-07-25`.
-- V5.41b contract doc correction commit: same merge commit `29068c7` (amended
-  the gained `docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`
-  in place, see below).
-- Promotion authorization required: `false`; authorization was granted and
-  executed on `2026-07-25`.
-- `origin/main` fast-forwarded without force from `6b5dde6` to `a6db53a`;
-  post-fetch local HEAD, the feature remote, and `origin/main` were equal.
+- Contract commit: `d7dfecc` (`V5.44: freeze zero-execution outcome
+  truthfulness contract`,
+  `docs/design/v5_44_zero_execution_outcome_truthfulness_contract.md`).
+- Repair commit: `c17a40e` (`V5.44: tri-state all_executions_succeeded,
+  never vacuously true`).
+- Independent verification classification: not yet independently reviewed;
+  this is the implementation writer's own verification, recorded below.
 - This is not strategy-profit, paper-order, broker-mutation, activation, or
   live-trading evidence.
 
 ## Current Checkout And Ownership
 
 - Worktree
-  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\main-frontier-reconciliation-prep`,
-  branch `claude/main-frontier-reconciliation-prep`, `HEAD=52e0018` before
-  this handoff-only update.
-- Implementation writer: `Claude Code`; independent verification and this
-  handoff-only acceptance update: `Codex`. Scope of claim: this working tree
+  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v544-zero-execution-truthfulness`,
+  branch `worktree-v544-zero-execution-truthfulness`, `HEAD=c17a40e`.
+- Implementation writer: `Claude Code`. Scope of claim: this working tree
   only.
-- Started at the exact accepted frontier tip `0917083`, verified before any
-  edit (branch, HEAD, `git status`, `git diff --cached`/`--stat`, all
-  worktrees, credential/profile booleans — all clean/false).
-- Clean at handoff: `git status --short`, `git diff --check`,
-  `git diff --name-only HEAD -- src`, and
+- Started at `135da69` (the V5.43-accepted tip with the V5.44 next-action
+  recorded), verified before any edit: branch, HEAD, `git status`,
+  `git diff --cached`/unstaged, untracked files, and credential/profile
+  presence booleans were all clean/false.
+- Clean at handoff: `git status --short`, `git diff --check`, and
   `git ls-files --others --exclude-standard src tests` are all empty.
+  `git diff --name-only HEAD -- src` is empty (no uncommitted `src` changes;
+  the source repair is committed at `c17a40e`).
 
-## Concurrent Session On The Same Task — Read Before Reviewing
+## What This Milestone Did
 
-A sibling worktree, `agent-handoff-execution-579196` (currently clean at
-`cd7e919`, branch `claude/agent-handoff-execution-579196`), independently
-performed the same read-only audit this task specified and froze its own
-contract, `docs/design/v5_43_autonomy_frontier_main_integration_contract.md`
-(commit `4d12732`, handoff `cd7e919`). As of that session's last recorded
-state, **no merge had been performed there** — it stopped after the
-read-only/contract phase.
+`build_offline_execution_ledger` in
+`src/algotrader/execution/autonomy_offline_executor.py` computed
+`all_executions_succeeded` as `all(...)` over the `executed_actions` list.
+Python's `all()` over an empty list is vacuously `True`, so every ledger
+with `execution_count == 0` reported `all_executions_succeeded=true` —
+whether that zero came from a dry run, a genuine no-op (nothing eligible),
+or a **preflight refusal** (a paper/live profile or credential/network-test
+variable was loaded). The third case was the sharpest: a safety refusal
+could be misread as a success claim by any consumer that reads the boolean
+without also checking `execution_refused_reason`.
 
-Both sessions reached the same core design decision (D1 in that session's
-document; rule 1 in this one's): keep the frontier's `allow_empty_lab`
-keyword-argument interface on the two report builders and drop `main`'s
-`AutonomySupervisorConfig.allow_empty_lab` field, because the V5.42
-self-refresh cycle forwards `allow_empty_lab` into two supervisor
-observations built from one shared config — a config field would give that
-boolean two homes with nothing binding them, reintroducing the exact defect
-class V5.37a/V5.38a/V5.42a exist to close. Two independent audits converging
-on the same interface choice is corroboration, not coincidence.
+This was recorded as deliberately deferred, out-of-scope work in two prior
+contracts (`docs/design/v5_38a_planner_state_vocabulary_fail_closed_contract.md`
+and `docs/design/v5_42a_whole_system_rollup_truthfulness_contract.md`) on the
+grounds that no `cycle_outcome` depended on the vacuous value — true, but the
+raw field is still published in the JSON/text record schema and readable
+directly.
 
-That session's document caught one hazard this session's contract
-(`d6b84b9`) did not originally name: **H1 — a frozen contract describing a
-dead interface.** `docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`
-(gained whole from `main`, merges with no conflict marker) originally
-specified `AutonomySupervisorConfig.allow_empty_lab: bool = False` at its
-"API and Module Surface" section. Under the retained interface that field
-does not exist. This was caught and fixed in the merge commit `29068c7`: the
-section now describes the keyword-argument interface actually in the
-repository and records why the config-field alternative was not taken.
-Grep confirms no other file in `docs/`, `src/`, or `tests/` still describes
-`AutonomySupervisorConfig.allow_empty_lab`.
+Full audit and design decision:
+`docs/design/v5_44_zero_execution_outcome_truthfulness_contract.md` (frozen
+standalone at `d7dfecc`, zero source files touched by that commit).
 
-Two reviewable branches now exist for the same underlying reconciliation:
-this one (with a completed merge) and `claude/agent-handoff-execution-579196`
-(read-only contract only, no merge). An operator or reviewer should treat
-this branch as the more advanced candidate and either supersede the sibling
-branch's contract-only state with this one, or diff the two contract
-documents (`docs/design/v5_43_main_frontier_reconciliation_contract.md` here
-vs. `docs/design/v5_43_autonomy_frontier_main_integration_contract.md`
-there) if independent confirmation of the resolution rule is wanted before
-promoting either. Neither branch touched the other's worktree or files.
+**Resolution: tri-state, not `false`.** `false` was rejected because zero
+executions is not a failure — encoding it as `false` would replace one
+misleading claim with another (implying an executed command failed, when
+none was even attempted) and would make a preflight refusal indistinguishable
+from an actual non-zero exit code. `all_executions_succeeded` is now:
 
-## Phase A — Read-Only Audit (Before Any Merge Edit)
+- `None` ("not applicable") if and only if `execution_count == 0`, for any
+  of the three causes (dry run, no-op, preflight refusal) — those causes
+  remain distinguishable from each other via the fields that already exist
+  for that purpose (`apply`/`dry_run`, `eligible_count`,
+  `execution_refused_reason`); the boolean does not try to do that
+  disambiguation.
+- A real `bool`, computed from actual exit codes, if and only if
+  `execution_count > 0` — unchanged from before.
 
-- Merge base: `82b1e07` (`V5.41a`).
-- Frontier-only commits (`origin/main..HEAD` before merge): 21, `38b9083`
-  through `0917083` (V5.42 Stage 3 through V5.42a accept).
-- `main`-only commits (`HEAD..origin/main`): 7 — `9b56e9e`, `9f3d77a`,
-  `3fa2acb`, `c25e509`, `572de3f`, `ba92ca7`, `6b5dde6`.
-- `git merge-tree --write-tree origin/main HEAD` (trial, mutated nothing):
-  exit `1`, exactly 7 conflicted paths — `docs/OPERATOR_RUNBOOK.md`,
-  `docs/agent_context/active_implementation.md`,
-  `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`,
-  `scripts/run_autonomy_supervisor.ps1`, `src/algotrader/cli.py`,
-  `src/algotrader/execution/autonomy_supervisor.py`,
-  `tests/unit/test_autonomy_supervisor.py`. 4 more `main`-only files
-  auto-merged with no conflict marker:
-  `src/algotrader/execution/crypto_history_refresh_adapter.py`,
-  `tests/unit/test_v535_secure_dispatcher.py`,
-  `docs/design/v5_40_live_capital_interlock_contract.md`,
-  `tests/unit/test_run_daily_paper_lab_cycle_script.py`.
-- `autonomy_next_plan.py`, `autonomy_offline_executor.py`,
-  `autonomy_self_refresh_cycle.py`, and `docs/deterministic_core.md` are
-  untouched by any `main`-only commit: zero merge risk to V5.38a or the
-  V5.42a self-refresh-cycle findings.
-- Root cause of every conflict: both lineages independently fixed the
-  identical all-absent-lane false-green defect (`main` via V5.41b, the
-  frontier via V5.37 + V5.42a Finding 1), converging on the identical
-  observable contract (`evidence_required`, `system_attention_required`,
-  `system_no_lane_evidence`, exit codes) through different wiring.
-- Full analysis, resolution rule, and acceptance matrix:
-  `docs/design/v5_43_main_frontier_reconciliation_contract.md` (`d6b84b9`).
+## Implementation Detail
 
-## Stage 1 — Frozen Contract
-
-Committed standalone, before any conflict edit: `d6b84b9`
-(`docs/design/v5_43_main_frontier_reconciliation_contract.md`). Zero source
-files changed by that commit.
-
-## Stage 2 — Merge
-
-`git merge --no-ff origin/main` on this branch, non-fast-forward, both
-histories preserved (`git log --graph` shows the `main`-side commits `9b56e9e`
-through `6b5dde6` as first-parent-side history). Commit `29068c7`.
-
-Resolution, per the frozen contract:
-
-- `src/algotrader/execution/autonomy_supervisor.py`: resolved to be
-  byte-identical to its pre-merge frontier content. `AutonomySupervisorConfig`
-  gained no `allow_empty_lab` field; `_strict_bool` was dropped in favor of
-  the frontier's existing `_bool`. Three silent auto-merge artifacts were
-  found and removed by hand (git raised no conflict marker for any of
-  them, since they were line-context matches, not overlapping edits):
-  a dead `allow_empty_lab` field + `_strict_bool` validation call in
-  `__post_init__`; a duplicated `evidence_required` computation block
-  referencing the now-removed `config.allow_empty_lab` (would have raised
-  `AttributeError` if left); and a duplicated
-  `"allow_empty_lab"`/`"evidence_required"` insertion, once in the
-  `_aggregate` return dict and once in `render_autonomy_supervisor_text`'s
-  line list.
-- `src/algotrader/cli.py`, `scripts/run_autonomy_supervisor.ps1`: resolved to
-  frontier content (functional wiring was already identical on both sides;
-  only comment/help-text wording conflicted).
-- `docs/OPERATOR_RUNBOOK.md`,
-  `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`: resolved to
-  the frontier's richer prose, each with one added sentence noting `main`'s
-  V5.41b reached the identical fix independently.
-- `docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`: gained
-  whole from `main` (clean auto-merge), then amended in the same merge commit
-  to describe the retained keyword-argument interface instead of the config
-  field it originally specified (see the concurrent-session section above).
-- `tests/unit/test_autonomy_supervisor.py`: resolved to the frontier's full
-  suite as base, then 5 main-only tests ported to the retained API as net
-  new coverage (none were duplicates of existing frontier tests):
-  `test_declared_empty_lab_does_not_rescue_a_blocked_lane`,
-  `test_declared_empty_lab_does_not_rescue_an_unknown_lane`,
-  `test_both_report_builders_agree_on_empty_lab_flag`,
-  `test_text_render_surfaces_empty_lab_contract`,
-  `test_cli_declared_empty_lab_still_fails_on_blocked_lane`.
-- `docs/agent_context/active_implementation.md`: resolved to this branch's
-  pre-merge content for the merge commit itself; overwritten by this file in
-  a separate commit, per the standing one-file-handoff rule.
-- Verified by direct reading (not assumed): `_highest_priority_lane` in the
-  merged file excludes `STATE_ABSENT` entirely with no trailing fallback
-  loop — `main`'s pre-V5.37a version of that function (which still has a
-  dead second loop returning an absent lane) was never taken.
+- `src/algotrader/execution/autonomy_offline_executor.py`:
+  `build_offline_execution_ledger` now sets `all_succeeded = None` when
+  `executed` is empty, `all(...)` over real exit codes otherwise. Text
+  rendering (`render_offline_execution_ledger_text`) uses a new
+  `_tri_bool_text` helper (`not_applicable` for `None`) instead of the
+  boolean-only `_bool_text`, only for this one field. JSON rendering needed
+  no change: `None` already serializes to `null` through the existing
+  `json.dumps`/`_json_safe` path.
+- `src/algotrader/execution/autonomy_self_refresh_cycle.py`:
+  `build_self_refresh_cycle` forwards the ledger's tri-state value verbatim
+  (removed a `bool(...)` coercion that would have silently turned `None`
+  into `False`). `_classify_outcome`'s `all_succeeded` parameter is now
+  `bool | None`; its one branch that reads it (`execution_count > 0`, so the
+  producer contract guarantees a real bool) tests `all_succeeded is not True`
+  rather than `not all_succeeded` — fail-closed to `OUTCOME_EXECUTION_FAILED`
+  if a contract-violating `None` ever reached that branch, matching the
+  existing fail-closed idiom already used for `_system_rank`'s unrankable
+  status. `OUTCOME_NOOP_NO_ACTION` classification is unchanged: it is still
+  selected purely by `execution_count == 0`, evaluated before
+  `all_succeeded` is read. Same `_tri_bool_text` addition for text
+  rendering.
+- `src/algotrader/cli.py`: both exit-code guards
+  (`_run_autonomy_apply_plan`, `_run_autonomy_self_refresh_cycle`) changed
+  from `payload["execution_count"] > 0 and not payload["all_executions_succeeded"]`
+  to `... and payload["all_executions_succeeded"] is not True`, for the same
+  fail-closed reason. No exit code changes for any existing test case: both
+  guards are already short-circuited by `execution_count > 0`, which is
+  never true at the same time as a `None` value under the new contract.
+- Tests: added 6 new tests across
+  `tests/unit/test_autonomy_offline_executor.py` (4) and
+  `tests/unit/test_autonomy_self_refresh_cycle.py` (2) covering: dry run,
+  clean-checkout apply, and preflight-refusal all reporting
+  `all_executions_succeeded is None`; the executed-action cases still
+  reporting a real `bool`; `_classify_outcome`'s new fail-closed branch for
+  the contract-violating `None`-with-nonzero-count combination; and both
+  text (`not_applicable`) and JSON (`null`) rendering of the tri-state
+  value at zero execution count. All pre-existing assertions in both files
+  were verified unaffected (no test previously asserted a specific value
+  for `all_executions_succeeded` at `execution_count == 0`).
 
 ## Capability Preserved
 
 | Contract | Proof |
 | --- | --- |
-| V5.37a: all-absent lanes recommend whole-system seeding, not one lane | `test_all_lanes_absent_recommends_whole_system_seeding`, `test_absent_lane_is_never_recommended_while_evidence_exists` — pass |
-| V5.38a: planner fails closed on an unrankable caller-supplied lane state | `tests/unit/test_autonomy_next_plan.py` full suite — pass (file untouched by any `main`-only commit) |
-| V5.42a Finding 1: `evidence_required` implies `system_attention_required` + `system_no_lane_evidence` blocker | `test_evidence_required_implies_attention_and_blocker` — pass |
-| V5.42a Finding 2: `no_lane_evidence` ranks most severe | `tests/unit/test_autonomy_self_refresh_cycle.py` full suite — pass (file untouched by any `main`-only commit) |
-| V5.42a Finding 3: unrankable system status fails closed | `test_system_status_vocabulary_is_exactly_the_exported_tuple` + self-refresh-cycle severity tests — pass |
-
-## Capability Gained
-
-| Capability | Source | Proof |
-| --- | --- | --- |
-| V5.40a secure-provider interlock profile-conflict fix in `crypto_history_refresh_adapter.py`, plus its doc amendment | `ba92ca7` | `tests/unit/test_v535_secure_dispatcher.py` — 17 passed (combined run below) |
-| Windows `find.exe`-pinned daily paper-lab shim test | `c25e509` | `tests/unit/test_run_daily_paper_lab_cycle_script.py` — passed (combined run below) |
-| `main`'s empty-lab semantics (V5.41b), corroborating the frontier's own V5.42a fix; both converge on the identical `evidence_required`/`system_attention_required`/`system_no_lane_evidence` contract | `3fa2acb`, `9f3d77a` | 5 ported tests + existing frontier tests — pass |
+| `OUTCOME_NOOP_NO_ACTION` still selected purely by `execution_count == 0` | `test_stale_daily_cycle_converges_to_operator_wait`, `test_noop_when_nothing_eligible` — pass, now with an added `all_executions_succeeded is None` assertion |
+| `evidence_required`/`converged`/`no_lane_evidence` fail-closed default unchanged | `test_no_lane_evidence_fails_closed_by_default`, `test_explicit_empty_lab_can_converge` — pass, unedited |
+| Existing exit codes unchanged for every prior CLI test case | `test_cli_dry_run_default_executes_nothing`, `test_cli_apply_on_clean_checkout_is_safe`, `test_cli_dry_run`, `test_cli_no_lane_evidence_exits_one_by_default`, `test_cli_allows_explicit_empty_lab` — pass |
+| Executor allowlist/inertness untouched | `test_allowlist_is_the_verified_offline_command_only`, `test_allowlisted_actions_are_unreachable_from_current_lane_registry` — pass, unedited |
+| Fail-closed idiom extended, not invented | new `test_classify_outcome_fails_closed_on_none_with_nonzero_count` mirrors the existing `test_unrankable_system_status_fails_closed` pattern |
 
 ## Verification Evidence
 
 ### Targeted Suites (all offline, credential-free; preflight booleans false throughout)
 
-- `tests/unit/test_autonomy_supervisor.py` + `tests/unit/test_autonomy_self_refresh_cycle.py` — `85 passed` in `6.55s` (80 pre-existing + 5 ported).
-- `tests/unit/test_autonomy_next_plan.py` + `tests/unit/test_autonomy_offline_executor.py` + `tests/unit/test_verify_offline_script.py` + `tests/unit/test_dependency_direction.py` — `89 passed` in `169.98s`.
-- `tests/unit/test_v535_secure_dispatcher.py` + `tests/unit/test_run_daily_paper_lab_cycle_script.py` — `17 passed` in `40.33s`.
-- Total: `191` targeted test results, `0` failures.
+- `tests/unit/test_autonomy_offline_executor.py` +
+  `tests/unit/test_autonomy_self_refresh_cycle.py` — `64 passed` in `3.56s`.
+- `tests/unit/test_autonomy_next_plan.py` +
+  `tests/unit/test_autonomy_offline_executor.py` +
+  `tests/unit/test_autonomy_self_refresh_cycle.py` +
+  `tests/unit/test_autonomy_supervisor.py` +
+  `tests/unit/test_dependency_direction.py` — `176 passed` in `10.42s`.
 
 ### Standard Offline Verifier
 
 - `.\scripts\verify_offline.ps1` — `PASS`.
-- Targeted offline safety guards inside the script (`test_dependency_direction.py` + `test_broker_mutation_surface_invariant.py` + `test_default_pytest_network_guard.py` + `test_strategy_challenger_factory.py` + `test_preview_candidate_review.py`) — `99 passed` in `90.76s`.
+- Targeted offline safety guards inside the script
+  (`test_dependency_direction.py` + `test_broker_mutation_surface_invariant.py`
+  + `test_default_pytest_network_guard.py` + `test_strategy_challenger_factory.py`
+  + `test_preview_candidate_review.py`) — `99 passed` in `111.49s`.
 - Credential/profile precheck: every boolean `False`.
-- Repository hygiene precheck and final check: clean. `git diff --check`: clean.
+- Repository hygiene precheck and final check: clean. `git diff --check`:
+  clean.
 
-### Bounded Full Suite (`-Full`) — PASS
+### Bounded Full Suite (`-Full -Shards 4`) — PASS
 
-- Command: `.\scripts\verify_offline.ps1 -Full -Shards 4`.
+- Run as a detached process (the interactive tool's own 10-minute command
+  timeout is shorter than this suite's wall-clock time; the run was
+  monitored to completion via log-file polling rather than the tool's
+  synchronous wait).
 - Exit: `0`; final offline verification result: `PASS`.
 - Credential/profile and network preflight: every boolean `False`.
-- Targeted safety guards inside the wrapper: `99 passed` in `109.44s`.
-- Editable interpreter binding:
-  `algotrader_editable_location` matched this worktree.
-- Canonical collection: `9,978` nodes in `494` files.
-- Exact partition: `2,495`, `2,495`, `2,494`, and `2,494` nodes.
+- Targeted safety guards inside the wrapper: `99 passed` in `100.90s`.
+- Editable interpreter binding: auto-bound and matched this worktree.
+- Canonical collection: `9,984` nodes in `494` files (6 more than V5.43's
+  `9,978` — exactly the 6 new tests this milestone added).
+- Exact partition: `2,496`, `2,496`, `2,496`, and `2,496` nodes.
 - Collection equivalence: `PASS`.
-- Per-shard execution: all four exited `0`; none timed out.
+- Per-shard execution: all four exited `0`; none timed out (wall times
+  `1452s`/`1418s`/`1310s`/`1140s`).
 - Execution equivalence: `PASS`.
-- Aggregate: `9,978` executed, `9,973 passed`, `5 skipped`, `0 failures`,
+- Aggregate: `9,984` executed, `9,979 passed`, `5 skipped`, `0 failures`,
   `0 errors`.
 - `bounded_full_suite=PASS`.
 - Final hygiene: `git diff --check`, `git status --short`, staged files,
   changed `src` files, untracked `src/tests` files, and tracked `runs/`
   checks were all clean/empty as applicable.
-
-One lower-concurrency diagnostic attempt,
-`.\scripts\verify_offline.ps1 -Full -Shards 1`, proved canonical collection
-equivalence for all `9,978` nodes and reached `37%` with no test failure, but
-its sole shard hit the runner's fixed `1,800s` timeout. That is a shard-size/
-bound mismatch, not conflicting test evidence. Earlier eight-shard Windows
-`0xC0000142` loader failures remain classified as host memory pressure; both
-incomplete modes are superseded by the complete four-shard pass above.
 
 ## Safety And External Effects
 
@@ -240,40 +183,38 @@ mutation occurred; no network, broker, or market-data request occurred; no
 paper profile was entered and no paper mutation or order action occurred;
 no canary, strategy, paper automation, live access, or trading effect was
 activated. All tests used deterministic offline fixtures and fake
-boundaries. Git network access was limited to fetch and the authorized
-non-force fast-forward pushes; no branch was reset or force-updated.
-Effective paper quantity/position/order-notional/portfolio-notional caps:
-`not applicable` because no paper operation was attempted. Broker receipt,
-reconciliation, and action-audit outcome: `not applicable`. Live-authorized
-state: `false`.
+boundaries. The executor's allowlist, its documented inertness under the
+current lane registry, and its subprocess/network safety surface are
+unchanged — no new lane action became reachable and no new import was
+added. Effective paper quantity/position/order-notional/portfolio-notional
+caps: `not applicable` because no paper operation was attempted. Broker
+receipt, reconciliation, and action-audit outcome: `not applicable`.
+Live-authorized state: `false`.
 
 ## Unresolved Risks
 
-- `claude/agent-handoff-execution-579196` remains an unpushed, contract-only
-  audit branch for the same reconciliation. It is superseded by this
-  implemented and independently verified branch; its matching keyword-
-  argument API decision remains useful corroboration, but it must not be
-  independently re-merged.
+- This implementation has not yet had independent review against
+  `docs/design/v5_44_zero_execution_outcome_truthfulness_contract.md`. The
+  contract names the exact verification matrix a reviewer should check
+  against commit `c17a40e`.
 - `--allow-empty-lab` remains a caller assertion rather than proof of intent
-  (carried over from V5.41b/V5.42a; unchanged by this merge).
-- The vacuous `all_executions_succeeded=true` aggregate at
-  `execution_count=0` in `autonomy_offline_executor.py` remains open by
-  deliberate scope choice, carried over from the V5.42a review. No
-  `cycle_outcome` depends on it.
-- V5.43 is complete on `main`; no reconciliation or promotion gate remains.
+  (carried over from V5.41b/V5.42a; unchanged by this milestone).
+- The executor remains provably inert under the current lane registry
+  (`test_allowlisted_actions_are_unreachable_from_current_lane_registry`);
+  this milestone changes what a zero-execution ledger *reports*, not
+  whether any execution is currently reachable.
+- This worktree's local branch name (`worktree-v544-zero-execution-truthfulness`)
+  is the harness-assigned worktree branch, not a `claude/`-prefixed name.
+  It has not yet been pushed; confirm the intended remote branch name before
+  or during push if a different convention is wanted.
 
 ## Next Highest-Leverage Safe Action
 
-Freeze `V5.44 — zero-execution outcome truthfulness` as an offline contract
-before changing source. Audit every producer and consumer of
-`all_executions_succeeded`, `execution_count`, and `cycle_outcome`, starting
-with `src/algotrader/execution/autonomy_offline_executor.py`,
-`src/algotrader/execution/autonomy_self_refresh_cycle.py`, and their unit
-tests. The contract must resolve whether zero executions needs a distinct
-not-applicable/unknown representation or an explicit false value while
-preserving the truthful `OUTCOME_NOOP_NO_ACTION` classification and existing
-fail-closed preflight and evidence-required behavior. Then implement the
-smallest coherent repair and tests, run both targeted suites, dependency
-direction, the standard offline verifier, the canonical bounded full suite,
-and hygiene checks. Keep the entire slice credential-free, network-free,
-broker-free, paper-mutation-free, and live-prohibited.
+Push this branch and open a draft PR for independent review against
+`docs/design/v5_44_zero_execution_outcome_truthfulness_contract.md`. After
+that, the highest-leverage remaining item recorded across the V5.38a/V5.42a/
+V5.44 chain is exhausted for the executor/self-refresh truthfulness surface;
+the next candidate is a fresh audit of what would need to change for the
+executor to become non-inert (i.e., for a real lane action to reach
+`AUTONOMY_EXECUTOR_ALLOWLIST`), which is a materially larger scope change
+requiring its own contract and explicit operator scoping — not started here.
