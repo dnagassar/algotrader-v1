@@ -114,6 +114,18 @@ The command exits `0` for `nominal` and `waiting`; `0` for `no_lane_evidence`
 only when `--allow-empty-lab` is passed (otherwise `1`); `1` for
 `attention_required` and `blocked`; and `2` on input validation error.
 
+V5.42a amendment: `evidence_required` also implies `system_attention_required`
+and contributes the aggregate blocker `system_no_lane_evidence`. Before that
+amendment the record paired `evidence_required=true` with
+`system_attention_required=false` and an empty `aggregate_blockers`, so a
+consumer reading the record's own rollup booleans rather than the exit code was
+told a lab that had proven nothing needed nothing. A declared empty lab
+(`allow_empty_lab=true`) keeps `evidence_required=false` and therefore adds
+neither the attention flag nor the blocker. `AUTONOMY_SUPERVISOR_SYSTEM_STATUSES`
+is exported alongside it as the frozen whole-system status vocabulary, ordered
+most to least severe, for consumers that must rank a status. See
+`docs/design/v5_42a_whole_system_rollup_truthfulness_contract.md`.
+
 ## Frozen Lane Registry
 
 `AUTONOMY_SUPERVISOR_LANES` is the frozen classification contract. Each lane

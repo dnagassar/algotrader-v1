@@ -74,6 +74,21 @@ summary, the full execution ledger, compact before/after lane summaries, a
 - `still_pending` — executed successfully but the system status did not improve.
 - `execution_failed` — an executed action returned non-zero.
 
+V5.42a amendment to the severity ranking behind `refreshed`/`still_pending`:
+`_SYSTEM_SEVERITY` is now derived from the supervisor's exported
+`AUTONOMY_SUPERVISOR_SYSTEM_STATUSES` instead of restated locally, resolves a
+rank through a helper that raises `ValidationError` on an unrankable status
+instead of defaulting, and ranks `no_lane_evidence` as the **most** severe
+status. Previously it ranked `no_lane_evidence` as the healthiest, so a cycle
+whose lane evidence disappeared would have reported `refreshed` while seeding an
+empty lab reported `still_pending` — both backwards. This corrects the
+unreachable act-phase paths rather than making them reachable, and the statement
+below that they "stay correct" holds only from V5.42a onward. `converged`,
+`evidence_required`, and every exit code are unchanged. The cycle also forwards
+`allow_empty_lab` into both supervisor observations so the embedded reports agree
+with the cycle's own declaration. See
+`docs/design/v5_42a_whole_system_rollup_truthfulness_contract.md`.
+
 `converged` is `True` when the re-observed `system_status` is `nominal` or
 `waiting`. `no_lane_evidence` is non-converged by default and exits `1` with
 `cycle_outcome=evidence_required`. An intentionally empty lab may opt in with

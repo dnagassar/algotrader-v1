@@ -29,6 +29,7 @@ __all__ = [
     "AUTONOMY_SUPERVISOR_LABELS",
     "AUTONOMY_SUPERVISOR_LANES",
     "AUTONOMY_SUPERVISOR_STATES",
+    "AUTONOMY_SUPERVISOR_SYSTEM_STATUSES",
     "AutonomySupervisorConfig",
     "AutonomySupervisorWriteResult",
     "LaneSpec",
@@ -100,6 +101,28 @@ SYSTEM_ATTENTION = "attention_required"
 SYSTEM_WAITING = "waiting"
 SYSTEM_NOMINAL = "nominal"
 SYSTEM_NO_LANE_EVIDENCE = "no_lane_evidence"
+
+# The frozen whole-system status vocabulary, ordered most to least severe.
+# Public for the same reason ``AUTONOMY_SUPERVISOR_STATES`` is: a consumer that
+# re-declared this order could drift from the supervisor and silently fail to
+# rank a status the supervisor emits.
+#
+# ``no_lane_evidence`` is the most severe entry. A blocked lane is evidence - the
+# system knows what is wrong and can name it - whereas ``no_lane_evidence`` is
+# the absence of any proof at all, which is why it already fails closed. Ranking
+# it first is what keeps a consumer from reading a loss of all lane evidence as
+# an improvement.
+#
+# This is a *severity* order for consumers. It is deliberately not the order
+# ``_system_status`` walks lane counts in, where ``no_lane_evidence`` is the
+# terminal fallback. The two answer different questions; do not conflate them.
+AUTONOMY_SUPERVISOR_SYSTEM_STATUSES = (
+    SYSTEM_NO_LANE_EVIDENCE,
+    SYSTEM_BLOCKED,
+    SYSTEM_ATTENTION,
+    SYSTEM_WAITING,
+    SYSTEM_NOMINAL,
+)
 
 # Artifact reader kinds.
 _KIND_JSONL_LAST = "jsonl_last"
@@ -649,6 +672,12 @@ def _aggregate(
     aggregate_blockers: list[str] = []
     for summary in lane_summaries:
         aggregate_blockers.extend(_string_list(summary.get("blockers")))
+    # A lane set with no evidence at all has no per-lane blocker to report, so
+    # without this the record would claim nothing blocks while simultaneously
+    # requiring evidence. The blocker list is non-empty exactly when something
+    # blocks.
+    if evidence_required:
+        aggregate_blockers.append("system_no_lane_evidence")
 
     return {
         "milestone": _MILESTONE,
@@ -666,8 +695,13 @@ def _aggregate(
         "lanes": lane_summaries,
         "system_status": system_status,
         "system_blocked": system_status == SYSTEM_BLOCKED,
+        # ``evidence_required`` implies attention. Computing this boolean from
+        # ``system_status`` alone left a lab that proved nothing reporting that
+        # nothing needed attention, which is the one thing the fail-closed
+        # empty-lab contract exists to prevent.
         "system_attention_required": system_status
-        in (SYSTEM_BLOCKED, SYSTEM_ATTENTION),
+        in (SYSTEM_BLOCKED, SYSTEM_ATTENTION)
+        or evidence_required,
         "allow_empty_lab": allow_empty_lab,
         "evidence_required": evidence_required,
         "blocked_lanes": _lanes_in_state(lane_summaries, STATE_BLOCKED),

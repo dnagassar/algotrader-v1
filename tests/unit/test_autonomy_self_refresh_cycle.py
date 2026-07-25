@@ -10,7 +10,10 @@ import pytest
 
 import algotrader.cli as cli_module
 from algotrader.errors import ValidationError
-from algotrader.execution.autonomy_supervisor import AutonomySupervisorConfig
+from algotrader.execution.autonomy_supervisor import (
+    AUTONOMY_SUPERVISOR_SYSTEM_STATUSES,
+    AutonomySupervisorConfig,
+)
 from algotrader.execution.autonomy_self_refresh_cycle import (
     OUTCOME_DRY_RUN_PREVIEW,
     OUTCOME_EVIDENCE_REQUIRED,
@@ -18,6 +21,7 @@ from algotrader.execution.autonomy_self_refresh_cycle import (
     OUTCOME_NOOP_NO_ACTION,
     OUTCOME_REFRESHED,
     OUTCOME_STILL_PENDING,
+    _SYSTEM_SEVERITY,
     _classify_outcome,
     build_self_refresh_cycle,
     render_self_refresh_cycle_json,
@@ -217,6 +221,68 @@ def test_outcome_classification(
         )
         == expected
     )
+
+
+# --------------------------------------------------------------------------- #
+# V5.42a: severity ranking is derived, fail-closed, and correctly ordered
+# --------------------------------------------------------------------------- #
+def test_severity_map_matches_the_exported_vocabulary() -> None:
+    assert set(_SYSTEM_SEVERITY) == set(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES)
+    ranks = [_SYSTEM_SEVERITY[status] for status in AUTONOMY_SUPERVISOR_SYSTEM_STATUSES]
+    # Strictly decreasing: the exported tuple is most-to-least severe.
+    assert ranks == sorted(ranks, reverse=True)
+    assert len(set(ranks)) == len(ranks)
+
+
+def test_no_lane_evidence_outranks_every_other_status() -> None:
+    for status in AUTONOMY_SUPERVISOR_SYSTEM_STATUSES:
+        if status == "no_lane_evidence":
+            continue
+        assert _SYSTEM_SEVERITY["no_lane_evidence"] > _SYSTEM_SEVERITY[status]
+
+
+@pytest.mark.parametrize("before", ("blocked", "attention_required", "waiting", "nominal"))
+def test_losing_all_evidence_is_never_a_refresh(before: str) -> None:
+    # An empty lab is declared, so the fail-closed branch does not short-circuit
+    # and the improvement test is what decides the outcome.
+    assert (
+        _classify_outcome(
+            apply=True,
+            execution_count=1,
+            all_succeeded=True,
+            before_status=before,
+            after_status="no_lane_evidence",
+            allow_empty_lab=True,
+        )
+        == OUTCOME_STILL_PENDING
+    )
+
+
+def test_seeding_an_empty_lab_is_a_refresh() -> None:
+    assert (
+        _classify_outcome(
+            apply=True,
+            execution_count=1,
+            all_succeeded=True,
+            before_status="no_lane_evidence",
+            after_status="nominal",
+        )
+        == OUTCOME_REFRESHED
+    )
+
+
+@pytest.mark.parametrize("bad_status", ("", "degraded", "NOMINAL", "unknown"))
+def test_unrankable_system_status_fails_closed(bad_status: str) -> None:
+    # Defaulting here would let an unranked status decide whether the cycle
+    # claims it refreshed the system.
+    with pytest.raises(ValidationError):
+        _classify_outcome(
+            apply=True,
+            execution_count=1,
+            all_succeeded=True,
+            before_status="attention_required",
+            after_status=bad_status,
+        )
 
 
 def test_noop_when_nothing_eligible(tmp_path: Path) -> None:

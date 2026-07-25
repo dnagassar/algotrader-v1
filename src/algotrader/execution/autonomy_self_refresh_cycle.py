@@ -34,9 +34,8 @@ from algotrader.execution.autonomy_offline_executor import (
     build_offline_execution_ledger,
 )
 from algotrader.execution.autonomy_supervisor import (
+    AUTONOMY_SUPERVISOR_SYSTEM_STATUSES,
     AutonomySupervisorConfig,
-    SYSTEM_ATTENTION,
-    SYSTEM_BLOCKED,
     SYSTEM_NOMINAL,
     SYSTEM_NO_LANE_EVIDENCE,
     SYSTEM_WAITING,
@@ -76,19 +75,22 @@ OUTCOME_REFRESHED = "refreshed"
 OUTCOME_STILL_PENDING = "still_pending"
 OUTCOME_EXECUTION_FAILED = "execution_failed"
 
-# System-status severity, most to least severe. Used only to decide whether the
-# act phase reduced overall severity (a genuine refresh).
+# System-status severity, derived from the supervisor's own exported ordering
+# rather than restated here: a status the supervisor can emit but this map does
+# not rank would otherwise take a default rank and invent an answer. Used only to
+# decide whether the act phase reduced overall severity (a genuine refresh).
+#
+# Higher is more severe. ``no_lane_evidence`` ranks highest, so a cycle whose
+# lane evidence disappeared can never report ``refreshed``, and seeding an empty
+# lab reports ``refreshed`` rather than ``still_pending``.
 _SYSTEM_SEVERITY = {
-    SYSTEM_BLOCKED: 4,
-    SYSTEM_ATTENTION: 3,
-    SYSTEM_WAITING: 2,
-    SYSTEM_NOMINAL: 1,
-    SYSTEM_NO_LANE_EVIDENCE: 0,
+    status: len(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES) - index
+    for index, status in enumerate(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES)
 }
 
-# A system in one of these states needs no further attention this cycle.
-# ``no_lane_evidence`` is fail-closed unless the caller explicitly declares an
-# intentionally empty lab.
+# A system in one of these states needs no further attention this cycle. Stated
+# against the exported vocabulary above; an unlisted status is not converged,
+# which is the fail-closed direction.
 _CONVERGED_STATES = frozenset({SYSTEM_NOMINAL, SYSTEM_WAITING})
 
 
@@ -109,7 +111,13 @@ def build_self_refresh_cycle(
     if type(allow_empty_lab) is not bool:
         raise ValidationError("allow_empty_lab must be a bool.")
 
-    before = build_autonomy_supervisor_report(config)
+    # ``allow_empty_lab`` is forwarded so the two observations agree with the
+    # cycle's own declaration instead of computing their rollup booleans as if
+    # the caller had never made it. Output-neutral today - ``_report_summary``
+    # projects neither ``evidence_required`` nor ``system_attention_required``,
+    # and neither the plan nor the ledger reads them - but it keeps the
+    # inconsistency from surfacing if that projection ever grows.
+    before = build_autonomy_supervisor_report(config, allow_empty_lab=allow_empty_lab)
     plan = build_autonomy_next_plan_from_report(before)
     ledger = build_offline_execution_ledger(
         config,
@@ -118,7 +126,7 @@ def build_self_refresh_cycle(
         environ=environ,
         runner=runner,
     )
-    after = build_autonomy_supervisor_report(config)
+    after = build_autonomy_supervisor_report(config, allow_empty_lab=allow_empty_lab)
 
     before_status = str(before["system_status"])
     after_status = str(after["system_status"])
@@ -199,11 +207,25 @@ def _classify_outcome(
         return OUTCOME_NOOP_NO_ACTION
     if not all_succeeded:
         return OUTCOME_EXECUTION_FAILED
-    before_rank = _SYSTEM_SEVERITY.get(before_status, 0)
-    after_rank = _SYSTEM_SEVERITY.get(after_status, 0)
-    if after_rank < before_rank:
+    if _system_rank(after_status) < _system_rank(before_status):
         return OUTCOME_REFRESHED
     return OUTCOME_STILL_PENDING
+
+
+def _system_rank(status: str) -> int:
+    """Return the severity rank of one system status, or fail closed.
+
+    Refusing an unrankable status is the same choice the planner's
+    ``_required_state`` makes: defaulting would let an unranked status silently
+    decide whether the cycle claims it refreshed the system.
+    """
+
+    rank = _SYSTEM_SEVERITY.get(status)
+    if rank is None:
+        raise ValidationError(
+            f"system_status must be a supervisor system status: {status}"
+        )
+    return rank
 
 
 def _report_summary(report: Mapping[str, object]) -> dict[str, object]:

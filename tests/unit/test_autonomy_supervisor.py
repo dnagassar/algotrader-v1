@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import io
 import json
 from contextlib import redirect_stdout
@@ -14,6 +15,7 @@ from algotrader.execution.autonomy_supervisor import (
     ALL_LANES_ABSENT_ACTION,
     AUTONOMY_SUPERVISOR_LABELS,
     AUTONOMY_SUPERVISOR_LANES,
+    AUTONOMY_SUPERVISOR_SYSTEM_STATUSES,
     AutonomySupervisorConfig,
     build_autonomy_supervisor_report,
     build_autonomy_supervisor_report_from_records,
@@ -105,7 +107,9 @@ def test_all_lanes_absent_reports_no_lane_evidence(tmp_path: Path) -> None:
 
     assert payload["system_status"] == "no_lane_evidence"
     assert payload["system_blocked"] is False
-    assert payload["system_attention_required"] is False
+    # V5.42a: an undeclared empty lab requires attention. It is not blocked, but
+    # it has proven nothing, so the record must not read as needing nothing.
+    assert payload["system_attention_required"] is True
     assert payload["lane_count"] == len(AUTONOMY_SUPERVISOR_LANES)
     assert payload["lane_state_counts"]["absent"] == len(AUTONOMY_SUPERVISOR_LANES)
     assert set(payload["absent_lanes"]) == {
@@ -638,6 +642,105 @@ def test_evidence_required_false_when_lane_evidence_present(tmp_path: Path) -> N
 
     assert payload["system_status"] != "no_lane_evidence"
     assert payload["evidence_required"] is False
+
+
+# --------------------------------------------------------------------------- #
+# V5.42a: whole-system rollup truthfulness
+# --------------------------------------------------------------------------- #
+def test_evidence_required_implies_attention_and_blocker(tmp_path: Path) -> None:
+    # The verdict and the remedy must agree: a lab that proved nothing needs
+    # attention and must name what blocks it.
+    payload = build_autonomy_supervisor_report(_config(tmp_path))
+
+    assert payload["evidence_required"] is True
+    assert payload["system_attention_required"] is True
+    assert "system_no_lane_evidence" in payload["aggregate_blockers"]
+    # Still not *blocked*: no lane reported a blocker of its own.
+    assert payload["system_blocked"] is False
+    _assert_safety_booleans_false(payload)
+
+
+def test_declared_empty_lab_reports_no_attention_and_no_blocker(
+    tmp_path: Path,
+) -> None:
+    payload = build_autonomy_supervisor_report(
+        _config(tmp_path), allow_empty_lab=True
+    )
+
+    assert payload["evidence_required"] is False
+    assert payload["system_attention_required"] is False
+    assert payload["aggregate_blockers"] == []
+    assert payload["system_status"] == "no_lane_evidence"
+
+
+def test_evidence_blocker_absent_when_lanes_have_evidence(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path),
+        {"crypto_supervised_readiness_trial": {"trial_classification": "accepted"}},
+    )
+
+    assert payload["system_status"] == "nominal"
+    assert payload["evidence_required"] is False
+    assert payload["system_attention_required"] is False
+    assert "system_no_lane_evidence" not in payload["aggregate_blockers"]
+
+
+def test_system_status_vocabulary_is_exactly_the_exported_tuple() -> None:
+    # A status added without a severity rank must fail here rather than silently
+    # degrade a consumer that ranks statuses.
+    module = importlib.import_module(
+        "algotrader.execution.autonomy_supervisor"
+    )
+    declared = {
+        value
+        for name, value in vars(module).items()
+        if name.startswith("SYSTEM_") and isinstance(value, str)
+    }
+
+    assert set(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES) == declared
+    assert len(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES) == len(
+        set(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES)
+    )
+    # no_lane_evidence outranks everything: the absence of proof is more severe
+    # than a blocked lane, which at least carries evidence.
+    assert AUTONOMY_SUPERVISOR_SYSTEM_STATUSES[0] == "no_lane_evidence"
+
+
+def test_every_reachable_system_status_is_in_the_vocabulary(tmp_path: Path) -> None:
+    reachable = {
+        # all lanes absent
+        build_autonomy_supervisor_report(_config(tmp_path))["system_status"],
+        build_autonomy_supervisor_report_from_records(
+            _config(tmp_path),
+            {
+                "crypto_bounded_paper_probe_review": {
+                    "classification": "blocked_by_operational_evidence",
+                }
+            },
+        )["system_status"],
+        build_autonomy_supervisor_report_from_records(
+            _config(tmp_path),
+            {
+                "crypto_bounded_paper_probe_review": {
+                    "classification": "eligible_for_operator_review_only",
+                }
+            },
+        )["system_status"],
+        build_autonomy_supervisor_report_from_records(
+            _config(tmp_path),
+            {
+                "crypto_forward_shadow_cycle": {
+                    "classification": "waiting_for_tournament_terminal",
+                }
+            },
+        )["system_status"],
+        build_autonomy_supervisor_report_from_records(
+            _config(tmp_path),
+            {"crypto_supervised_readiness_trial": {"trial_classification": "accepted"}},
+        )["system_status"],
+    }
+
+    assert reachable == set(AUTONOMY_SUPERVISOR_SYSTEM_STATUSES)
 
 
 def test_rejects_non_bool_allow_empty_lab(tmp_path: Path) -> None:
