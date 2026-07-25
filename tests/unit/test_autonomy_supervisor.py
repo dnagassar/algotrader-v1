@@ -104,7 +104,11 @@ def test_all_lanes_absent_reports_no_lane_evidence(tmp_path: Path) -> None:
 
     assert payload["system_status"] == "no_lane_evidence"
     assert payload["system_blocked"] is False
-    assert payload["system_attention_required"] is False
+    # An undeclared empty lab fails closed rather than reporting a false green.
+    assert payload["allow_empty_lab"] is False
+    assert payload["evidence_required"] is True
+    assert payload["system_attention_required"] is True
+    assert "system_no_lane_evidence" in payload["aggregate_blockers"]
     assert payload["lane_count"] == len(AUTONOMY_SUPERVISOR_LANES)
     assert payload["lane_state_counts"]["absent"] == len(AUTONOMY_SUPERVISOR_LANES)
     assert set(payload["absent_lanes"]) == {
@@ -114,6 +118,69 @@ def test_all_lanes_absent_reports_no_lane_evidence(tmp_path: Path) -> None:
     assert payload["profit_claim"] == "none"
     assert payload["recommended_next_action"] != ""
     _assert_safety_booleans_false(payload)
+
+
+def test_declared_empty_lab_clears_evidence_required(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report(
+        _config(tmp_path, allow_empty_lab=True)
+    )
+
+    assert payload["system_status"] == "no_lane_evidence"
+    assert payload["allow_empty_lab"] is True
+    assert payload["evidence_required"] is False
+    assert payload["system_attention_required"] is False
+    assert payload["system_blocked"] is False
+    assert "system_no_lane_evidence" not in payload["aggregate_blockers"]
+    _assert_safety_booleans_false(payload)
+
+
+def test_declared_empty_lab_does_not_rescue_a_blocked_lane(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path, allow_empty_lab=True),
+        {"crypto_bounded_paper_probe_review": {"classification": "blocked_by_x"}},
+    )
+
+    assert payload["system_status"] == "blocked"
+    assert payload["system_blocked"] is True
+    assert payload["system_attention_required"] is True
+    assert payload["evidence_required"] is False
+
+
+def test_declared_empty_lab_does_not_rescue_an_unknown_lane(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path, allow_empty_lab=True),
+        {"crypto_bounded_paper_probe_review": {"classification": "surprising_value"}},
+    )
+
+    assert payload["system_status"] == "attention_required"
+    assert payload["system_attention_required"] is True
+    assert payload["evidence_required"] is False
+
+
+def test_both_report_builders_agree_on_empty_lab_flag(tmp_path: Path) -> None:
+    for allow in (False, True):
+        config = _config(tmp_path, allow_empty_lab=allow)
+        from_disk = build_autonomy_supervisor_report(config)
+        from_records = build_autonomy_supervisor_report_from_records(config, {})
+        assert from_disk["allow_empty_lab"] == from_records["allow_empty_lab"] == allow
+        assert from_disk["evidence_required"] == from_records["evidence_required"]
+        assert from_disk["system_attention_required"] == (
+            from_records["system_attention_required"]
+        )
+
+
+def test_allow_empty_lab_rejects_non_bool(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        _config(tmp_path, allow_empty_lab="true")
+
+
+def test_text_render_surfaces_empty_lab_contract(tmp_path: Path) -> None:
+    text = render_autonomy_supervisor_text(
+        build_autonomy_supervisor_report(_config(tmp_path))
+    )
+
+    assert "allow_empty_lab: false" in text
+    assert "evidence_required: true" in text
 
 
 def test_blocked_review_lane_makes_system_blocked(tmp_path: Path) -> None:
@@ -460,10 +527,96 @@ def test_cli_command_registered_and_runs(tmp_path: Path) -> None:
         )
 
     payload = json.loads(buffer.getvalue().strip())
-    assert exit_code == 0
+    # An empty lab is not a pass: the command fails closed without an explicit
+    # --allow-empty-lab declaration.
+    assert exit_code == 1
     assert payload["record_type"] == "autonomy_supervisor_report"
     assert payload["system_status"] == "no_lane_evidence"
+    assert payload["evidence_required"] is True
     _assert_safety_booleans_false(payload)
+
+
+def test_cli_empty_lab_without_declaration_returns_nonzero_exit(tmp_path: Path) -> None:
+    run_log = tmp_path / "supervisor.jsonl"
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = cli_module.main(
+            [
+                "autonomy-supervisor-status",
+                "--run-id",
+                "cli-test",
+                "--as-of",
+                AS_OF,
+                "--lanes-root",
+                str(tmp_path),
+                "--run-log",
+                str(run_log),
+                "--format",
+                "json",
+            ]
+        )
+
+    assert exit_code == 1
+    record = json.loads(run_log.read_text(encoding="utf-8").strip())
+    assert record["system_status"] == "no_lane_evidence"
+    assert record["allow_empty_lab"] is False
+    assert record["evidence_required"] is True
+
+
+def test_cli_declared_empty_lab_returns_zero_exit(tmp_path: Path) -> None:
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = cli_module.main(
+            [
+                "autonomy-supervisor-status",
+                "--run-id",
+                "cli-test",
+                "--as-of",
+                AS_OF,
+                "--lanes-root",
+                str(tmp_path),
+                "--allow-empty-lab",
+                "--format",
+                "json",
+            ]
+        )
+
+    payload = json.loads(buffer.getvalue().strip())
+    assert exit_code == 0
+    assert payload["system_status"] == "no_lane_evidence"
+    assert payload["allow_empty_lab"] is True
+    assert payload["evidence_required"] is False
+    _assert_safety_booleans_false(payload)
+
+
+def test_cli_declared_empty_lab_still_fails_on_blocked_lane(tmp_path: Path) -> None:
+    review_path = tmp_path / "review.json"
+    review_path.write_text(
+        json.dumps({"classification": "blocked_by_operational_evidence"}),
+        encoding="utf-8",
+    )
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = cli_module.main(
+            [
+                "autonomy-supervisor-status",
+                "--run-id",
+                "cli-test",
+                "--as-of",
+                AS_OF,
+                "--lanes-root",
+                str(tmp_path),
+                "--lane",
+                f"crypto_bounded_paper_probe_review={review_path}",
+                "--allow-empty-lab",
+                "--format",
+                "json",
+            ]
+        )
+
+    assert exit_code == 1
+    payload = json.loads(buffer.getvalue().strip())
+    assert payload["system_status"] == "blocked"
 
 
 def test_cli_blocked_lane_returns_nonzero_exit(tmp_path: Path) -> None:

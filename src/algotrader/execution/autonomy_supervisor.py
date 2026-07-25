@@ -381,6 +381,7 @@ class AutonomySupervisorConfig:
     as_of: str
     lanes_root: Path | str = Path("runs")
     lane_artifact_overrides: Mapping[str, Path | str] = field(default_factory=dict)
+    allow_empty_lab: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
@@ -390,6 +391,11 @@ class AutonomySupervisorConfig:
             self,
             "lane_artifact_overrides",
             _frozen_path_map(self.lane_artifact_overrides, "lane_artifact_overrides"),
+        )
+        object.__setattr__(
+            self,
+            "allow_empty_lab",
+            _strict_bool(self.allow_empty_lab, "allow_empty_lab"),
         )
 
 
@@ -587,6 +593,15 @@ def _aggregate(
     for summary in lane_summaries:
         aggregate_blockers.extend(_string_list(summary.get("blockers")))
 
+    # Absence of all lane evidence fails closed: it usually means the scheduled
+    # work never ran, not that the system is healthy. Only an explicit caller
+    # declaration treats an all-absent lab as intentional.
+    evidence_required = (
+        system_status == SYSTEM_NO_LANE_EVIDENCE and not config.allow_empty_lab
+    )
+    if evidence_required:
+        aggregate_blockers.append("system_no_lane_evidence")
+
     return {
         "milestone": _MILESTONE,
         "record_type": _RECORD_TYPE,
@@ -601,10 +616,13 @@ def _aggregate(
         "lane_count": len(lane_summaries),
         "lane_state_counts": {state: counts[state] for state in _STATE_SEVERITY},
         "lanes": lane_summaries,
+        "allow_empty_lab": config.allow_empty_lab,
+        "evidence_required": evidence_required,
         "system_status": system_status,
         "system_blocked": system_status == SYSTEM_BLOCKED,
         "system_attention_required": system_status
-        in (SYSTEM_BLOCKED, SYSTEM_ATTENTION),
+        in (SYSTEM_BLOCKED, SYSTEM_ATTENTION)
+        or evidence_required,
         "blocked_lanes": _lanes_in_state(lane_summaries, STATE_BLOCKED),
         "unknown_lanes": _lanes_in_state(lane_summaries, STATE_UNKNOWN),
         "attention_lanes": _lanes_in_state(lane_summaries, STATE_ATTENTION),
@@ -670,6 +688,8 @@ def render_autonomy_supervisor_text(payload: Mapping[str, object]) -> str:
         f"run_id: {payload.get('run_id', '')}",
         f"as_of: {payload.get('as_of', '')}",
         f"system_status: {payload.get('system_status', '')}",
+        f"allow_empty_lab: {_bool_text(payload.get('allow_empty_lab'))}",
+        f"evidence_required: {_bool_text(payload.get('evidence_required'))}",
         f"system_attention_required: {_bool_text(payload.get('system_attention_required'))}",
         f"recommended_next_action_lane: {payload.get('recommended_next_action_lane', '')}",
         f"recommended_next_action: {payload.get('recommended_next_action', '')}",
@@ -1014,6 +1034,12 @@ def _text(value: object) -> str:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _strict_bool(value: object, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise ValidationError(f"{field_name} must be a bool.")
+    return value
 
 
 def _true_bool(value: object, field_name: str) -> bool:

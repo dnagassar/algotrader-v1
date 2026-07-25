@@ -81,9 +81,14 @@ toward more attention, never toward `nominal`.
 - else (all `absent`) → `no_lane_evidence`
 
 `recommended_next_action` is taken from the highest-severity lane, breaking ties
-by registry order. The command exits `0` for `nominal`, `waiting`, and
-`no_lane_evidence`; `1` for `attention_required` and `blocked`; and `2` on input
-validation error.
+by registry order.
+
+`no_lane_evidence` is amended fail-closed by
+[V5.41b](v5_41b_standalone_supervisor_empty_lab_contract.md): it sets
+`evidence_required` and `system_attention_required` and exits `1` unless the
+caller passes `--allow-empty-lab`. The command exits `0` for `nominal`,
+`waiting`, and a declared empty lab; `1` for `attention_required`, `blocked`,
+and an undeclared empty lab; and `2` on input validation error.
 
 ## Frozen Lane Registry
 

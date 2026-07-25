@@ -1328,12 +1328,19 @@ the surfaced blockers, and one offline next action. The whole-system
 `system_status` is `blocked` if any lane is blocked, `attention_required` if any
 lane is unknown, attention, or stale, `waiting` if any lane is waiting, `nominal`
 if at least one lane is healthy, and `no_lane_evidence` when nothing has run yet.
-Exit code is `0` for nominal/waiting/no_lane_evidence, `1` for
-attention/blocked, and `2` on input error, so it is schedulable.
+
+`no_lane_evidence` fails closed. A lab with no evidence at all almost always
+means the scheduled work never ran, so the command reports
+`evidence_required: true`, sets `system_attention_required`, and exits `1`. Pass
+`-AllowEmptyLab` to declare an intentionally empty lab and return that one case
+to exit `0`; the switch never suppresses a blocked, unknown, attention, or stale
+lane. Exit code is `0` for nominal/waiting and for a declared empty lab, `1` for
+attention/blocked and for an undeclared empty lab, and `2` on input error, so it
+is schedulable.
 
 In a clean checkout every lane reads `absent` because its `runs/` evidence is
-generated and gitignored; run the individual lane commands first to seed
-evidence. To point a lane at an exact artifact instead of its default path, pass
+generated and gitignored, so the first run exits `1` by design; run the
+individual lane commands first to seed evidence. To point a lane at an exact artifact instead of its default path, pass
 `-Lane "lane_id=path"` (repeatable), for example:
 
 ```powershell

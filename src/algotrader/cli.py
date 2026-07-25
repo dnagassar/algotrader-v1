@@ -1677,6 +1677,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     autonomy_supervisor_parser.add_argument(
+        "--allow-empty-lab",
+        action="store_true",
+        default=False,
+        help=(
+            "Explicitly treat an all-absent lane set as an intentional empty "
+            "lab. Without this flag, no_lane_evidence fails closed."
+        ),
+    )
+    autonomy_supervisor_parser.add_argument(
         "--run-log",
         default=None,
         help="Write exactly one deterministic supervisor JSONL record to PATH.",
@@ -5968,6 +5977,7 @@ def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
                 as_of=args.as_of,
                 lanes_root=args.lanes_root,
                 lane_artifact_overrides=overrides,
+                allow_empty_lab=args.allow_empty_lab,
             )
         )
         if args.run_log is not None:
@@ -5982,6 +5992,9 @@ def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
         print(render_autonomy_supervisor_text(payload))
 
     if payload["system_status"] in ("blocked", "attention_required"):
+        return 1
+    # An undeclared empty lab fails closed rather than reporting a false green.
+    if payload["evidence_required"]:
         return 1
     return 0
 

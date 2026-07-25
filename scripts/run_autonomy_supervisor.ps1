@@ -8,7 +8,8 @@ readiness record. The command is credential-free, network-free, broker-free, and
 read-only. It refuses to run if a paper/live profile or any Alpaca credential or
 network-test variable is loaded so secrets never reach this reporting surface.
 No wall clock is read; -AsOf is the only time source, keeping output
-deterministic.
+deterministic. A lane set with no evidence at all fails closed; pass
+-AllowEmptyLab to declare an intentionally empty lab.
 #>
 
 [CmdletBinding()]
@@ -19,6 +20,7 @@ param(
     [string]$AsOf,
     [string]$LanesRoot = "runs",
     [string[]]$Lane = @(),
+    [switch]$AllowEmptyLab,
     [string]$RunLog,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -68,6 +70,9 @@ foreach ($Override in $Lane) {
     if (-not [string]::IsNullOrWhiteSpace($Override)) {
         $Arguments += @("--lane", $Override)
     }
+}
+if ($AllowEmptyLab.IsPresent) {
+    $Arguments += "--allow-empty-lab"
 }
 if (-not [string]::IsNullOrWhiteSpace($RunLog)) {
     $Arguments += @("--run-log", $RunLog)
