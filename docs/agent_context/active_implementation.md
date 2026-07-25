@@ -6,6 +6,7 @@
 - Review disposition: `accepted_after_corrections`.
 - Implementation correction commit: `3818224` (`V5.42 review: correct stale routing and secure interlock`).
 - Standing paper-authority policy commit: `c3d86d2` (`policy: authorize bounded paper operations for all agents`).
+- Fail-closed lane-evidence correction commit: `d2e6cfc` (`V5.42: fail closed without lane evidence`).
 - Operator action required for this offline implementation: `false`.
 - Merge to `main`: not performed in this takeover; the current branch remains the reviewed source.
 - This is not strategy-profit, paper-order, broker-mutation, activation, or live-trading evidence.
@@ -16,8 +17,8 @@
 - Original Stage 3 commit: `38b90835bbdf181d892699a3d9b165cc691f7b8a`.
 - Review correction commit: `3818224`.
 - Base/main during review: `main@82b1e07` / `origin/main@82b1e07`.
-- Policy-update author/temporary dirty-file owner: Codex `/root`. The canonical
-  policy update is committed at `c3d86d2`; this handoff is the sole remaining
+- Fail-closed correction author/temporary dirty-file owner: Codex `/root`. The
+  implementation is committed at `d2e6cfc`; this handoff is the sole remaining
   finalization change until its own commit. After that commit, no file has a
   dirty owner.
 - The shared editable Python install was restored to
@@ -28,6 +29,12 @@
 
 - `autonomy-self-refresh-cycle` deterministically composes supervisor → planner
   → gated offline executor → supervisor and reports outcome/convergence.
+- An all-absent lane set now fails closed by default as
+  `cycle_outcome=evidence_required`, `evidence_required=true`,
+  `converged=false`, and CLI exit `1`.
+- An intentionally empty bootstrap lab can opt in with
+  `--allow-empty-lab`/`-AllowEmptyLab`; the exception is recorded as
+  `allow_empty_lab=true` and is covered by builder, CLI, and wrapper tests.
 - Daily-cycle evidence older than 30h remains explicitly `stale`, including age
   and membership in `stale_lanes`, but routes to
   `operator_refresh_offline_daily_cycle_inputs` because the real M446 command is
@@ -60,6 +67,9 @@
   dispatcher/interlock failure. The wrapper passed alone; the deterministic
   boundary conflict was fixed without weakening the interlock. The final full
   run is green.
+- The operator runbook still claimed stale M444 evidence triggered the pinned
+  M446 rerun. Source and tests prove M446 writes M447 and no current lane action
+  reaches the allowlist; the runbook now records the verified inert contract.
 
 ## Files In The Review Correction
 
@@ -76,6 +86,16 @@
 - `docs/OPERATOR_RUNBOOK.md`
 - `docs/project_checkpoint.md`
 
+## Files In The Fail-Closed Correction
+
+- `src/algotrader/execution/autonomy_self_refresh_cycle.py`
+- `src/algotrader/cli.py`
+- `scripts/run_autonomy_self_refresh_cycle.ps1`
+- `tests/unit/test_autonomy_self_refresh_cycle.py`
+- `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`
+- `docs/deterministic_core.md`
+- `docs/OPERATOR_RUNBOOK.md`
+
 ## Verification Evidence
 
 - Credential/profile preflight: `APP_PROFILE=paper` false; all Alpaca credential
@@ -91,9 +111,15 @@
 - Policy-update focused dependency suite: `34 passed`. The canonical standard
   verifier remained `PASS` with `99 passed`; the full suite was not rerun for
   the policy-only documentation change.
-- Repository-owned bounded full suite: `9,933` collected, `9,929 passed`,
+- Current fail-closed autonomy/dependency suite: `131 passed`.
+- Repository-owned bounded full suite: `9,939` collected, `9,935 passed`,
   `4 skipped`, `0 failures`, `0 errors`; collection and execution equivalence
   passed across all eight shards.
+- The outer `verify_offline.ps1 -Full` shell call timed out at 15 minutes while
+  its verified child tree continued. All eight JUnit shards completed green, the
+  runner parent completed, and a separate collect-only run exited `0` with
+  `collection_equivalence=PASS`; the timeout is recorded as a wrapper-duration
+  limitation, not test-failure evidence.
 - `git diff --check`: pass before the implementation commit.
 - Network/broker access during this review: none. HTTP behavior used injected
   test openers only. Broker mutation, paper submit/cancel/replace/close, and live
@@ -119,9 +145,12 @@
 
 ## Unresolved Risks
 
-- `no_lane_evidence` still counts as converged and exits `0`; an empty or wrong
-  `--lanes-root` can therefore appear green. Consumers must inspect lane evidence
-  until this is made fail-closed.
+- The explicit `--allow-empty-lab` exception is a caller assertion, not proof of
+  path intent. Misuse can still make a wrong all-absent root converge, although
+  the exception is now visible and auditable in the record.
+- The standalone `autonomy-supervisor` command retains its historical exit `0`
+  for `no_lane_evidence`; the self-refresh cycle now fails closed, but direct
+  supervisor consumers must still inspect status.
 - Mapping operator-only stale remediation to `waiting` avoids futile retries but
   makes `stale_lanes` and operator-gated actions essential alert inputs; status
   alone is insufficient.
@@ -132,20 +161,22 @@
 
 ## Contribution Toward The Autonomous Research Trader
 
-This correction removes false progress from the control loop. The system now
+These corrections remove false progress from the control loop. The system now
 recognizes when it cannot refresh evidence, preserves the stale signal, produces
 an actionable operator route, and stops safely instead of replaying an unrelated
-historical milestone. The secure-provider repair also restores a fail-closed,
+historical milestone. It also refuses to treat a wrong or empty lane root as
+successful convergence unless the caller records an explicit empty-lab
+exception. The secure-provider repair restores a fail-closed,
 credential-redacted path for future authorized read-only data accrual. Together
 these improve trustworthy observe/decide/control infrastructure without claiming
 trading autonomy that does not exist.
 
 ## Next Highest-Leverage Safe Action
 
-Make `no_lane_evidence` fail closed for unattended self-refresh use: distinguish
-an intentionally empty lab from a wrong/empty lanes root, return a non-converged
-or explicit `evidence_required` outcome, add CLI/exit-code tests, and update the
-operator contract. This is fully offline and requires no broker, network,
+Align the standalone `autonomy-supervisor` CLI with the self-refresh safety
+contract: fail closed by default when every lane is absent, add the same explicit
+empty-lab exception, preserve the report schema, and update CLI/wrapper tests and
+operator documentation. This is fully offline and requires no broker, network,
 credential, paper-mutation, or live-capital authority.
 
 After that correction is independently verified, the reviewed branch may be
