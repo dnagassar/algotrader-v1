@@ -2,8 +2,9 @@
 
 ## Classification
 
-- Milestone: `V5.41b — standalone supervisor fail-closed empty-lab contract`.
-- Status / Classification: `implemented_and_merged`.
+- Milestone: `V5.41b — standalone supervisor fail-closed empty-lab contract`,
+  then `V5.40a — secure-provider interlock profile conflict`.
+- Status / Classification: `implemented_and_merged_full_verifier_green`.
 - Date: `2026-07-25`.
 - Operator action required: `false`.
 - This checkpoint is not canary, broker, paper, activation, or trading
@@ -20,14 +21,15 @@
 
 ## Exact Repository State
 
-- `main` and `origin/main`: `c25e509`.
 - Takeover base: `3336e9a` → fast-forwarded to `82b1e07` on custody claim.
 - Landed this session, in order:
   - `9b56e9e` — takeover checkpoint (custody only).
   - `9f3d77a` — V5.41b frozen contract.
   - `3fa2acb` — V5.41b implementation.
   - `c25e509` — daily paper-lab test shim portability repair.
-- All four reached `main` by fast-forward. No reset, clean, stash, rebase,
+  - `572de3f` — V5.41b record.
+  - `ba92ca7` — V5.40a ported interlock repair.
+- Every one reached `main` by fast-forward. No reset, clean, stash, rebase,
   restore, branch switch, or force update occurred.
 
 ## Implemented Contract
@@ -77,32 +79,65 @@ Second run: `collection_equivalence=PASS`; shards 1, 2, 4-8 exit `0` with no
 timeout; shard 3 reports `1 failed, 1239 passed`. The single remaining failure
 is recorded below.
 
-## Known Pre-Existing Red
+## V5.40a — Interlock Red Closed
 
-- `tests/unit/test_v535_secure_dispatcher.py::test_child_side_provider_resolves_only_at_read_only_http_boundary`
-- `LiveCapitalGateError: live-capital interlock refused execution boundary:
-  app_profile_not_paper:dev`
-- Cause: V5.41 composed `require_live_capital_interlock` into
-  `crypto_history_refresh_adapter.py` ahead of the market-data fetch. That
-  interlock reads `APP_PROFILE` from the environment, but this V5.35 test
-  injects `app_profile="paper"` as a function parameter, so under the
-  verifier's scrubbed non-paper shell the interlock refuses before the test
-  reaches its assertions.
-- Reproduced at `9b56e9e`. Predates and is independent of V5.41b.
-- A fix already exists on the unmerged `claude/v5.42-stage3-self-refresh`
-  branch in `3818224`, which changes both
-  `crypto_history_refresh_adapter.py` and `test_v535_secure_dispatcher.py`.
-- Operator decision on 2026-07-25: land V5.41b and the shim repair now rather
-  than block every merge on a red that predates them and is owned by another
-  lane.
+The long-standing red
+`tests/unit/test_v535_secure_dispatcher.py::test_child_side_provider_resolves_only_at_read_only_http_boundary`
+(`LiveCapitalGateError: app_profile_not_paper:dev`) is closed.
+
+Cause: V5.41 composed `require_live_capital_interlock` into
+`crypto_history_refresh_adapter.py` ahead of the market-data fetch. That
+interlock derives the profile from the environment, but the V5.35 secure
+dispatcher deliberately strips profile and credential variables from the child
+and passes the validated paper profile and endpoints as explicit non-secret
+arguments. Two sources of truth, so the interlock saw the default `dev`
+profile and refused a legitimate read-only path.
+
+Repair, ported from `3818224` on `claude/v5.42-stage3-self-refresh`:
+
+1. the adapter builds a non-secret interlock view layering the explicit
+   `app_profile` and `paper_endpoint` in **only** where the environment does
+   not already supply them, so an ambient live signal can never be masked by
+   an argument;
+2. profile, endpoint, and live-enable conflicts are refused before a
+   credential lease opens, deferring only credential presence; and
+3. inside the lease callback the resolved values bind to a temporary in-memory
+   view so the complete canonical check runs again immediately before
+   read-only HTTP.
+
+A refusal leaves both provider open count and HTTP call count at zero. The fix
+makes the profile source explicit rather than weakening the gate. The runbook
+note and V5.40 contract amendment shipped with it, since `main` had been
+carrying the interlock without that part of its contract.
+
+### Full Verifier — PASS
+
+- Verified commit: `ba92ca7`
+- Exit code: `0`
+- `collection_equivalence`: `PASS`; `execution_equivalence`: `PASS`
+- Shards `1`-`8`: all exit `0`, no timeout, `708.35s`-`879.57s`
+- Aggregate: `9,919` tests; `9,914` passed; `5` skipped; `0` failures;
+  `0` errors
+- `bounded_full_suite`: `PASS`; overall offline verification: `PASS`
+
+This is the first green `-Full` on this line of work. Across the session the
+suite went `5` failures (shim) to `1` (interlock) to `0`.
 
 ## Merge Interaction With V5.42
 
-`3818224` also touches `autonomy_supervisor.py`, adding
-`stale_requires_operator_action` to `LaneSpec` and the lane registry. That is
-orthogonal to V5.41b, which touches `AutonomySupervisorConfig`, `_aggregate`,
-and the text renderer. Expect textual conflicts when V5.42 lands; the two
-changes are semantically independent and both should survive resolution.
+Two expected conflicts when `claude/v5.42-stage3-self-refresh` lands:
+
+1. `crypto_history_refresh_adapter.py` and `test_v535_secure_dispatcher.py` —
+   duplicate fix. `main` now carries `3818224`'s exact content for both files,
+   so either side may be taken.
+2. `autonomy_supervisor.py` — `3818224` adds
+   `stale_requires_operator_action` to `LaneSpec` and the lane registry, while
+   V5.41b touches `AutonomySupervisorConfig`, `_aggregate`, and the text
+   renderer. Semantically independent; both must survive resolution.
+
+V5.42's `d2e6cfc` also adds `--allow-empty-lab` to the self-refresh cycle. That
+is the same contract V5.41b applied to the standalone supervisor, and the two
+are compatible by construction.
 
 ## Safety And External Effects
 
@@ -120,11 +155,12 @@ All tests used deterministic offline fixtures and fake boundaries.
 
 ## Stopping Condition / Next Steps
 
-V5.41b is merged. No further implementation is claimed in this tree. Open items
-owned elsewhere:
+V5.41b and V5.40a are merged and `main` has a green `-Full`. No further
+implementation is claimed in this tree.
 
-1. the interlock red above, pending the V5.42 lane; and
-2. the unreachable `all_lanes_absent_run_lane_commands_to_seed_evidence`
-   recommendation in `_aggregate` — `_highest_priority_lane` always returns a
-   lane, so an empty lab shows the first registry lane's absent action instead
-   of the intended whole-system guidance.
+Open item owned elsewhere: the unreachable
+`all_lanes_absent_run_lane_commands_to_seed_evidence` recommendation in
+`_aggregate` — `_highest_priority_lane` always returns a lane, so an empty lab
+shows the first registry lane's absent action instead of the intended
+whole-system guidance. A separate session is working this; expect it to touch
+`_aggregate` and `_highest_priority_lane`, both of which V5.41b also edited.
