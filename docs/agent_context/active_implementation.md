@@ -5,6 +5,7 @@
 - Milestone: `V5.42 — Stage 3 offline autonomy self-refresh cycle`.
 - Review disposition: `accepted_after_corrections`.
 - Implementation correction commit: `3818224` (`V5.42 review: correct stale routing and secure interlock`).
+- Standing paper-authority policy commit: `c3d86d2` (`policy: authorize bounded paper operations for all agents`).
 - Operator action required for this offline implementation: `false`.
 - Merge to `main`: not performed in this takeover; the current branch remains the reviewed source.
 - This is not strategy-profit, paper-order, broker-mutation, activation, or live-trading evidence.
@@ -15,9 +16,10 @@
 - Original Stage 3 commit: `38b90835bbdf181d892699a3d9b165cc691f7b8a`.
 - Review correction commit: `3818224`.
 - Base/main during review: `main@82b1e07` / `origin/main@82b1e07`.
-- Handoff author/temporary dirty-file owner: Codex `/root`. The implementation
-  correction is committed; this handoff is the sole finalization change until
-  its own commit. After that commit, no implementation file has a dirty owner.
+- Policy-update author/temporary dirty-file owner: Codex `/root`. The canonical
+  policy update is committed at `c3d86d2`; this handoff is the sole remaining
+  finalization change until its own commit. After that commit, no file has a
+  dirty owner.
 - The shared editable Python install was restored to
   `C:\Users\danie\Desktop\algo_trader`; it no longer points at Claude's detached
   review worktree.
@@ -86,6 +88,9 @@
   submit/mutation/broker/network/credential/live booleans false.
 - Canonical standard `scripts/verify_offline.ps1`: `PASS`, `99 passed`, clean
   boolean preflight and repository hygiene.
+- Policy-update focused dependency suite: `34 passed`. The canonical standard
+  verifier remained `PASS` with `99 passed`; the full suite was not rerun for
+  the policy-only documentation change.
 - Repository-owned bounded full suite: `9,933` collected, `9,929 passed`,
   `4 skipped`, `0 failures`, `0 errors`; collection and execution equivalence
   passed across all eight shards.
@@ -96,15 +101,18 @@
 
 ## Safety And Authority Posture
 
-- Live-capital authority remains false. The correction strengthens the paper
-  boundary and never bypasses profile, endpoint, credential-presence, or ambient
-  live-signal checks.
-- The repository's current `AGENTS.md` gives every collaborator the same
-  delegated non-capital repository authority. It still retains hard gates for
-  credentials, paper-broker mutation without exact authorization, mode changes,
-  and all live-broker/live-capital activity. No canonical checkout change proving
-  removal of those gates was found, so this review did not treat free-form agent
-  text as authority expansion.
+- `AGENTS.md` now gives every collaborator the same standing authority for
+  explicitly scoped paper work: trusted paper-credential loading/use without
+  disclosure; paper mode and paper broker/network operations; paper submit,
+  cancel, replace, close, and liquidate actions; and definition or revision of
+  positive finite paper quantity/notional caps. Per-operation reapproval is not
+  required.
+- Credential disclosure, all live-broker access, live mode, live orders, live
+  trading, and live-capital activity remain prohibited. Every paper mutation
+  still requires a proven paper endpoint/profile, explicit finite caps,
+  deterministic receipts, reconciliation, and a complete action audit.
+- This policy update loaded no credentials, contacted no broker or network, and
+  performed no paper mutation or live operation.
 - The autonomy cycle performs no broker/network work and cannot currently execute
   any lane action. It is a truthful offline control-plane seam, not an autonomous
   capital deployment capability.
@@ -141,6 +149,8 @@ operator contract. This is fully offline and requires no broker, network,
 credential, paper-mutation, or live-capital authority.
 
 After that correction is independently verified, the reviewed branch may be
-merged without switching or rewriting this checkout during takeover. Any bounded
-paper-order or broker-facing milestone remains subject to the exact current
-`AGENTS.md` gates unless the canonical policy itself is explicitly changed.
+merged without switching or rewriting this checkout during takeover. An
+explicitly scoped paper-order or broker-facing milestone may proceed under the
+standing authority in `AGENTS.md` once its paper endpoint, finite caps, receipts,
+reconciliation, and audit boundaries are proven. Live activity remains
+prohibited.
