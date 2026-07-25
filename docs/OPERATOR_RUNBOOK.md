@@ -1341,6 +1341,14 @@ be used to make an unknown lane root appear healthy. Exit code is `0` for
 nominal/waiting, `0` for no_lane_evidence only with `-AllowEmptyLab` (otherwise
 `1`), `1` for attention/blocked, and `2` on input error, so it is schedulable.
 
+When `evidence_required=true` the report also carries
+`system_attention_required=true` and the aggregate blocker
+`system_no_lane_evidence`. Before V5.42a those two fields read as though nothing
+needed attention and nothing blocked, even while the exit code correctly said
+`1`. If you have automation or notes that read the record's rollup booleans
+rather than the exit code, this is the field pair to trust now. A declared empty
+lab (`-AllowEmptyLab`) keeps both quiet, as before.
+
 Staleness splits in two. A lane whose `stale_requires_operator_action` is true
 (today: `spy_offline_daily_cycle` and `spy_market_data_soak`) has no offline
 command that could refresh it, so when it goes stale the system reports `waiting`
@@ -1492,6 +1500,13 @@ execution failure or any non-converged cycle, and `0` otherwise. The same
 credential/profile refusal and safety guarantees as the executor apply. The
 detailed contract is in
 `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
+
+`refreshed` versus `still_pending` is decided by comparing the before/after
+system-status severity, where V5.42a ranks `no_lane_evidence` as the most severe
+status. A cycle that lost its lane evidence therefore reports `still_pending`,
+never `refreshed`, and a cycle that seeded an empty lab reports `refreshed`.
+Before V5.42a both read the opposite way. An unrecognized system status is now
+refused outright rather than assumed healthy.
 
 What to expect today: no lane state currently emits an allowlisted action, so
 `-Apply` executes nothing and the cycle reports `noop_no_action` with
