@@ -2,186 +2,184 @@
 
 ## Classification
 
-- Milestone: `V5.42 — Stage 3 offline autonomy self-refresh cycle`.
-- Review disposition: `accepted_after_corrections`.
-- Implementation correction commit: `3818224` (`V5.42 review: correct stale routing and secure interlock`).
-- Standing paper-authority policy commit: `c3d86d2` (`policy: authorize bounded paper operations for all agents`).
-- Fail-closed lane-evidence correction commit: `d2e6cfc` (`V5.42: fail closed without lane evidence`).
+- Milestone: `V5.37 correction — standalone autonomy-supervisor-status fail-closed lane evidence`.
+- Review disposition: not yet independently reviewed.
+- Implementation commit: `f3a9757` (`V5.37: fail closed on no_lane_evidence in
+  autonomy-supervisor-status`), on top of `d2994545` (`docs: hand off
+  fail-closed lane evidence`).
 - Operator action required for this offline implementation: `false`.
-- Merge to `main`: not performed in this takeover; the current branch remains the reviewed source.
-- This is not strategy-profit, paper-order, broker-mutation, activation, or live-trading evidence.
+- Merge to `main`: not performed; `claude/v5.42-stage3-self-refresh` remains
+  the reviewed source branch, now advanced by one commit.
+- This is not strategy-profit, paper-order, broker-mutation, activation, or
+  live-trading evidence.
 
 ## Current Checkout And Ownership
 
-- Branch: `claude/v5.42-stage3-self-refresh`.
-- Original Stage 3 commit: `38b90835bbdf181d892699a3d9b165cc691f7b8a`.
-- Review correction commit: `3818224`.
-- Base/main during review: `main@82b1e07` / `origin/main@82b1e07`.
-- Fail-closed correction author/temporary dirty-file owner: Codex `/root`. The
-  implementation is committed at `d2e6cfc`; this handoff is the sole remaining
-  finalization change until its own commit. After that commit, no file has a
-  dirty owner.
-- The shared editable Python install was restored to
-  `C:\Users\danie\Desktop\algo_trader`; it no longer points at Claude's detached
-  review worktree.
+- Implementation performed in an isolated worktree
+  (`.claude/worktrees/autonomy-supervisor-failclosed`, local branch
+  `worktree-autonomy-supervisor-failclosed`) branched from the primary
+  checkout's `claude/v5.42-stage3-self-refresh` at `d2994545` after a required
+  worktree-isolation reset (the worktree tool's default `fresh` base-ref
+  pointed at `origin/main@82b1e07` and was explicitly corrected before any
+  edit).
+- The single commit `f3a9757` was pushed as a clean fast-forward directly onto
+  `origin/claude/v5.42-stage3-self-refresh` (`38b9083..f3a9757`). No merge, no
+  rebase, no force-push. `gh` (GitHub CLI) is not installed in this
+  environment, so no PR was opened; the branch push is the transfer mechanism
+  per AGENTS.md's takeover/yield protocol ("only coherent feature-branch
+  commits followed by an authorized push ... are reliable").
+- The primary checkout at `C:\Users\danie\Desktop\algo_trader` was left
+  untouched (still locally at `d2994545` on `claude/v5.42-stage3-self-refresh`
+  as of this handoff); it will fast-forward cleanly to `f3a9757` on the next
+  `git pull`/`fetch`. No dirty-file owner remains — the worktree is clean at
+  `f3a9757` with nothing uncommitted.
 
 ## Capability Actually Proven
 
-- `autonomy-self-refresh-cycle` deterministically composes supervisor → planner
-  → gated offline executor → supervisor and reports outcome/convergence.
-- An all-absent lane set now fails closed by default as
-  `cycle_outcome=evidence_required`, `evidence_required=true`,
-  `converged=false`, and CLI exit `1`.
-- An intentionally empty bootstrap lab can opt in with
-  `--allow-empty-lab`/`-AllowEmptyLab`; the exception is recorded as
-  `allow_empty_lab=true` and is covered by builder, CLI, and wrapper tests.
-- Daily-cycle evidence older than 30h remains explicitly `stale`, including age
-  and membership in `stale_lanes`, but routes to
-  `operator_refresh_offline_daily_cycle_inputs` because the real M446 command is
-  pinned to 2026-06-08 and writes M447, not the supervised M444 artifact.
-- Operator-only stale remedies aggregate as `waiting`; on the real CLI stale
-  scenario, `--apply` produced `waiting → waiting`, `noop_no_action`,
-  `converged=true`, exit `0`, zero eligible actions, and zero executions while
-  preserving the stale lane and operator gate.
-- The current lane registry emits no action present in
-  `AUTONOMY_EXECUTOR_ALLOWLIST`; this is proved across every registered lane
-  action. The executor is therefore intentionally inert today.
-- The secure-provider read-only market-data child again passes the live-capital
-  interlock: ambient live profile/endpoint/enablement signals refuse before the
-  credential lease; the complete credential/profile/endpoint interlock repeats
-  inside the lease callback immediately before the mocked read-only HTTP opener.
+- The standalone `autonomy-supervisor-status` CLI now fails closed on an
+  all-absent lane set by default: `system_status=no_lane_evidence` now also
+  carries `evidence_required=true` on the report, and the CLI exits `1`
+  instead of the prior historical `0`.
+- `--allow-empty-lab` (library: `build_autonomy_supervisor_report(config,
+  allow_empty_lab=True)`; wrapper: `-AllowEmptyLab` on
+  `scripts/run_autonomy_supervisor.ps1`) is the explicit, auditable exception:
+  it records `allow_empty_lab=true`, flips `evidence_required=false`, and the
+  CLI exits `0` for that case. This mirrors the V5.42 self-refresh cycle's
+  identically-named exception exactly.
+- The report schema gained exactly two new boolean fields
+  (`allow_empty_lab`, `evidence_required`); every prior field is unchanged.
+  Both `build_autonomy_supervisor_report` and
+  `build_autonomy_supervisor_report_from_records` take the new flag as a
+  keyword-only argument defaulting to `False`, so the two other consumers of
+  the raw report (`autonomy-next-plan`, `autonomy-self-refresh-cycle`, which
+  already implement their own `no_lane_evidence` handling on top of the raw
+  report) are unaffected — proven by the full unmodified next-plan/executor/
+  self-refresh focused suites staying green.
+- Nominal, waiting, attention_required, blocked, validation-error (exit `2`),
+  staleness (including the operator-gated-stale → `waiting` rollup), planner,
+  and executor behavior are unchanged — proven by the full existing
+  `test_autonomy_next_plan.py`, `test_autonomy_offline_executor.py`, and
+  `test_autonomy_self_refresh_cycle.py` suites passing unmodified.
+- `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`,
+  `docs/deterministic_core.md`, and `docs/OPERATOR_RUNBOOK.md` no longer claim
+  the standalone supervisor "exits 0 for nominal/waiting/no_lane_evidence";
+  each now documents the fail-closed default and the `--allow-empty-lab`
+  exception, cross-referencing the V5.42 self-refresh cycle's identical
+  contract.
 
-## Evidence Conflicts Resolved
-
-- Claude's report described nine unstaged files in a detached review worktree,
-  not capability present in the original current checkout. The original checkout
-  was clean at `38b9083` and still carried the false M446 refresh route.
-- The original handoff claimed stale M444 evidence could trigger an allowlisted
-  refresh. Source inspection disproved that: M446 hard-pins `2026-06-08` and
-  writes only the M447 manifest.
-- Claude reported `124 passed`; the original current checkout independently
-  produced `133 passed` for its older contract. Corrected focused evidence is
-  recorded below.
-- Claude's full-gate account was incomplete. The first authoritative sharded run
-  found one load-only PowerShell wrapper timeout and one deterministic secure-
-  dispatcher/interlock failure. The wrapper passed alone; the deterministic
-  boundary conflict was fixed without weakening the interlock. The final full
-  run is green.
-- The operator runbook still claimed stale M444 evidence triggered the pinned
-  M446 rerun. Source and tests prove M446 writes M447 and no current lane action
-  reaches the allowlist; the runbook now records the verified inert contract.
-
-## Files In The Review Correction
+## Files In This Correction
 
 - `src/algotrader/execution/autonomy_supervisor.py`
-- `src/algotrader/execution/autonomy_next_plan.py`
-- `src/algotrader/execution/crypto_history_refresh_adapter.py`
-- `tests/unit/test_autonomy_supervisor.py`
-- `tests/unit/test_autonomy_next_plan.py`
-- `tests/unit/test_autonomy_offline_executor.py`
-- `tests/unit/test_autonomy_self_refresh_cycle.py`
-- `tests/unit/test_v535_secure_dispatcher.py`
-- `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`
-- `docs/deterministic_core.md`
-- `docs/OPERATOR_RUNBOOK.md`
-- `docs/project_checkpoint.md`
-
-## Files In The Fail-Closed Correction
-
-- `src/algotrader/execution/autonomy_self_refresh_cycle.py`
 - `src/algotrader/cli.py`
-- `scripts/run_autonomy_self_refresh_cycle.ps1`
-- `tests/unit/test_autonomy_self_refresh_cycle.py`
-- `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`
+- `scripts/run_autonomy_supervisor.ps1`
+- `tests/unit/test_autonomy_supervisor.py`
+- `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`
 - `docs/deterministic_core.md`
 - `docs/OPERATOR_RUNBOOK.md`
 
 ## Verification Evidence
 
-- Credential/profile preflight: `APP_PROFILE=paper` false; all Alpaca credential
-  aliases absent; network-test and paper-integration flags false. No values read
-  or printed.
-- Corrected autonomy/interlock/dependency focused suite: `163 passed`; final
-  secure-boundary focused suite after the endpoint-key case: `73 passed`.
-- Exact stale real-CLI `--apply` scenario: exit `0`, `waiting → waiting`,
-  `noop_no_action`, `converged=true`, zero eligible/executed actions; all
-  submit/mutation/broker/network/credential/live booleans false.
-- Canonical standard `scripts/verify_offline.ps1`: `PASS`, `99 passed`, clean
-  boolean preflight and repository hygiene.
-- Policy-update focused dependency suite: `34 passed`. The canonical standard
-  verifier remained `PASS` with `99 passed`; the full suite was not rerun for
-  the policy-only documentation change.
-- Current fail-closed autonomy/dependency suite: `131 passed`.
-- Repository-owned bounded full suite: `9,939` collected, `9,935 passed`,
-  `4 skipped`, `0 failures`, `0 errors`; collection and execution equivalence
-  passed across all eight shards.
-- The outer `verify_offline.ps1 -Full` shell call timed out at 15 minutes while
-  its verified child tree continued. All eight JUnit shards completed green, the
-  runner parent completed, and a separate collect-only run exited `0` with
-  `collection_equivalence=PASS`; the timeout is recorded as a wrapper-duration
-  limitation, not test-failure evidence.
-- `git diff --check`: pass before the implementation commit.
-- Network/broker access during this review: none. HTTP behavior used injected
-  test openers only. Broker mutation, paper submit/cancel/replace/close, and live
-  activity: none.
+- Credential/profile preflight (booleans only, no values read or printed):
+  `APP_PROFILE_is_paper=false`; `ALPACA_API_KEY_loaded=false`;
+  `ALPACA_API_SECRET_KEY_loaded=false`; `ALPACA_SECRET_KEY_loaded=false`;
+  `APCA_API_KEY_ID_loaded=false`; `APCA_API_SECRET_KEY_loaded=false`;
+  `ALGO_TRADER_ALLOW_NETWORK_TESTS_enabled=false`;
+  `RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled=false`.
+- Focused autonomy/dependency-direction suite (supervisor + next-plan +
+  offline executor + self-refresh cycle + dependency-direction): `138 passed`.
+- Standalone `test_autonomy_supervisor.py` alone: `35 passed` (includes 8 new
+  or updated tests covering the fail-closed default, the explicit exception at
+  both the build-function and CLI layers, the non-bool rejection, and a static
+  assertion that the PowerShell wrapper forwards `-AllowEmptyLab` /
+  `--allow-empty-lab`).
+- Canonical `scripts\verify_offline.ps1` (non-`-Full`): `PASS`, targeted guard
+  suite `99 passed` (dependency-direction, broker-mutation-surface-invariant,
+  default-network-guard, strategy-challenger-factory, preview-candidate-review),
+  clean credential/profile preflight and repository-hygiene checks.
+- Repository-owned bounded exact-node full suite (`scripts\verify_offline.ps1
+  -Full`, run in the background with an ample timeout given the ~17-minute
+  historical duration): `bounded_full_suite=PASS`. `canonical_nodeids=9946`
+  across `494` files, `8` shards, `collection_equivalence=PASS`,
+  `execution_equivalence=PASS`. Aggregate:
+  `tests:9946, passed:9941, skipped:5, failures:0, errors:0`. All eight shards
+  exited `0` with no timeouts (wall times 640s-884s each).
+- `git diff --check`: clean (no whitespace errors), both before and after the
+  full-suite run.
+- `git status --short`: clean after commit.
+- `git diff --name-only HEAD -- src`: empty after commit (both changed `src`
+  files - `cli.py`, `autonomy_supervisor.py` - are committed in `f3a9757`).
+- `git ls-files --others --exclude-standard src tests`: empty (no untracked
+  src/tests files).
+- Network/broker access during this work: none. No HTTP, no socket, no broker
+  SDK import in the changed modules (unchanged forbidden-import/forbidden-call
+  source-scan test in `test_autonomy_supervisor.py` still passes against the
+  edited module). Paper mutation: none. Effective paper caps: not applicable
+  (no order/paper-mutation path touched). Receipts/reconciliation: not
+  applicable. Live-authorized state: `false` (unchanged; every report record
+  still fixes `submitted`, `mutated`, `broker_action_performed`,
+  `broker_mutation_allowed`, `network_access_attempted`,
+  `credential_access_attempted`, `live_authorized` to `false`).
 
 ## Safety And Authority Posture
 
-- `AGENTS.md` now gives every collaborator the same standing authority for
-  explicitly scoped paper work: trusted paper-credential loading/use without
-  disclosure; paper mode and paper broker/network operations; paper submit,
-  cancel, replace, close, and liquidate actions; and definition or revision of
-  positive finite paper quantity/notional caps. Per-operation reapproval is not
-  required.
-- Credential disclosure, all live-broker access, live mode, live orders, live
-  trading, and live-capital activity remain prohibited. Every paper mutation
-  still requires a proven paper endpoint/profile, explicit finite caps,
-  deterministic receipts, reconciliation, and a complete action audit.
-- This policy update loaded no credentials, contacted no broker or network, and
-  performed no paper mutation or live operation.
-- The autonomy cycle performs no broker/network work and cannot currently execute
-  any lane action. It is a truthful offline control-plane seam, not an autonomous
-  capital deployment capability.
+- This slice is offline, deterministic, credential-free, network-free,
+  broker-free, and mutation-free, exactly as scoped. No credentials were
+  loaded at any point.
+- No dependency-direction, network-guard, or broker-mutation-surface invariant
+  was touched or weakened; their unmodified test suites remain green against
+  the edited files.
+- The fail-closed change only tightens the default (an all-absent lane set was
+  previously reported as exit `0`; it is now exit `1` unless the caller
+  explicitly opts out with `--allow-empty-lab`). No prior "attention" or
+  "blocked" signal was weakened or removed; `evidence_required` is additive.
 
 ## Unresolved Risks
 
-- The explicit `--allow-empty-lab` exception is a caller assertion, not proof of
-  path intent. Misuse can still make a wrong all-absent root converge, although
-  the exception is now visible and auditable in the record.
-- The standalone `autonomy-supervisor` command retains its historical exit `0`
-  for `no_lane_evidence`; the self-refresh cycle now fails closed, but direct
-  supervisor consumers must still inspect status.
-- Mapping operator-only stale remediation to `waiting` avoids futile retries but
-  makes `stale_lanes` and operator-gated actions essential alert inputs; status
-  alone is insufficient.
-- No autonomous local market-data refresh writes the M444 lane artifact. Fresh
-  daily-chain CSV/clock inputs remain external/operator supplied.
-- This milestone proves orchestration and boundary safety, not research alpha,
-  portfolio construction, paper order submission, burn-in, or live readiness.
+- `--allow-empty-lab` on the standalone supervisor is a caller assertion, not
+  proof of path intent - identical in nature to the same risk already recorded
+  for the V5.42 self-refresh cycle's `allow_empty_lab`. Misuse can still make a
+  wrong all-absent `--lanes-root` converge to exit `0`, although the exception
+  is now visible and auditable (`allow_empty_lab=true` on the record).
+- This correction has not yet been independently reviewed by another
+  collaborator under the two-stage repair rule noted in prior handoffs for
+  this milestone family; the fail-closed correction to the self-refresh cycle
+  (`d2e6cfc`) went through that review, this one has not.
+- No `gh` CLI is installed in this execution environment, so no draft PR was
+  opened for this change; the branch push to
+  `origin/claude/v5.42-stage3-self-refresh` is the sole transfer artifact. A
+  future collaborator with `gh` available may want to open one for visibility,
+  though it is not required by AGENTS.md's push-based takeover model.
+- This milestone proves control-plane exit-code/report-schema correctness, not
+  research alpha, portfolio construction, paper order submission, burn-in, or
+  live readiness - unchanged from the V5.42 posture.
 
 ## Contribution Toward The Autonomous Research Trader
 
-These corrections remove false progress from the control loop. The system now
-recognizes when it cannot refresh evidence, preserves the stale signal, produces
-an actionable operator route, and stops safely instead of replaying an unrelated
-historical milestone. It also refuses to treat a wrong or empty lane root as
-successful convergence unless the caller records an explicit empty-lab
-exception. The secure-provider repair restores a fail-closed,
-credential-redacted path for future authorized read-only data accrual. Together
-these improve trustworthy observe/decide/control infrastructure without claiming
-trading autonomy that does not exist.
+This closes the one asymmetry left open by the V5.42 Stage 3 review: an
+unattended caller that inspects only the standalone supervisor's exit code
+(rather than composing it through the self-refresh cycle) could previously
+treat a wrong or empty evidence root as healthy. Both entry points into the
+cross-lane observe layer now share one fail-closed default and one explicit,
+audited escape hatch, removing a silent-success path without weakening any
+existing attention/blocked signal.
 
 ## Next Highest-Leverage Safe Action
 
-Align the standalone `autonomy-supervisor` CLI with the self-refresh safety
-contract: fail closed by default when every lane is absent, add the same explicit
-empty-lab exception, preserve the report schema, and update CLI/wrapper tests and
-operator documentation. This is fully offline and requires no broker, network,
-credential, paper-mutation, or live-capital authority.
+No further fail-closed gaps are known in the autonomy observe/decide/act
+control plane. Reasonable next safe, offline, in-scope options, roughly in
+order of leverage:
 
-After that correction is independently verified, the reviewed branch may be
-merged without switching or rewriting this checkout during takeover. An
-explicitly scoped paper-order or broker-facing milestone may proceed under the
-standing authority in `AGENTS.md` once its paper endpoint, finite caps, receipts,
-reconciliation, and audit boundaries are proven. Live activity remains
-prohibited.
+1. Independent review of this correction (`f3a9757`) under the standing
+   two-stage repair convention used for the V5.42 Stage 3 fail-closed fix,
+   before any merge to `main`.
+2. Investigate whether `autonomy-next-plan` and `autonomy-apply-plan`'s own
+   standalone CLIs have an analogous stale/no-evidence exit-code asymmetry
+   worth auditing now that the pattern is established across two of the four
+   autonomy commands.
+3. Once reviewed, merge `claude/v5.42-stage3-self-refresh` to `main` without
+   switching or rewriting the checkout during any future takeover.
+
+An explicitly scoped paper-order or broker-facing milestone may proceed under
+the standing authority in `AGENTS.md` once its paper endpoint, finite caps,
+receipts, reconciliation, and audit boundaries are proven. Live activity
+remains prohibited.
