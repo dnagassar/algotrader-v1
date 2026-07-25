@@ -2,243 +2,270 @@
 
 ## Classification
 
-- Milestone: `V5.38a — fail closed on an unrankable lane state in the offline
-  autonomy next-action planner`.
-- Review disposition: not yet independently reviewed.
-- Contract commit: `4506a42` (`V5.38a: freeze planner state-vocabulary
-  fail-closed contract`).
-- Implementation commit: `86c394f` (`V5.38a: fail closed on an unrankable lane
-  state in the planner`).
-- Preceding accepted milestone on this branch: `V5.37a` (contract `029825c`,
-  implementation `85b289e`, handoff `979bca9`) — independently accepted
-  (operator-asserted 2026-07-25, no committed review artifact) and pushed.
-- Operator action required for this offline implementation: `false`.
-- Merge to `main`: not performed. `origin/main@6b5dde6` does not contain either
-  V5.37a or V5.38a.
+- Milestone: `V5.42a (audit) — extend the aggregate/detail consistency and
+  reachability audit to the self-refresh cycle and the remaining supervisor
+  derived booleans`. No production code, contract, or test changed in this
+  slice: the audit found no deterministic defect.
+- Orchestrator review disposition (recorded per operator instruction, not
+  re-litigated here): `V5.38a` contract `4506a42` and implementation `86c394f`
+  are independently accepted at pushed handoff `09cef66`. Independent review
+  reproduced the pre-fix caller-supplied-report contradiction from `979bca9`
+  and passed the exact five focused suites, `149/149`, at `09cef66`. The
+  parallel branch `claude/v5.38-v5.39-reachability-audit@5a3701d` is
+  **superseded and must not become the active handoff**: it missed the defect
+  because it tested supervisor-produced states but not the public
+  caller-supplied-report seam.
+- Operator action required for this offline audit: `false`.
+- Merge to `main`: not performed. `origin/main@6b5dde6` does not contain
+  `V5.37a` or `V5.38a`.
 - This is not strategy-profit, paper-order, broker-mutation, activation, or
   live-trading evidence.
 
 ## Current Checkout And Ownership
 
-- Worktree `.claude/worktrees/quirky-goodall-7f8d71`, local branch
-  `claude/v5.41c-empty-lab-aggregate`, based on
-  `origin/claude/v5.42-stage3-self-refresh`. The branch name predates both
-  milestones on it (V5.37a, V5.38a) and matches neither; treat it as a label.
-  The pushed frontier branch is the canonical location of this work.
-- Takeover-protocol state verified before any edit this session: branch, HEAD
-  (`979bca9`, identical to the pushed frontier tip), clean `git status --short`,
-  empty staged and unstaged diffs, no untracked `src`/`tests` files, and
-  `AGENTS.md` current for this branch (last changed by `c3d86d2`, in history).
-  No reset, clean, stash, rebase, restore, or branch switch was performed.
-- No dirty-file owner remains: clean at the handoff commit.
-- Environment note still in force: `scripts\verify_offline.ps1 -Full` binds the
-  shared registered interpreter's editable `algotrader` install to whichever
-  worktree runs it. It is currently bound to this worktree (rebound from
-  `.claude/worktrees/controlled-implementation-takeover-6808bf` during the V5.37a
-  slice). An agent resuming elsewhere must re-run its own `-Full` or the binding
-  script before trusting in-process imports.
+- Worktree `.claude/worktrees/v542-self-refresh-consistency-audit`, local
+  branch `claude/v5.42-self-refresh-consistency-audit`.
+- Takeover-protocol state verified before any work this session: exact base
+  `09cef669ff54723d496da74e62cb12b9c9cc7da1` (matches the pushed frontier
+  tip), clean `git status --short`, empty staged/unstaged diffs (`git diff
+  --stat HEAD` empty), no untracked files (`git status -uall --porcelain`
+  empty), no upstream configured yet for this branch name. `git worktree
+  list` confirms this path owns this branch exclusively; no other worktree
+  claims it. No reset, clean, stash, rebase, restore, or branch switch was
+  performed.
+- Remote frontier: `origin/main@6b5dde6` (16 commits behind this branch's
+  base, 7 ahead — see Unresolved Risks; unchanged by this slice).
+- Credential/profile preflight (booleans only, no values read or printed):
+  `APP_PROFILE_is_paper=false`; `ALPACA_API_KEY_ID/SECRET/loaded=false` (all
+  four Alpaca aliases); `ALGO_TRADER_ALLOW_NETWORK_TESTS_enabled=false`;
+  `PYTEST_ADDOPTS_allow_network=false`;
+  `RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled=false`. No `~/.algo_trader`
+  credential directory present.
+- No dirty-file owner remains: clean at `09cef66`, and clean again after this
+  slice's docs-only commit.
 
-## Capability Actually Proven
+## Capability Actually Proven This Slice
 
-### The audit that was the recorded next action
+Extended the same aggregate/detail-consistency and reachability audit
+methodology from V5.37a/V5.38a to `autonomy_self_refresh_cycle.py` (V5.42
+Stage 3) and the V5.37 supervisor's remaining derived booleans. All work was
+offline, read-only, credential-free, network-free, and used only real
+artifact reads plus synthetic `tmp_path` fixtures — no production code, test,
+or contract was touched because no deterministic defect was found.
 
-The V5.37a handoff recorded one next action: audit V5.38 `autonomy-next-plan` and
-V5.39 `autonomy-apply-plan` for the defect class V5.37a fixed — declared branches
-no reachable input can produce, and per-lane values that can disagree with
-whole-system values. That audit was executed. Four results:
-
-1. **Real defect, repaired (V5.38a).** `_plan_lane` accepted any non-empty
-   `normalized_state`, while `_highest_priority_action` ranked lanes by a severity
-   tuple the planner re-declared locally from the imported `STATE_*` constants. A
-   lane state outside that vocabulary matched nothing in the ranking loop and was
-   silently skipped by selection, yet still counted toward `offline_runnable_lanes`
-   and therefore `plan_class`. Reproduced against the frozen registry by setting
-   one lane to `normalized_state="healthy"` with an offline-runnable
-   `next_action`: `plan_class=offline_action_available`,
-   `offline_runnable_lanes=['spy_offline_daily_cycle']`, but
-   `next_offline_action=None`, `next_offline_action_lane=""`, and an
-   `operator_summary` reading "No offline action is available". Neither field was
-   individually wrong — the V5.38 design doc documents both independently and
-   never stated the invariant that binds them — so the record simply contradicted
-   itself, and nothing failed closed.
-2. **Documented non-defect, untouched.** `rerun_offline_daily_cycle_chain` is the
-   only `auto_offline` classification in `AUTONOMY_ACTION_CLASSIFICATION` and the
-   only `AUTONOMY_EXECUTOR_ALLOWLIST` entry, and no state of any lane in the
-   frozen registry emits it, so the executor's eligible set is always empty when
-   wired to real lane evidence. Verified against the docs before treating it as a
-   bug: `docs/design/v5_39_gated_offline_autonomy_executor.md` and
-   `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md` both document this
-   inertness as the intended, fail-closed posture. Not changed. Registry
-   reachability was also checked in the reverse direction:
-   `rerun_offline_daily_cycle_chain` is the only classified token no lane can
-   emit, and no emittable token is unclassified.
-3. **Stale documentation claim, corrected.** V5.39's "Honest Current Limitation"
-   attributed the inertness to `spy_offline_daily_cycle` having
-   `max_age_hours=0`. V5.42 Stage 3 changed that lane to `max_age_hours=30`, so
-   it does reach `stale`; its stale action routes to the operator-gated
-   `operator_refresh_offline_daily_cycle_inputs` because the pinned M446 rerun
-   reproduces one historical dataset and writes a different artifact. The
-   conclusion (inert today) was still true; the stated mechanism was not. Left
-   uncorrected, a future reader could re-enable or widen a staleness bound
-   expecting it to activate the executor, which it would not.
-4. **Out of scope, recorded in the contract.**
-   `build_offline_execution_ledger` computes `all_executions_succeeded` as
-   `all(...)` over an empty `executed_actions` list, so `apply=true` with a
-   passing preflight and zero eligible actions reports
-   `all_executions_succeeded=true` with `execution_count=0` and an empty
-   `execution_refused_reason`. Vacuously true rather than wrong, and V5.42's
-   `_classify_outcome` checks `execution_count == 0` before consulting it, so no
-   false `refreshed` outcome results. Changing that boolean's semantics would
-   alter the reviewed V5.39 record schema and a V5.42 consumer, so it needs its
-   own contract and review.
-
-### What V5.38a changed
-
-- The supervisor now exports its frozen normalized-state vocabulary as
-  `AUTONOMY_SUPERVISOR_STATES` (most to least severe); its private
-  `_STATE_SEVERITY` is that same object, not a second literal.
-- The planner ranks by that exported tuple. Its duplicated local tuple and its
-  now-unused individual `STATE_*` imports are gone, so the ranking vocabulary and
-  the supervisor vocabulary cannot drift — a state added to the supervisor but
-  not the planner can no longer become silently unrankable.
-- `_plan_lane` rejects a `normalized_state` outside the vocabulary with a
-  `ValidationError`, consistent with the existing unknown-lane-id rejection in
-  `_report_lanes`. Both public seams that accept a caller-supplied report now
-  fail closed: `build_autonomy_next_plan_from_report(report)` and
-  `build_offline_execution_ledger(config, plan_report=report)`.
-- Invariant now declared and tested: `plan_class == offline_action_available` if
-  and only if `next_offline_action` is non-null and `next_offline_action_lane` is
-  non-empty, and `operator_summary` never claims no offline action is available
-  for such a plan.
-- Unchanged: action-token classification (an unrecognized token still fails
-  closed to the `unclassified_action_operator_review` gate rather than raising),
-  every lane's classification/gate/command/inputs/preconditions, `plan_class`
-  values, severity ordering, registry-order tie-breaking, all CLI exit codes, the
-  executor allowlist and eligible/skip partition, and every fixed false safety
-  boolean. The CLI path is unaffected because internally built reports always
-  carry vocabulary states.
+1. **`_classify_outcome` branch reachability — proven, no defect.**
+   `evidence_required`, `dry_run_preview`, and `noop_no_action` are reachable
+   through the module's only public entry point, `build_self_refresh_cycle`,
+   with real or synthetic `lanes_root` evidence (empirically exercised for
+   all five reachable `system_status` values: `no_lane_evidence`, `waiting`,
+   `nominal`, `attention_required`, `blocked`, plus `allow_empty_lab=True`).
+   `execution_failed`, `refreshed`, and the `still_pending` fallback are
+   **structurally unreachable via `build_self_refresh_cycle`, for any input**
+   — not merely "inert today." Unlike the V5.39 executor's own
+   `build_offline_execution_ledger`, which accepts a caller-supplied
+   `plan_report` seam that the executor's own test suite (`_stale_rerun_plan`)
+   exercises to reach `EXECUTION_AUTO_OFFLINE`, `build_self_refresh_cycle`
+   takes no `plan_report` parameter: it always builds `before` via
+   `build_autonomy_supervisor_report(config)` and derives `plan` from that
+   internally, so a caller can never inject an eligible action. Exhaustively
+   checked every `next_actions` value across all six frozen `LaneSpec`
+   entries (~42 tokens): none equals `rerun_offline_daily_cycle_chain`, the
+   sole `AUTONOMY_EXECUTOR_ALLOWLIST`/`auto_offline` entry, so `eligible_count`
+   (and therefore `execution_count`) can never exceed `0` through this
+   module's real registry-driven path, regardless of what a caller writes
+   into `lanes_root`. This matches an existing, already-passing test
+   (`test_allowlisted_actions_are_unreachable_from_current_lane_registry` in
+   `test_autonomy_offline_executor.py`) and is separately documented in
+   `test_autonomy_self_refresh_cycle.py`'s `test_outcome_classification`
+   comment and in `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`
+   ("Outcomes" section) as an intentional, tested-but-currently-unreachable
+   set of branches — the same "reserved, not dead" justification pattern
+   V5.38a itself established for the executor's inertness. No new contract
+   needed; nothing to fix.
+2. **`converged`/`cycle_outcome`/`after_system_status`/`execution_count`/
+   `all_executions_succeeded` cross-consistency — proven, no defect.**
+   `converged = after_status in {nominal, waiting} or (after_status ==
+   no_lane_evidence and allow_empty_lab)` is a direct boolean formula of
+   `after_status`, computed once — not an independently duplicated
+   aggregate, so it cannot drift from `after_status` by construction. Probed
+   with real artifact writes (not just `_from_records`) to independently
+   force each of the five reachable `system_status` values through
+   `build_self_refresh_cycle` with `apply=True`, plus `apply=True` combined
+   with `no_lane_evidence` (not previously combined in the existing suite)
+   and `apply=True` + `allow_empty_lab=True` + empty lab: all combinations
+   held `evidence_required`, `converged`, and `cycle_outcome` mutually
+   consistent, matching the design doc's stated semantics exactly. The
+   vacuous `all_executions_succeeded=true` at `execution_count=0` (recorded
+   as an open, deliberately-out-of-scope item in the V5.38a handoff) does
+   **not** create a contradiction in this new consumer either:
+   `_classify_outcome` checks `execution_count == 0` before consulting
+   `all_succeeded`, the identical protective ordering already relied on
+   inside the executor itself. Confirms rather than reopens that scope
+   decision.
+3. **Local `_SYSTEM_SEVERITY` coverage — proven complete; no refactor
+   performed.** `_SYSTEM_SEVERITY` in `autonomy_self_refresh_cycle.py` maps
+   exactly the five values `_system_status`'s closed `if`/`elif` chain in
+   `autonomy_supervisor.py` can emit (`blocked`, `attention_required`,
+   `waiting`, `nominal`, `no_lane_evidence`) — verified both by reading the
+   closed chain (no `else` branch introduces a sixth value) and by asserting
+   `set(_SYSTEM_SEVERITY) == {the five SYSTEM_* constants}` at the current
+   checkout. This is the same shape as the bug V5.38a fixed in the planner
+   (a hand-copied local vocabulary), but the concrete drift/fail-open risk
+   that made that one real does not exist here: the planner had a public
+   caller-supplied-report seam (`build_autonomy_next_plan_from_report`); this
+   module has no equivalent caller-supplied-status seam — `before_status` and
+   `after_status` are always the real return value of `_system_status`, never
+   caller data. Per the task's explicit instruction not to refactor
+   speculatively absent a proven risk, `_SYSTEM_SEVERITY` was left as a local
+   literal. (The supervisor also has no exported system-status tuple
+   analogous to `AUTONOMY_SUPERVISOR_STATES` to consume even if this were
+   warranted — adding one would be a second, unproven change.)
+4. **Supervisor's `system_attention_required`, `evidence_required`,
+   `system_blocked` vs. `system_status` and lane counts — proven consistent;
+   already well-covered.** All three booleans are computed in `_aggregate` as
+   direct boolean expressions of the single `system_status` local variable
+   evaluated once (`== SYSTEM_BLOCKED`, `in (SYSTEM_BLOCKED,
+   SYSTEM_ATTENTION)`, `== SYSTEM_NO_LANE_EVIDENCE and not allow_empty_lab`)
+   — not a second independently-derived aggregate, so no reachable input can
+   make them disagree with `system_status`. `lane_state_counts` and the
+   per-state lane-id lists (`blocked_lanes`, `attention_lanes`, etc.) are both
+   derived from the same `lane_summaries` list; probed with a mixed-state
+   synthetic report and confirmed `lane_state_counts` sums to `lane_count`
+   and each state's count equals the length of its corresponding lane list.
+   `tests/unit/test_autonomy_supervisor.py` already independently covers
+   `system_blocked`/`system_attention_required` for blocked, attention,
+   nominal, and `allow_empty_lab` combinations. One benign, non-exposed
+   observation: `build_self_refresh_cycle` never passes its own
+   `allow_empty_lab` argument through to the internal
+   `build_autonomy_supervisor_report(config)` calls that produce `before`/
+   `after`, so those inner reports' own (unused) `evidence_required` field
+   would always compute as if `allow_empty_lab=False`. This is inert because
+   `_report_summary` never surfaces `evidence_required` into `before_report`/
+   `after_report`, and `build_self_refresh_cycle` computes its own top-level
+   `evidence_required` independently and correctly from the real
+   `allow_empty_lab` argument. No consumer reads the mismatched inner value;
+   not a defect, not actionable, noted only for completeness.
+5. **Vacuous `all_executions_succeeded=true` at `execution_count=0` —
+   re-examined against the new V5.42 consumer, still out of scope by
+   deliberate choice.** See item 2. No schema change made; the reviewed
+   V5.39 record semantics are unchanged.
+6. **No other local severity/vocabulary duplication exists.** Grepped the
+   full source tree: only `autonomy_supervisor.py` (`_STATE_SEVERITY =
+   AUTONOMY_SUPERVISOR_STATES`, already the exported object since V5.38a),
+   `autonomy_next_plan.py` (same), and `autonomy_self_refresh_cycle.py`
+   (`_SYSTEM_SEVERITY`, addressed in item 3) define a `*_SEVERITY` table or
+   reference `SYSTEM_*`/`STATE_*` constants. `cli.py`'s
+   `_run_autonomy_self_refresh_cycle` exit-code logic (`execution_count > 0
+   and not all_executions_succeeded` → `1`; `not converged` → `1`; else `0`)
+   consumes only the already-verified-consistent fields and duplicates no
+   severity or vocabulary logic of its own.
 
 ## Files In This Slice
 
-- `docs/design/v5_38a_planner_state_vocabulary_fail_closed_contract.md` (new,
-  frozen first in `4506a42`)
-- `src/algotrader/execution/autonomy_supervisor.py`
-- `src/algotrader/execution/autonomy_next_plan.py`
-- `tests/unit/test_autonomy_next_plan.py`
-- `tests/unit/test_autonomy_offline_executor.py`
-- `docs/design/v5_38_offline_autonomy_next_action_planner.md`
-- `docs/design/v5_39_gated_offline_autonomy_executor.md`
+None (source, tests, and design docs unchanged). Only this handoff file was
+overwritten.
 
 ## Verification Evidence
 
-- Credential/profile preflight (booleans only, no values read or printed):
-  `APP_PROFILE_is_paper=false`; `ALPACA_API_KEY_loaded=false`;
-  `ALPACA_API_SECRET_KEY_loaded=false`; `ALPACA_SECRET_KEY_loaded=false`;
-  `APCA_API_KEY_ID_loaded=false`; `APCA_API_SECRET_KEY_loaded=false`;
-  `ALGO_TRADER_ALLOW_NETWORK_TESTS_enabled=false`;
-  `PYTEST_ADDOPTS_allow_network=false`;
-  `RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled=false`.
-- Targeted suites (`PYTHONPATH=src`): `test_autonomy_next_plan.py`,
+- Credential/profile preflight: see Current Checkout And Ownership above —
+  all false, no values read or printed.
+- Targeted suites (`PYTHONPATH=src`, reproduced independently this session at
+  base `09cef66`): `test_autonomy_next_plan.py`,
   `test_autonomy_offline_executor.py`, `test_autonomy_supervisor.py`,
   `test_autonomy_self_refresh_cycle.py`, `test_dependency_direction.py`:
-  `149 passed`. Five new tests: out-of-vocabulary state rejected by the planner,
-  the same rejected through the executor's `plan_report` seam, every
-  `AUTONOMY_SUPERVISOR_STATES` value accepted, the planner's severity order is
-  the supervisor's exported tuple, and the
-  `plan_class`/`next_offline_action`/`operator_summary` invariant across five
-  report shapes (all-absent, single nominal, blocked, mixed waiting, seeded
-  daily cycle).
-- No pre-existing test asserted the old silent-skip behavior. Every other test
-  that hand-sets `normalized_state` uses a valid vocabulary value, including the
-  executor's `_stale_rerun_plan` helper (`stale`), which is why the allowlisted
-  `auto_offline` token remains exercised through a directly supplied plan.
-- `scripts\verify_offline.ps1` (non-`-Full`): `PASS`, targeted guard suite
-  `99 passed`, clean preflight and repository-hygiene checks.
-- `scripts\verify_offline.ps1 -Full` (backgrounded, ~16 min wall): exit `0`,
-  `offline verification result PASS`, `bounded_full_suite=PASS`.
-  `canonical_nodeids=9957` across `canonical_files=494` in `shard_count=8`;
-  `collection_equivalence=PASS`; `execution_equivalence=PASS`;
-  `aggregate_result=tests:9957,passed:9952,skipped:5,failures:0,errors:0`. All
-  eight shards exited `0` with `timeout:false` (wall seconds 772.89, 947.96,
-  801.77, 809.29, 809.84, 849.95, 1006.11, 868.60). Full transcript captured this
-  run — the V5.37a handoff's missing-metrics caveat does not apply here.
-- `git diff --check`: clean. `git status --short`: clean after commit.
-  `git diff --name-only HEAD -- src`: empty after commit.
+  `149 passed in 18.62s`.
+- Synthetic/boundary probes run this session (throwaway scripts under the job
+  temp directory, deleted after use; not committed): (a) `apply=True` with a
+  genuinely empty `lanes_root` (a combination the existing suite had not
+  exercised — prior tests used this combination only with `apply=False`);
+  (b) `apply=True` + `allow_empty_lab=True` with an empty lab; (c) a mixed
+  synthetic lane-state report via `build_autonomy_supervisor_report_from_records`
+  checked for `lane_state_counts`/lane-list agreement; (d) real artifact
+  writes forcing `blocked`, `attention_required`, and `nominal` whole-system
+  status through `build_self_refresh_cycle`'s real registry path with
+  `apply=True`. All checks passed; zero contradictions found.
+- `scripts\verify_offline.ps1` (non-`-Full`), reproduced this session: `PASS`,
+  targeted guard suite `99 passed in 123.97s`, clean preflight and
+  repository-hygiene checks, `git status --short` clean before and after.
+- `-Full` was not re-run: no source, test, or contract changed, so the prior
+  V5.38a handoff's full-suite evidence at this identical base (`09cef66`,
+  `bounded_full_suite=PASS`, `9957` canonical node ids, `9952 passed / 5
+  skipped / 0 failures / 0 errors`) still applies unchanged.
+- `git diff --check`: clean. `git status --short`: clean (this file only,
+  before commit). `git diff --name-only HEAD -- src`: empty.
   `git ls-files --others --exclude-standard src tests`: empty.
-- Network/broker access during this work: none. Paper mutation: none. Effective
-  paper caps: not applicable (no order or paper-mutation path touched).
-  Receipts/reconciliation: not applicable. Live-authorized state: `false`,
-  unchanged. The unmodified forbidden-import/forbidden-call source scans in
-  `test_autonomy_next_plan.py` and `test_autonomy_offline_executor.py` still pass
-  against the edited modules.
+- Network/broker access: none. Paper mutation: none. Effective paper caps:
+  not applicable. Receipts/reconciliation: not applicable. Live-authorized
+  state: `false`, unchanged.
 
 ## Safety And Authority Posture
 
 - Offline, deterministic, credential-free, network-free, broker-free, and
-  mutation-free, exactly as scoped. No credentials were loaded at any point.
-- No dependency-direction, network-guard, or broker-mutation-surface invariant was
-  touched or weakened.
-- The change only tightens an input contract: a previously accepted,
-  self-contradictory plan input is now rejected. No execution path was added,
-  widened, or activated; the executor's documented inertness is unchanged.
+  mutation-free throughout. No credentials were loaded at any point.
+- No dependency-direction, network-guard, or broker-mutation-surface
+  invariant was touched (nothing was touched at all in `src/` or `tests/`).
+- No production code, frozen contract, or test was changed, consistent with
+  the decision rule: no deterministic defect was proven, so no change was
+  made merely for activity.
 
 ## Unresolved Risks
 
-- V5.38a has not been independently reviewed. Review should inspect `86c394f`
-  against the frozen contract `4506a42`.
-- **`main` still carries the V5.37a defect and now also the V5.38a one.**
-  `origin/main@6b5dde6` was verified during the V5.37a slice to retain the
-  unreachable fallback and the `absent` fall-through loop in
-  `_highest_priority_lane`; it likewise predates V5.38a. `main` reached the same
-  empty-lab fail-closed contract independently as V5.41b (`9f3d77a`, `3fa2acb`,
-  `docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`) while this
-  frontier did it as V5.37 (`f3a9757`), so the two lines overlap in
-  `autonomy_supervisor.py` and `cli.py`. A merge that favors `main` silently
-  reintroduces both defects. Milestone numbering also overlaps for the same
-  subject matter (V5.37/V5.37a/V5.38a here vs V5.40a/V5.41b on `main`).
-- The `all_executions_succeeded` vacuous-true aggregate (audit result 4 above)
-  remains open by deliberate scope choice.
-- `--allow-empty-lab` remains a caller assertion rather than proof of intent.
-- These milestones prove control-plane reporting truthfulness and input
-  fail-closure, not research alpha, portfolio construction, paper order
-  submission, burn-in, or live readiness.
+- **`main` still carries the V5.37a and V5.38a defects; this slice does not
+  change that.** `origin/main@6b5dde6` predates both fixes. `main` reached
+  an equivalent empty-lab fail-closed contract independently as V5.41b
+  (`9f3d77a`, `3fa2acb`), so the two lines overlap in `autonomy_supervisor.py`
+  and `cli.py`. A merge that favors `main` would silently reintroduce both
+  defects. This is preserved here as an **unresolved integration risk**, not
+  an implementation action for this slice — it is an operator sequencing
+  decision.
+- The `all_executions_succeeded` vacuous-true aggregate remains open by
+  deliberate scope choice (V5.38a handoff item 4, reconfirmed in item 2/5
+  above for the new V5.42 consumer).
+- `--allow-empty-lab` remains a caller assertion rather than proof of intent
+  (unchanged from V5.38a).
+- The benign inner-`evidence_required`/`allow_empty_lab` non-propagation
+  noted in item 4 above is inert (never surfaced to any consumer) but is
+  recorded here in case a future change to `_report_summary` were to start
+  surfacing it.
+- These milestones prove control-plane reporting truthfulness and reachable-
+  branch/aggregate consistency, not research alpha, portfolio construction,
+  paper order submission, burn-in, or live readiness.
 
 ## Contribution Toward The Autonomous Research Trader
 
-V5.37a made the observe layer's whole-system verdict agree with its recommended
-remedy. V5.38a does the same one layer up, for the decide layer: the plan's
-whole-system class and the single action it names are now provably two views of
-one fact, and a report the planner cannot rank is refused instead of silently
-half-processed. Both defects were the same shape — an aggregate computed by one
-rule and a detail selected by another, with no guard binding them — which is why
-the audit that found the second one is worth continuing.
+V5.37a and V5.38a made the observe and decide layers' whole-system verdicts
+agree with their recommended remedies. This slice swept the same defect class
+(an aggregate computed one way and a detail selected another, with no guard
+binding them) across the remaining two surfaces — the V5.42 closed-loop
+cycle's outcome classification and the V5.37 supervisor's own derived
+booleans — and found the invariant already holds everywhere reachable. The
+audit that started with V5.37a's real defect and V5.38a's real defect is now
+closed out clean: four layers swept, two real defects found and fixed in
+prior slices, zero found in this one.
 
 ## Next Highest-Leverage Safe Action
 
-Extend the same audit to the two layers not yet swept: V5.42
-`autonomy_self_refresh_cycle.py` and the V5.37 supervisor's own remaining
-aggregates. Concretely, all offline and read-only:
+The aggregate/detail-consistency and reachability audit across all four
+autonomy layers (V5.37 supervisor, V5.38 planner, V5.39 executor, V5.42
+self-refresh cycle) is now complete for the defect class this audit thread
+has pursued (silently-skipped/unranked states, aggregate-vs-detail
+contradictions, local vocabulary drift). No further slice of that specific
+audit is pending.
 
-- `autonomy_self_refresh_cycle.py`: `_classify_outcome`'s branch reachability
-  (can every one of `evidence_required`, `dry_run_preview`, `noop_no_action`,
-  `execution_failed`, `refreshed`, `still_pending` be produced from real
-  evidence, given the executor is inert today?), and whether `converged` can
-  disagree with `after_system_status` the way `plan_class` disagreed with
-  `next_offline_action`.
-- The `_SYSTEM_SEVERITY` ranking in that module: confirm it covers every
-  `system_status` the supervisor can emit, which is the same drift risk V5.38a
-  removed from the planner — and now fixable the same way, by consuming an
-  exported constant rather than a local copy.
-- The supervisor's remaining derived booleans (`system_attention_required`,
-  `evidence_required`) against `system_status`, for any combination that cannot
-  occur or that contradicts the lane counts.
+The next safe, offline, read-only action is a new surface, not yet swept:
+audit the CLI argument-parsing and exit-code contract across the four
+autonomy subcommands (`autonomy-supervisor-status`, `autonomy-next-plan`,
+`autonomy-apply-plan`, `autonomy-self-refresh-cycle`) in `cli.py` for
+cross-command consistency — e.g., whether `--lane` override parsing,
+`ValidationError` exit code (`2`), and the mapping from each command's own
+payload booleans to its exit code agree with each other and with the
+per-module design docs, the way `_run_autonomy_self_refresh_cycle`'s exit
+logic was spot-checked (but not exhaustively audited) in this slice.
 
-Treat any finding under the two-stage rule: freeze a contract doc first, then
-implement, then verify with the targeted suites plus `scripts\verify_offline.ps1`.
-
-The `main`-vs-frontier reconciliation remains the largest standing integration
-risk and is recorded under Unresolved Risks rather than here, because it is an
-operator sequencing decision rather than an implementation slice. An explicitly
-scoped paper-order or broker-facing milestone may proceed under the standing
-authority in `AGENTS.md` once its paper endpoint, finite caps, receipts,
-reconciliation, and audit boundaries are proven. Live activity remains prohibited.
+The `main`-vs-frontier reconciliation remains the largest standing risk and
+stays recorded under Unresolved Risks rather than here, because it is an
+operator sequencing decision rather than an offline implementation-audit
+slice. An explicitly scoped paper-order or broker-facing milestone may
+proceed under the standing authority in `AGENTS.md` once its paper endpoint,
+finite caps, receipts, reconciliation, and audit boundaries are proven. Live
+activity remains prohibited.
