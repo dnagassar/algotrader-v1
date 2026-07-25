@@ -40,9 +40,12 @@ already complete. Recorded verbatim, because the discrepancy — not the narrati
   reviewed work, and `main` had advanced `20` commits past it.
 - The newest handoff record in the repository was `09cef66`
   (`2026-07-25 10:13`), on `claude/v5.41c-empty-lab-aggregate` /
-  `origin/claude/v5.42-stage3-self-refresh`. Its recorded next action was
-  unexecuted: two sibling worktrees sat at `09cef66` clean with no commits
-  beyond it, including one named for this exact audit.
+  `origin/claude/v5.42-stage3-self-refresh`. Its recorded next action *appeared*
+  unexecuted: two sibling worktrees sat at `09cef66` clean with no commits beyond
+  it, including one named for this exact audit. **That inference was wrong** — one
+  of them was a live concurrent session that landed `cee521e` at `10:44`. A clean
+  worktree at a shared base is not evidence that no one is working in it. See the
+  conflict section below.
 - Custody claim: `git merge --ff-only 09cef66`, after verifying `3336e9a` is an
   ancestor. No reset, clean, stash, rebase, restore, branch switch, or force
   update occurred, here or anywhere else.
@@ -228,10 +231,61 @@ During this session:
 
 All tests used deterministic offline fixtures and fake boundaries.
 
+## Direct Conflict With `cee521e` — Read Before Reviewing
+
+A concurrent session ran the same recorded audit and reached the **opposite**
+conclusion. `cee521e` (`2026-07-25 10:44`, pushed on
+`claude/v5.42-self-refresh-consistency-audit`, docs-only, base `09cef66`) records
+"no defect found" for exactly the surface V5.42a repairs. That worktree was at
+`09cef66` and clean when this session inspected it at takeover, so it was read as
+idle; it was in fact mid-flight and landed while this slice was being
+implemented. Effort was duplicated, and a reviewer must resolve the conflict
+rather than assume one record supersedes the other by recency.
+
+The disagreement is narrow and identifiable. `cee521e` item 4 argues that
+`system_blocked`, `system_attention_required`, and `evidence_required` are each
+"direct boolean expressions of the single `system_status` local variable
+evaluated once ... so no reachable input can make them disagree with
+`system_status`". That is correct as stated and is not what fails. All three do
+agree with `system_status`; the defect is that two of them disagree **with each
+other**, precisely because they are *different* functions of the same value. At
+`system_status == no_lane_evidence`, `evidence_required` is `true` and
+`system_attention_required` is `false`. Framing the invariant as
+aggregate-versus-detail meant boolean-versus-boolean was never tested.
+
+Evidence for the repair, not argument:
+
+- The contradiction reproduces on the base `09cef66` with no override at all
+  (table below), and `cee521e` changed no source, so it reproduces at `cee521e`
+  too.
+- `main` reached the identical repair independently as V5.41b (`3fa2acb`),
+  including the identical `system_no_lane_evidence` blocker token. Two lines of
+  work converging on the same fix is corroboration that this is a defect rather
+  than a matter of taste.
+
+On the other two points the two records agree or are compatible: `cee521e`'s
+finding that the act-phase outcomes are unreachable through the only public
+entry point matches Finding 4 here and is a stronger form of it. Its item 3 chose
+not to refactor `_SYSTEM_SEVERITY` for lack of a proven drift risk, which is a
+defensible call on drift alone (Finding 3) — but it did not evaluate whether the
+map's *ordering* was correct, which is where the second error was (Finding 2:
+`no_lane_evidence` ranked as the healthiest status). Its observation that
+`build_self_refresh_cycle` does not forward `allow_empty_lab` matches the
+coherence change recorded above, and its assessment that this is inert today is
+correct.
+
+Nothing on the `cee521e` branch was modified, reverted, or overwritten by this
+session.
+
 ## Unresolved Risks
 
 - V5.42a has not been independently reviewed. Review should inspect `c828307`
-  against the frozen contract `e0ce9de`.
+  against the frozen contract `e0ce9de`, and should explicitly adjudicate the
+  conflict with `cee521e` recorded above.
+- Two pushed branches now carry contradictory audit conclusions for the same
+  surface (`cee521e`: no defect; this branch: three findings, one live). Until an
+  operator or reviewer resolves that, an agent reading only one of them will draw
+  the wrong conclusion about whether this surface is sound.
 - V5.38a has not been independently reviewed either (inherited).
 - **The `main`-versus-frontier divergence remains the largest standing
   integration risk.** `main` carries Finding 1's repair independently as V5.41b
