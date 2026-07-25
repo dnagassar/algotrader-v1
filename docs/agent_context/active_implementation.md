@@ -20,23 +20,57 @@
   branch `claude/v5.45-executor-reachability-audit`.
 - Implementation writer: `Claude Code`. Scope of claim: this working
   tree only.
-- Started at `1394be0` (the V5.44-accepted tip on `main`), verified
-  before any edit: branch, `HEAD`, `git status`, staged/unstaged/
-  untracked diffs, and credential/profile presence booleans were all
-  clean/absent/false.
-- Clean at handoff: `git status --short` shows only the two new/changed
-  docs files below; `git diff --check` is clean; no `src` or `tests`
-  file was touched (`git diff --name-only HEAD -- src` and
-  `git diff --name-only HEAD -- tests` are both empty).
+- Started at `1394be0`, verified before any edit: branch, `HEAD`,
+  `git status`, staged/unstaged/untracked diffs, and credential/profile
+  presence booleans were all clean/absent/false. `1394be0` is the
+  accepted and pushed tip of `origin/claude/v5.44-zero-execution-truthfulness`
+  — **not** `main`; `origin/main` was `135da69` at the time (V5.44 was
+  not yet merged to `main`). This worktree was forked from `1394be0` per
+  this milestone's explicit starting-commit instruction, not from
+  `main`.
+- First pass committed and pushed at `c1311b6` (`V5.45: read-only
+  executor reachability boundary audit — no safe candidate found`).
+  Independent checkout verification of that commit found material
+  errors — a wrong base-commit characterization and an incorrect
+  reachability enumeration (distinct-token count, per-class/per-gate
+  totals) — corrected in a follow-up commit on this same branch (see
+  "What This Milestone Did" for the exact corrections). Before each
+  commit, `git status --short` showed the changed docs files as
+  new/modified; after each commit, `git status --short` is clean — no
+  staged, unstaged, or untracked changes on this branch. `git diff --check`
+  is clean throughout; no `src` or `tests` file was ever touched
+  (`git diff --name-only HEAD -- src` and `git diff --name-only HEAD --
+  tests` are both empty at every commit on this branch).
 
 ## What This Milestone Did
 
 Executed exactly the audit V5.44 recorded as its next action: enumerated
 every `AUTONOMY_EXECUTOR_ALLOWLIST` token (exactly one:
 `rerun_offline_daily_cycle_chain`), every `LaneSpec.next_actions`
-producer across all 6 lanes in `AUTONOMY_SUPERVISOR_LANES` (42 emittable
-tokens total), the registry -> planner -> executor -> CLI path
-connecting them, and every test exercising that path.
+producer across all 6 lanes in `AUTONOMY_SUPERVISOR_LANES`, the registry
+-> planner -> executor -> CLI path connecting them, and every test
+exercising that path.
+
+**Correction (this pass):** independent checkout verification of the
+first-pass commit (`c1311b6`) found the reachability enumeration was
+miscounted. The corrected, code-derived numbers (re-run in a
+credential-free interpreter session against `AUTONOMY_SUPERVISOR_LANES`)
+are: the six lanes' `next_actions` maps contain 42 raw `(lane, state) ->
+token` dict entries, but only **38 distinct tokens** (4 pairs of states
+collapse onto the same token within their own lane). Adding the one
+aggregate `ALL_LANES_ABSENT_ACTION` token gives **39 distinct producer
+tokens** — the exact set the audit's reachability proof operates over.
+Across those 39: **12** `noop`, **1** `offline_operator_input`, **26**
+`operator_gated` (across 5 gate kinds, not 4 as the first pass said),
+and **0** `auto_offline`. The sole `EXECUTION_AUTO_OFFLINE`/allowlist
+token, `rerun_offline_daily_cycle_chain`, is real in the classification
+registry but is not emittable by any lane, so it must not be counted
+among the 39 producer tokens — the first pass had incorrectly folded it
+into a "42 distinct tokens" total. The audit document
+(`docs/design/v5_45_executor_reachability_boundary_audit.md`) is
+corrected to these exact figures throughout; the underlying conclusion
+(both reachability directions are empty) is unchanged and still holds
+under the corrected numbers.
 
 Proved both reachability directions are empty, re-deriving (not just
 re-citing) `test_allowlisted_actions_are_unreachable_from_current_lane_registry`
@@ -44,10 +78,10 @@ and `test_every_supervisor_action_is_classified`:
 
 - **Direction 1** (allowlist -> emittable): the sole allowlist token is
   not emitted by any lane in the current registry.
-- **Direction 2** (emittable -> allowlist): of 42 emittable tokens, only
-  one is even classified `EXECUTION_AUTO_OFFLINE` (the only class
-  eligible for the allowlist), and it is the same unreachable token from
-  Direction 1.
+- **Direction 2** (emittable -> allowlist): of the 39 emittable
+  (producer) tokens, zero are classified `EXECUTION_AUTO_OFFLINE` (the
+  only class eligible for the allowlist), and the one token that is so
+  classified is the same unreachable token from Direction 1.
 
 Considered and rejected three ways to close the gap — full reasoning in
 the audit doc:
@@ -114,8 +148,8 @@ attempted). Live-authorized state: `false`.
   proof of intent; the executor remains provably inert under the
   current lane registry.
 - New, recorded here: the `no_offline_command_available` gate's comment
-  text for the four crypto rerun/seed tokens
-  (`rerun_supervised_readiness_trial`,
+  text for the four crypto lanes' rerun/seed token pairs (8 tokens
+  total: `rerun_supervised_readiness_trial`,
   `run_supervised_readiness_trial_to_seed_r1_evidence`, and their
   forward-shadow/bounded-paper-probe-review/capability-production
   counterparts) says "no offline command exists"; for the readiness
@@ -133,22 +167,26 @@ attempted). Live-authorized state: `false`.
 ## Next Highest-Leverage Safe Action
 
 No safe executor-reachability change is available today (this audit's
-conclusion). The next highest-leverage safe action is either:
+conclusion, unchanged by this correction pass). The selected next
+highest-leverage safe action is:
 
-1. **Documentation-only**: correct the `no_offline_command_available`
-   gate comment/reasoning for the crypto readiness-trial lane in
-   `autonomy_next_plan.py` to name the real blocker (broker-SDK import
-   reachability, not command absence) — a small, low-risk clarity fix
-   that changes no behavior and needs no operator gate.
-2. **A genuinely new offline command**: if unattended crypto-lane
-   progress is ever wanted, factor a broker-import-free path out of
-   `tomorrow_crypto_trader_demo`/`crypto_supervised_readiness_trial` (or
-   write a new, narrower module) that the readiness trial's offline
-   replay can run without transitively importing `alpaca_sdk_client`,
-   then freeze a standalone contract classifying that new token
-   `EXECUTION_AUTO_OFFLINE` and adding it to the allowlist. This is
-   production-execution-code work, not a read-only audit, and needs its
-   own contract before any implementation.
+**`V5.46` — contract-first design for a new broker/profile/credential-
+import-free, fully-defaulted, deterministic crypto readiness replay
+command that writes exactly the `crypto_supervised_readiness_trial`
+lane's artifact (`readiness_packet.json`).** The command must be a new,
+narrowly-scoped module (or a factored-out variant of
+`crypto_supervised_readiness_trial`/`tomorrow_crypto_trader_demo`) whose
+full import graph is independently verified free of
+`alpaca_sdk_client`/`alpaca_client`/`live_capital_interlock`/
+`AlpacaPaperConfig`/`require_paper_profile`, matching the import-purity
+bar the currently-allowlisted `etf_sma_offline_daily_cycle_rerun_m446`
+module already clears. Its **contract must be frozen and independently
+reviewed before any source implementation or allowlist reachability
+change** — this is design/contract work, not implementation, and does
+not itself add the command, classify a new token
+`EXECUTION_AUTO_OFFLINE`, or touch `AUTONOMY_EXECUTOR_ALLOWLIST`. Those
+remain separate, later, explicitly-gated steps.
 
-Either is safe to start without further operator input; neither is
-started by this milestone.
+This is safe to start without further operator input (contract design
+and documentation are standing collaborator authority under
+`AGENTS.md`); it is not started by this milestone.

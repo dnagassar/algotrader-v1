@@ -13,7 +13,12 @@
 - This is a **read-only audit**. It changes no executor, planner,
   supervisor, or CLI source file and no test file. It grants no
   implementation authority. It inspects and documents only.
-- Base commit: `1394be0` (`V5.44` accepted on `main`), audited from
+- Base commit: `1394be0`, the accepted and pushed tip of
+  `origin/claude/v5.44-zero-execution-truthfulness` — **not** `main`.
+  `origin/main` was `135da69` at the time of this audit (verified by
+  `git fetch` + `git rev-parse origin/main`); `V5.44` had not yet been
+  merged to `main`. This audit was forked from `1394be0` per this
+  milestone's explicit starting-commit instruction, audited from
   `claude/v5.45-executor-reachability-audit`.
 - Outcome: **no source change is authorized by this audit.** No safe
   candidate for a newly-reachable offline action was found. See
@@ -83,9 +88,24 @@ seven keys — but remains a fail-closed net if a future lane omits one.
 Plus one aggregate token when every lane is absent
 (`ALL_LANES_ABSENT_ACTION`, line 96).
 
-Full enumeration of the 6 x 7 = 42 per-lane tokens (many states across
-lanes resolve to the identical token) plus the one aggregate token,
-grouped by `AUTONOMY_ACTION_CLASSIFICATION` bucket:
+The 6 x 7 = 42 per-lane `(lane, state) -> token` dict entries are **not**
+42 distinct tokens: 4 pairs of states collapse onto the same token
+within their own lane (`spy_market_data_soak`,
+`spy_offline_daily_cycle`, `crypto_supervised_readiness_trial`, and
+`crypto_capability_production` each map both `attention_required` and
+`unknown` to the identical `operator_review_*` token), leaving **38**
+distinct tokens actually produced by the six `LaneSpec.next_actions`
+maps. Adding the one aggregate token
+(`ALL_LANES_ABSENT_ACTION`, emitted only when every lane is absent)
+gives **39 distinct producer tokens** in total — the exact set a
+supervisor report can ever place in `recommended_next_action`/
+`next_action`. This was re-derived by direct enumeration in a
+credential-free interpreter session (`set().union(*(lane.next_actions.values()
+for lane in AUTONOMY_SUPERVISOR_LANES))`, cardinality 38, plus
+`ALL_LANES_ABSENT_ACTION`, cardinality 39), not estimated by hand.
+
+Full enumeration of the 39 distinct producer tokens, grouped by
+`AUTONOMY_ACTION_CLASSIFICATION` bucket:
 
 **`EXECUTION_NOOP`** (12 tokens; `offline_runnable=False`, no gate, nothing to run):
 `unattended_market_data_soak_proven_continue_cadence`,
@@ -111,16 +131,22 @@ local adjusted SPY daily-bars CSV path that the frozen fixed-argv
 allowlist model has no way to accept safely (see "Candidates
 Considered", seed command).
 
-**`EXECUTION_AUTO_OFFLINE`** (1 token; `offline_runnable=True`,
-gate=`unattended_execution_authority`, fully-defaulted `command`, the
-only class eligible for the allowlist at all):
-`rerun_offline_daily_cycle_chain` — matches the sole allowlist entry by
-construction (`AUTONOMY_ACTION_CLASSIFICATION` line 270-289 and
+**`EXECUTION_AUTO_OFFLINE`** (**0 of the 39 producer tokens** are
+classified this way — this class is empty among what any lane can
+actually emit). `AUTONOMY_ACTION_CLASSIFICATION` does contain exactly
+one `EXECUTION_AUTO_OFFLINE` entry, `rerun_offline_daily_cycle_chain`
+(`offline_runnable=True`, gate=`unattended_execution_authority`,
+fully-defaulted `command` — the only class eligible for the allowlist
+at all, and matching the sole allowlist entry by construction:
+`AUTONOMY_ACTION_CLASSIFICATION` line 270-289 and
 `AUTONOMY_EXECUTOR_ALLOWLIST` line 100-104 both key on this exact
-string), but **no `LaneSpec.next_actions` map emits it** — see
-Direction 1 below.
+string), but it exists only as a classification-registry entry, not as
+a producer token: **no `LaneSpec.next_actions` map emits it, and it is
+not one of the 39 producer tokens counted above.** It must not be
+counted alongside the 39 emittable tokens — see Direction 1 below for
+why that distinction is exactly the audit's finding.
 
-**`EXECUTION_OPERATOR_GATED`** (28 tokens across 4 gate kinds; all
+**`EXECUTION_OPERATOR_GATED`** (26 tokens across 5 gate kinds; all
 `offline_runnable=False`):
 - `operator_supplied_inputs`: `operator_refresh_offline_daily_cycle_inputs`.
 - `network_market_data_fetch`:
@@ -154,12 +180,15 @@ Direction 1 below.
   `all_lanes_absent_run_lane_commands_to_seed_evidence`
   (`ALL_LANES_ABSENT_ACTION`).
 
-Total: 12 + 1 + 1 + 28 = 42 distinct tokens (`run_offline_daily_cycle_chain_to_seed_evidence`
-and the NOOP/gated tokens above are all distinct strings; several lane
-states collapse onto the same token, e.g. both `attention_required` and
-`unknown` map to `operator_review_market_data_soak_evidence` for the
-soak lane), matching every value that appears in the six `next_actions`
-maps plus the one aggregate token.
+Total among the 39 producer tokens: 12 (`EXECUTION_NOOP`) + 1
+(`EXECUTION_OFFLINE_OPERATOR_INPUT`) + 26 (`EXECUTION_OPERATOR_GATED`) +
+0 (`EXECUTION_AUTO_OFFLINE`) = **39**, matching the distinct-token count
+derived above (38 from the six `next_actions` maps, plus the one
+aggregate `ALL_LANES_ABSENT_ACTION` token). The one
+`EXECUTION_AUTO_OFFLINE` classification-registry entry
+(`rerun_offline_daily_cycle_chain`) is deliberately excluded from this
+39-token sum because it is not a producer token — that is the entire
+substance of Direction 1, not a rounding choice.
 
 Full coverage against `AUTONOMY_ACTION_CLASSIFICATION` (i.e. no token is
 silently unclassified, which would fail closed to `operator_review`
@@ -204,9 +233,10 @@ Claim: the sole allowlist token, `rerun_offline_daily_cycle_chain`, is
 **not emitted by any lane in the current registry.**
 
 Proof: intersect `{action for lane in AUTONOMY_SUPERVISOR_LANES for
-action in lane.next_actions.values()}` (the 42-token set enumerated
-above) against `set(AUTONOMY_EXECUTOR_ALLOWLIST)` (`{"rerun_offline_daily_cycle_chain"}`).
-The 42-token enumeration above contains no occurrence of that string —
+action in lane.next_actions.values()} | {ALL_LANES_ABSENT_ACTION}` (the
+39-token producer set enumerated above) against
+`set(AUTONOMY_EXECUTOR_ALLOWLIST)` (`{"rerun_offline_daily_cycle_chain"}`).
+The 39-token producer enumeration above contains no occurrence of that string —
 the SPY offline daily cycle lane's `stale` state maps instead to
 `operator_refresh_offline_daily_cycle_inputs` (`autonomy_supervisor.py:324`),
 by explicit design: the code comment at lines 331-336 records that the
@@ -219,24 +249,29 @@ reachable today.
 
 ## Direction 2: Every Emittable Action Token -> Allowlist Classification
 
-Claim: of the 42 emittable tokens, only one (`rerun_offline_daily_cycle_chain`)
-is even classified `EXECUTION_AUTO_OFFLINE` (the only class the executor
-allowlist can ever contain, since `_partition_actions` only forwards
-tokens with `offline_runnable is True` to the allowlist check, and
+Claim: of the 39 emittable (producer) tokens, **zero** are classified
+`EXECUTION_AUTO_OFFLINE` (the only class the executor allowlist can ever
+contain, since `_partition_actions` only forwards tokens with
+`offline_runnable is True` to the allowlist check, and
 `ActionClass.__post_init__` enforces `offline_runnable == (execution_class
-in {EXECUTION_AUTO_OFFLINE, EXECUTION_OFFLINE_OPERATOR_INPUT})`). The
-other `offline_runnable=True` token,
+in {EXECUTION_AUTO_OFFLINE, EXECUTION_OFFLINE_OPERATOR_INPUT})`). The one
+`offline_runnable=True` producer token,
 `run_offline_daily_cycle_chain_to_seed_evidence`, is
 `EXECUTION_OFFLINE_OPERATOR_INPUT`, not `EXECUTION_AUTO_OFFLINE`, so it is
 routed to `SKIP_REQUIRES_OPERATOR_INPUT` in `_partition_actions`
 (line 274-278) regardless of whether it were ever added to the allowlist
 dict — the execution-class gate, not just dict membership, keeps it out.
-All remaining 40 tokens are `EXECUTION_NOOP` or `EXECUTION_OPERATOR_GATED`
-and never reach `_partition_actions`'s allowlist branch at all because
-`offline_runnable` is `False` for both classes.
+The remaining 38 producer tokens (12 `EXECUTION_NOOP` + 26
+`EXECUTION_OPERATOR_GATED`) never reach `_partition_actions`'s allowlist
+branch at all because `offline_runnable` is `False` for both classes.
+The sole `EXECUTION_AUTO_OFFLINE` entry in the classification registry
+(`rerun_offline_daily_cycle_chain`) is real, but — per Direction 1 — it
+is not among the 39 tokens any lane can actually produce, so it never
+reaches this comparison from the emitting side either.
 
-So: of 42 emittable tokens, 0 are both (a) classified
-`EXECUTION_AUTO_OFFLINE` and (b) actually emitted by a lane. Direction 2
+So: of 39 emittable tokens, 0 are classified `EXECUTION_AUTO_OFFLINE`,
+and the one token that is classified `EXECUTION_AUTO_OFFLINE` is not
+emittable. Direction 2
 confirms the same conclusion from the opposite side: **no emittable
 token is currently allowlist-eligible**, and the one allowlist-eligible
 token is not emittable. The reachability graph between "what the
@@ -376,7 +411,7 @@ current lane registry
 still passes, unedited), and no import, subprocess, network, broker,
 credential, or profile surface was added anywhere.
 
-### If a future milestone wants to revisit this
+### Selected next milestone: V5.46
 
 The only structurally sound way to create real reachability without
 weakening an invariant is to add a **new**, narrowly-scoped CLI
@@ -392,6 +427,16 @@ frozen, reviewable contract. Reusing `crypto-readiness-verify` (or
 SDK import is first factored out of the module chain the trial depends
 on — a change to production execution code, not something this
 read-only audit is authorized to start.
+
+This is recorded as the selected `V5.46` next milestone (see the
+handoff, `docs/agent_context/active_implementation.md`): a
+contract-first design for a new broker/profile/credential-import-free,
+fully-defaulted, deterministic crypto readiness replay command that
+writes exactly the `crypto_supervised_readiness_trial` lane's artifact.
+The contract must be frozen and independently reviewed before any
+source implementation or allowlist reachability change — this audit
+does not start that implementation and grants it no authority beyond
+naming it as the next step.
 
 ## Safety And External Effects
 
