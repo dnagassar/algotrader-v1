@@ -25,6 +25,7 @@ from typing import Any
 from algotrader.errors import ValidationError
 
 __all__ = [
+    "ALL_LANES_ABSENT_ACTION",
     "AUTONOMY_SUPERVISOR_LABELS",
     "AUTONOMY_SUPERVISOR_LANES",
     "AutonomySupervisorConfig",
@@ -79,6 +80,12 @@ _STATE_SEVERITY = (
     STATE_NOMINAL,
     STATE_ABSENT,
 )
+
+# Aggregate recommended action for a lane set in which every lane is absent. No
+# single lane is the remedy, so the report names no lane and recommends seeding
+# the lab. The V5.38 planner classifies this token as operator-gated, so it
+# never becomes an offline-runnable action.
+ALL_LANES_ABSENT_ACTION = "all_lanes_absent_run_lane_commands_to_seed_evidence"
 
 # Whole-system rollup classifications.
 SYSTEM_BLOCKED = "blocked"
@@ -665,8 +672,8 @@ def _aggregate(
         "absent_lanes": _lanes_in_state(lane_summaries, STATE_ABSENT),
         "aggregate_blockers": list(_dedupe(tuple(aggregate_blockers))),
         "recommended_next_action_lane": highest["lane_id"] if highest else "",
-        "recommended_next_action": highest["next_action"] if highest else (
-            "all_lanes_absent_run_lane_commands_to_seed_evidence"
+        "recommended_next_action": (
+            highest["next_action"] if highest else ALL_LANES_ABSENT_ACTION
         ),
         "submitted": False,
         "mutated": False,
@@ -698,16 +705,23 @@ def _system_status(counts: Mapping[str, int], operator_gated_stale: int) -> str:
 def _highest_priority_lane(
     lane_summaries: list[dict[str, object]],
 ) -> dict[str, object] | None:
+    """Return the highest-severity lane that has evidence, else ``None``.
+
+    ``absent`` is deliberately excluded: naming one absent lane in a lane set
+    where every lane is absent would answer a whole-system condition with a
+    single-lane instruction. Returning ``None`` routes that case to
+    ``ALL_LANES_ABSENT_ACTION`` with no recommended lane. Because the severity
+    loop returns any non-absent lane first, ``None`` means exactly
+    ``system_status == no_lane_evidence``, so a partially seeded lab still
+    recommends its highest-severity lane and never an absent one.
+    """
+
     for state in _STATE_SEVERITY:
         if state == STATE_ABSENT:
-            # An all-absent system is handled by the aggregate default action.
             continue
         for summary in lane_summaries:
             if summary["normalized_state"] == state:
                 return summary
-    for summary in lane_summaries:
-        if summary["normalized_state"] == STATE_ABSENT:
-            return summary
     return None
 
 

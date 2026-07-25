@@ -1244,10 +1244,19 @@ bound, and per-state offline next action. Default artifact paths are best-effort
 canonical `runs/` locations; a missing default reads `absent`, and an operator
 or wrapper may override any lane with an exact artifact path. Recommended next
 actions are always offline, read-only, or operator-review follow-ups and never
-name a broker mutation. The supervisor adds no strategy-performance evidence and
-changes no live-capital, paper-mutation, credential, network, or Task Scheduler
-authority. The detailed contract is in
-`docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+name a broker mutation.
+
+`recommended_next_action` comes from the highest-severity lane that has
+evidence, tie-broken by registry order; `absent` lanes are excluded, so an
+absent lane is never recommended while another lane has evidence. An all-absent
+lane set names no lane (`recommended_next_action_lane=""`) and emits the
+whole-system aggregate action
+`all_lanes_absent_run_lane_commands_to_seed_evidence`, which the V5.38 planner
+classifies as operator-gated. The supervisor adds no strategy-performance
+evidence and changes no live-capital, paper-mutation, credential, network, or
+Task Scheduler authority. The detailed contracts are in
+`docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md` and
+`docs/design/v5_37a_all_absent_aggregate_recommendation_contract.md`.
 
 ## V5.38 Offline Autonomy Next-Action Planner
 

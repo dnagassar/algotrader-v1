@@ -11,6 +11,7 @@ import pytest
 import algotrader.cli as cli_module
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
+    ALL_LANES_ABSENT_ACTION,
     AUTONOMY_SUPERVISOR_LANES,
     AutonomySupervisorConfig,
     build_autonomy_supervisor_report,
@@ -121,6 +122,16 @@ def test_every_supervisor_action_is_classified() -> None:
         tokens.update(lane.next_actions.values())
     missing = sorted(t for t in tokens if t not in AUTONOMY_ACTION_CLASSIFICATION)
     assert missing == [], f"unclassified supervisor actions: {missing}"
+
+
+def test_all_lanes_absent_action_is_classified_operator_gated() -> None:
+    # The supervisor emits this aggregate token whenever every lane is absent
+    # (V5.37a). It must stay classified and must never become offline-runnable:
+    # seeding a lane is operator-driven, so the V5.39 executor gains nothing.
+    classified = AUTONOMY_ACTION_CLASSIFICATION[ALL_LANES_ABSENT_ACTION]
+
+    assert classified.offline_runnable is False
+    assert classified.execution_class == EXECUTION_OPERATOR_GATED
 
 
 def test_stale_operator_action_flag_matches_action_classification() -> None:

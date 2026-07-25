@@ -88,8 +88,16 @@ toward more attention, never toward `nominal`.
 - else any `nominal` lane → `nominal`
 - else (all `absent`) → `no_lane_evidence`
 
-`recommended_next_action` is taken from the highest-severity lane, breaking ties
-by registry order.
+`recommended_next_action` is taken from the highest-severity lane that has
+evidence, breaking ties by registry order. `absent` lanes are excluded from that
+selection, so an absent lane is never recommended while another lane has
+evidence. When *every* lane is `absent` there is no lane to name: the report
+carries `recommended_next_action_lane=""` and the whole-system aggregate action
+`all_lanes_absent_run_lane_commands_to_seed_evidence` (exported as
+`ALL_LANES_ABSENT_ACTION`, classified operator-gated by the V5.38 planner), so a
+lab with nothing seeded is not answered with one arbitrary lane's seeding
+instruction. See
+`docs/design/v5_37a_all_absent_aggregate_recommendation_contract.md`.
 
 An all-absent lane set (`no_lane_evidence`) fails closed by default: the report
 carries `evidence_required=true` and the `autonomy-supervisor-status` CLI exits

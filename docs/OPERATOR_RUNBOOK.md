@@ -1366,8 +1366,16 @@ Known lane ids: `spy_market_data_soak`, `spy_offline_daily_cycle`,
 `crypto_supervised_readiness_trial`, `crypto_forward_shadow_cycle`,
 `crypto_bounded_paper_probe_review`, `crypto_capability_production`. A
 `recommended_next_action` is always an offline, read-only, or operator-review
-follow-up; it never authorizes or names a broker mutation. The detailed contract
-is in `docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md`.
+follow-up; it never authorizes or names a broker mutation.
+
+The recommendation names the highest-severity lane that has evidence, so a lane
+that is merely `absent` is never recommended while another lane has evidence. On
+an all-absent lane root, `recommended_next_action_lane` is empty and the action
+is `all_lanes_absent_run_lane_commands_to_seed_evidence`: seed the lanes you
+intend to supervise rather than reading it as one lane's instruction. The
+detailed contracts are in
+`docs/design/v5_37_offline_cross_lane_autonomy_supervisor.md` and
+`docs/design/v5_37a_all_absent_aggregate_recommendation_contract.md`.
 
 ## V5.38 Offline Autonomy Next-Action Planner
 

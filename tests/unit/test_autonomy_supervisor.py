@@ -11,6 +11,7 @@ import pytest
 import algotrader.cli as cli_module
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
+    ALL_LANES_ABSENT_ACTION,
     AUTONOMY_SUPERVISOR_LABELS,
     AUTONOMY_SUPERVISOR_LANES,
     AutonomySupervisorConfig,
@@ -114,6 +115,77 @@ def test_all_lanes_absent_reports_no_lane_evidence(tmp_path: Path) -> None:
     assert payload["profit_claim"] == "none"
     assert payload["recommended_next_action"] != ""
     _assert_safety_booleans_false(payload)
+
+
+# --------------------------------------------------------------------------- #
+# V5.37a: all-absent aggregate recommendation
+# --------------------------------------------------------------------------- #
+def test_all_lanes_absent_recommends_whole_system_seeding(tmp_path: Path) -> None:
+    # Every lane needs seeding, so no single lane may be named as the remedy.
+    payload = build_autonomy_supervisor_report(_config(tmp_path))
+
+    assert payload["system_status"] == "no_lane_evidence"
+    assert payload["evidence_required"] is True
+    assert payload["recommended_next_action"] == ALL_LANES_ABSENT_ACTION
+    assert payload["recommended_next_action_lane"] == ""
+    _assert_safety_booleans_false(payload)
+
+
+def test_empty_lab_assertion_keeps_aggregate_recommendation(tmp_path: Path) -> None:
+    # --allow-empty-lab changes evidence_required, never the remedy.
+    payload = build_autonomy_supervisor_report(
+        _config(tmp_path), allow_empty_lab=True
+    )
+
+    assert payload["evidence_required"] is False
+    assert payload["recommended_next_action"] == ALL_LANES_ABSENT_ACTION
+    assert payload["recommended_next_action_lane"] == ""
+
+
+def test_one_seeded_lane_recommends_that_lane_not_the_aggregate(
+    tmp_path: Path,
+) -> None:
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path),
+        {"crypto_capability_production": {"classification": "unmapped_value"}},
+    )
+
+    assert payload["recommended_next_action_lane"] == "crypto_capability_production"
+    assert payload["recommended_next_action"] == (
+        "operator_review_capability_production"
+    )
+    assert payload["recommended_next_action"] != ALL_LANES_ABSENT_ACTION
+
+
+def test_absent_lane_is_never_recommended_while_evidence_exists(
+    tmp_path: Path,
+) -> None:
+    # The last registry lane is the only one seeded, and it is merely nominal:
+    # the earlier absent lanes must still not be recommended over it.
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path),
+        {"crypto_supervised_readiness_trial": {"trial_classification": "accepted"}},
+    )
+
+    assert payload["system_status"] == "nominal"
+    assert payload["absent_lanes"] != []
+    assert (
+        payload["recommended_next_action_lane"]
+        == "crypto_supervised_readiness_trial"
+    )
+    assert _lane_state(payload, "crypto_supervised_readiness_trial") == "nominal"
+
+
+def test_aggregate_recommendation_renders_in_text_and_json(tmp_path: Path) -> None:
+    payload = build_autonomy_supervisor_report(_config(tmp_path))
+
+    text = render_autonomy_supervisor_text(payload)
+    assert f"recommended_next_action: {ALL_LANES_ABSENT_ACTION}" in text
+    assert "recommended_next_action_lane: \n" in text
+
+    decoded = json.loads(render_autonomy_supervisor_json(payload))
+    assert decoded["recommended_next_action"] == ALL_LANES_ABSENT_ACTION
+    assert decoded["recommended_next_action_lane"] == ""
 
 
 def test_blocked_review_lane_makes_system_blocked(tmp_path: Path) -> None:
@@ -595,6 +667,8 @@ def test_cli_no_lane_evidence_exits_one_by_default(tmp_path: Path) -> None:
     payload = json.loads(buffer.getvalue().strip())
     assert payload["system_status"] == "no_lane_evidence"
     assert payload["evidence_required"] is True
+    assert payload["recommended_next_action"] == ALL_LANES_ABSENT_ACTION
+    assert payload["recommended_next_action_lane"] == ""
     assert exit_code == 1
 
 
@@ -619,6 +693,8 @@ def test_cli_allows_explicit_empty_lab(tmp_path: Path) -> None:
     payload = json.loads(buffer.getvalue().strip())
     assert payload["allow_empty_lab"] is True
     assert payload["evidence_required"] is False
+    assert payload["recommended_next_action"] == ALL_LANES_ABSENT_ACTION
+    assert payload["recommended_next_action_lane"] == ""
     assert exit_code == 0
 
 

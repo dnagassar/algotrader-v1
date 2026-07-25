@@ -35,6 +35,7 @@ from typing import Any
 
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
+    ALL_LANES_ABSENT_ACTION,
     AUTONOMY_SUPERVISOR_LANES,
     AutonomySupervisorConfig,
     STATE_ABSENT,
@@ -424,8 +425,8 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
         "no offline command seeds capability production; operator must drive "
         "it.",
     ),
-    # --- Aggregate fallback the supervisor emits only if it has no lane. ---
-    "all_lanes_absent_run_lane_commands_to_seed_evidence": _operator_gated(
+    # --- Aggregate action the supervisor emits when every lane is absent. ---
+    ALL_LANES_ABSENT_ACTION: _operator_gated(
         _GATE_NO_OFFLINE_COMMAND,
         "all lanes absent; per-lane seeding is operator-driven.",
     ),
