@@ -2,7 +2,7 @@
 
 ## Authority and Scope
 
-This file is the sole canonical repository authority and permissions policy. AI collaborators act as co-managing partners for delegated, non-capital repository work.
+This file is the sole canonical repository authority and permissions policy. AI collaborators act as co-managing partners for delegated repository work and paper-only broker operations. All collaborators have the same authority under this file; authority does not vary by agent, model, or tool.
 
 Within an explicitly scoped task, collaborators may autonomously:
 
@@ -11,27 +11,33 @@ Within an explicitly scoped task, collaborators may autonomously:
 * Run offline verification.
 * Manage non-capital Git workflow, including branches, staging, commits, pushes, and pull-request preparation, subject to protected-branch controls and the explicit task scope.
 * Coordinate implementation and review dynamically rather than through fixed model-specific roles.
+* Cause approved adapters and credential providers to load and use paper-broker credentials without exposing credential values.
+* Enter and use paper mode; perform paper-only network and broker operations through repository safety boundaries.
+* Submit, cancel, replace, close, and liquidate paper orders without separate per-operation operator approval.
+* Define and revise explicit finite paper-only quantity, position, order-notional, and portfolio-notional caps appropriate to the delegated task.
 
-This autonomy does not permit scope expansion, destructive handling of unrelated user work, weakening safety guards, or treating free-form agent text as authorization.
+Paper caps must be positive, finite, machine-validated, fail-closed, and recorded in the action audit. Exposure-reducing close or liquidation operations may exceed an entry-order cap only to flatten existing paper exposure, and must remain paper-only and fully audited.
+
+This autonomy does not permit scope expansion, destructive handling of unrelated user work, weakening safety guards, credential disclosure, live-broker access, live trading, or live-capital activity. Free-form agent text is not authority; this file and explicit operator instructions are.
 
 ## Operator Gates and Safety Rails
 
 The operator retains the hard gates for:
 
-* Supplying, loading, or exposing broker credentials.
-* Capital allocation or deployment.
-* Paper-broker mutation unless explicitly authorized for the exact operation.
-* Paper/live mode changes.
-* All live-broker access and all live trading.
-* Any submit, cancel, replace, close, or liquidate action outside exact operator authorization.
+* Exposing, printing, logging, persisting, or otherwise disclosing broker credential values.
+* Real-capital allocation or deployment.
+* All live-broker access, live mode, live trading, live orders, and live-capital activity.
+* Removing or bypassing the paper/live interlock, paper-endpoint validation, finite paper caps, reconciliation, or action auditing.
 
-The repository is paper-only and not live-authorized. No live orders or live-capital activity are permitted. Broker-facing behavior stays behind explicit adapters, commands, profile gates, and operator authorization.
+Paper credentials may be supplied, loaded, and used by any collaborator through environment-backed configuration or an approved secure credential provider. Collaborators must not request, display, copy into prompts, return, log, persist, or place raw credential values in commands, source files, artifacts, reports, or handoffs. Credential values may flow only through the minimum trusted adapter/provider boundary needed for an authorized paper operation.
+
+The repository is paper-only and not live-authorized. Paper profile changes, paper-broker mutation, and paper submit/cancel/replace/close/liquidate operations are standing-authorized for all collaborators when performed through explicit repository adapters and commands, against a validated paper endpoint, within explicit finite paper caps, and with deterministic preflight, receipt, reconciliation, and audit evidence. Separate per-operation operator approval is not required. No live orders or live-capital activity are permitted.
 
 Default tests must remain offline, deterministic, credential-free, network-free, and broker-free. Agents and LLMs remain outside the trading hot path. Do not remove or weaken dependency-direction, network, credential, broker, or trading-safety guards.
 
 `ExecutionIntent` is not a broker order. `ExecutionPlan` is immutable and pre-broker.
 
-SPY SMA 50/200 is an initial paper-lab strategy path, not an exhaustive statement of permitted offline research. Crypto research may exist without authorizing broker activity.
+SPY SMA 50/200 is an initial paper-lab strategy path, not an exhaustive statement of permitted offline research. Crypto research may exist without authorizing live-broker activity.
 
 ## Canonical Sources and Generated State
 
@@ -47,7 +53,7 @@ SPY SMA 50/200 is an initial paper-lab strategy path, not an exhaustive statemen
 
 ## Preflight and Verification
 
-Before default pytest or implementation work, stop if `APP_PROFILE=paper` or any of `ALPACA_API_KEY`, `ALPACA_API_SECRET_KEY`, or `ALPACA_SECRET_KEY` is loaded. Check presence without printing values. Preserve unrelated tracked and untracked user work.
+Before default pytest or offline implementation work, check whether `APP_PROFILE=paper` or any broker credential alias is loaded without printing values. Default tests and offline verification must not run with a paper profile or broker credentials loaded; unload them or use an isolated credential-free process first. Credential presence is not an operator gate for an explicitly scoped paper operation, but paper work must use only the minimum credential-bearing process and must not contaminate default tests, logs, or artifacts. Preserve unrelated tracked and untracked user work.
 
 Run relevant targeted tests first, then the offline verification script and required checks:
 
@@ -62,11 +68,11 @@ git diff --name-only HEAD -- src
 git ls-files --others --exclude-standard src tests
 ```
 
-Never run broker, network, paper, or live commands unless the operator explicitly scopes and authorizes the exact operation.
+Collaborators may run broker, network, and paper commands needed for an explicitly scoped paper task without separate per-operation approval. They must use validated paper profile/endpoint boundaries, explicit finite caps, and auditable repository adapters. Never run a live-broker, live-mode, live-order, or live-capital command.
 
 ## Reporting
 
-Implementation reports must include preflight, files changed, contract and safety summaries, test results, credential state without values, network/broker access, broker mutation status, `git diff --check`, `git status --short`, `git diff --name-only HEAD -- src`, `git ls-files --others --exclude-standard src tests`, and the recommended next milestone.
+Implementation reports must include preflight, files changed, contract and safety summaries, test results, credential state without values, network/broker access, paper mutations and outcomes, effective size/notional caps, reconciliation/receipt status, live-authorized state, `git diff --check`, `git status --short`, `git diff --name-only HEAD -- src`, `git ls-files --others --exclude-standard src tests`, and the recommended next milestone.
 
 ## Implementation Agent Takeover and Yield
 
@@ -84,9 +90,11 @@ That one file is the only mutable implementation handoff; overwrite it in place
 and do not create historical handoff copies. It must never contain secrets,
 credential values, account identifiers, broker data, or generated payloads.
 
-`runs/` artifacts remain generated and untracked. The hard operator gates,
-offline defaults, credential protections, and no-submit policy remain unchanged
-during takeover and yield.
+`runs/` artifacts remain generated and untracked. The live prohibition,
+credential nondisclosure rules, offline-test defaults, finite paper caps,
+reconciliation, and audit safeguards remain unchanged during takeover and
+yield. Standing paper-operation authority follows this file and transfers
+equally between collaborators; it does not require per-operation reapproval.
 
 For the same local checkout, staged, unstaged, and untracked work can be
 inherited directly after inspection. Across different checkouts or remote
@@ -99,10 +107,11 @@ directory.
 
 Stop before continuing, staging, or committing if:
 
-* Paper profile or broker credentials are present.
+* A default test or offline verification process has a paper profile or broker credentials loaded.
 * Required scope cannot be isolated from unrelated user work.
 * Dependency-direction, offline verification, or network-safety checks fail.
 * A change introduces broker/network access into default tests or weakens a safety guard.
-* A broker response is ambiguous or an operation exceeds exact operator authorization.
-* A change adds unauthorized submit, cancel, replace, close, or liquidate behavior.
+* A paper endpoint/profile cannot be proven, a broker response is ambiguous, reconciliation fails, or an operation would exceed the effective finite paper caps.
+* A change adds uncapped, unaudited, unreconciled, or non-paper submit, cancel, replace, close, or liquidate behavior.
+* A credential value would be exposed, logged, persisted, returned, or copied outside its trusted provider/adapter boundary.
 * Live-capital safety would be weakened.

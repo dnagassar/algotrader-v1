@@ -16,10 +16,12 @@ deterministic contracts before any new trading behavior.
 - Broker and Alpaca behavior must remain isolated behind explicit adapters or
   wrappers.
 - Paper and live integration tests must be skipped by default.
-- LLMs may support research, narration, journaling, and analysis only.
-- LLMs must never be in the trading hot path.
-- No live trading behavior is allowed unless explicitly scoped in a later
-  phase.
+- Agents may coordinate standing-authorized paper operations only through
+  deterministic repository adapters, explicit finite caps, reconciliation, and
+  audit boundaries; they must never receive or expose raw credentials.
+- LLMs and agents must never be in the trading hot path.
+- No live-broker access, live mode, live orders, live trading, or live-capital
+  behavior is allowed.
 
 ## 3. Current Architecture Summary
 
@@ -104,17 +106,25 @@ that older context.
 
 ## 8. Standard Hard Gates
 
-- Do not load or expose broker credentials during development or default tests.
-- Do not perform a broker/network read without the exact scoped operator command
-  and authorization required by the runbook.
-- Do not submit, cancel, replace, close, liquidate, or otherwise mutate paper
-  state without exact operation-specific operator authorization.
-- Do not add or use live credentials/endpoints, allocate capital, or trade live.
+- Default development and tests remain credential-free. For an explicitly scoped
+  paper task, any collaborator may cause a trusted provider/adapter to load and
+  use paper credentials, but must never request, print, log, persist, return, or
+  otherwise expose their values.
+- Paper broker/network reads and paper submit/cancel/replace/close/liquidate
+  actions are standing-authorized for all collaborators through validated paper
+  adapters; no per-operation reapproval is required.
+- Paper operations require a proven paper profile/endpoint, explicit positive
+  finite quantity/notional caps, deterministic receipts, reconciliation, and a
+  complete action audit. Collaborators may define and revise those finite caps.
+- Do not add or use live credentials/endpoints, enter live mode, allocate real
+  capital, access a live broker, or trade live.
 - Do not weaken frozen strategy fingerprints, untouched windows, source
-  provenance, dependency direction, or offline-default tests.
+  provenance, dependency direction, offline-default tests, or paper/live
+  interlocks.
 - Keep LLMs and agents outside the trading hot path.
 - Scope deterministic strategy, persistence, scheduler, or broker-adapter work
-  narrowly and preserve explicit safety wrappers and operator gates.
+  narrowly and preserve explicit safety wrappers and the canonical `AGENTS.md`
+  gates.
 
 ## 9. Standard Verification Commands
 
@@ -141,10 +151,11 @@ network access, binds receipts to source identity, canonicalizes account
 identity in memory, persists no raw account identifier, and preserves
 stage-specific failure evidence.
 
-This capability remains read-only, target-scoped, paper-only, and behind exact
-operator authorization. It adds no submit, cancel, replace, close, liquidate,
-capital, paper-mode-change, or live authority. Default tests remain offline and
-broker-free.
+This capability remains read-only, target-scoped, and paper-only behind the
+repository paper-safety boundary. Current standing paper authority does not
+change what this historical path itself implements: it adds no submit, cancel,
+replace, close, liquidate, capital, paper-mode-change, or live authority.
+Default tests remain offline and broker-free.
 
 Crypto tournament V2 still follows its frozen preregistration, untouched
 OOS/forward-shadow calendar, and terminal decision gates. Consult the latest
@@ -154,7 +165,7 @@ dated count into prompts or infer a winner before the fixed gate.
 Before changing this path, read the relevant V5.23 through V5.33 design,
 architecture, and active-handoff material selected by the current task.
 Preserve source provenance, account binding, frozen fingerprints, the
-untouched calendar, and every operator gate.
+untouched calendar, and every current `AGENTS.md` safety gate.
 
 The current branch, HEAD, status, diffs, and verification results outrank this
 compact narrative if they ever disagree.

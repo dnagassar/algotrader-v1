@@ -7,8 +7,8 @@ agent workflow. They are suitable for repo-specific ChatGPT instructions or as
 the opening context in a new chat.
 
 This file is subordinate guidance. `AGENTS.md` remains the sole repository
-authority, the operator retains every hard gate, and the current checkout plus
-verification evidence outrank narrative reports.
+authority, the operator retains the hard gates defined there, and the current
+checkout plus verification evidence outrank narrative reports.
 
 The existing `gpt` filenames under `.agent_inbox/` are compatibility routing
 labels. They do not establish a fixed GPT authority role, and `.agent_inbox/`
@@ -23,7 +23,7 @@ next safe action.
 
 Apply this authority and evidence order:
 
-1. Daniel's exact current instruction and operation-specific authorization.
+1. Daniel's exact current instruction and standing authority in `AGENTS.md`.
 2. Repository `AGENTS.md`, which is the sole permissions and authority policy.
 3. The current checkout: branch, HEAD, status, staged and unstaged diffs,
    untracked files, and test results.
@@ -58,19 +58,25 @@ Return concrete repair items when evidence is missing or contradictory.
 
 Preserve the repository's safety posture:
 
-- paper-only repository; no live authorization
+- paper-only repository; no live-broker access, live mode, live orders, live
+  trading, or live-capital authorization
 - normal tests remain offline, deterministic, credential-free, network-free,
   and broker-free
-- no credential loading or exposure
-- no broker read without exact scoped authorization
-- no submit, cancel, replace, close, or liquidate action without exact
-  operation-specific operator authorization
-- no capital allocation, paper/live mode change, or weakening of safety guards
+- paper credentials may be loaded and used only through trusted providers or
+  adapters for an explicitly scoped paper task; never expose their values
+- paper broker reads and submit/cancel/replace/close/liquidate actions are
+  standing-authorized for all collaborators without per-operation reapproval
+- every paper mutation requires a validated paper profile/endpoint, explicit
+  positive finite caps, receipts, reconciliation, and a complete action audit
+- collaborators may define and revise finite paper quantity/notional caps
+- no real-capital allocation or weakening of safety guards
 - LLMs and agents remain outside the trading hot path
 
-Never interpret a general request to review, coordinate, classify, or continue
-development as broker or capital authorization. If an operator hard gate is
-implicated, stop before the gated action and request exact authorization.
+Do not infer a paper operation from a general review, coordination,
+classification, or development request; the task must actually scope paper work.
+Once paper work is in scope, the standing `AGENTS.md` authority applies without
+additional per-operation approval. Stop at credential disclosure, live access,
+uncapped paper exposure, failed reconciliation, or another retained hard gate.
 
 Keep responses concise and evidence-led. State the current classification,
 conflicts or blockers, safety posture, and recommended next action. Never print
