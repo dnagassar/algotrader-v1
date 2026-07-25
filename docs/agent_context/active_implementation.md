@@ -14,9 +14,10 @@
 - V5.41b contract doc correction commit: same merge commit `29068c7` (amended
   the gained `docs/design/v5_41b_standalone_supervisor_empty_lab_contract.md`
   in place, see below).
-- Operator action required for this offline implementation: `false`.
-- `main` was not updated, force-updated, or pushed. This slice pushes only
-  `claude/main-frontier-reconciliation-prep`.
+- Promotion authorization required: `false`; authorization was granted and
+  executed on `2026-07-25`.
+- `origin/main` fast-forwarded without force from `6b5dde6` to `a6db53a`;
+  post-fetch local HEAD, the feature remote, and `origin/main` were equal.
 - This is not strategy-profit, paper-order, broker-mutation, activation, or
   live-trading evidence.
 
@@ -239,7 +240,8 @@ mutation occurred; no network, broker, or market-data request occurred; no
 paper profile was entered and no paper mutation or order action occurred;
 no canary, strategy, paper automation, live access, or trading effect was
 activated. All tests used deterministic offline fixtures and fake
-boundaries. `main` was not updated, force-updated, reset, or pushed.
+boundaries. Git network access was limited to fetch and the authorized
+non-force fast-forward pushes; no branch was reset or force-updated.
 Effective paper quantity/position/order-notional/portfolio-notional caps:
 `not applicable` because no paper operation was attempted. Broker receipt,
 reconciliation, and action-audit outcome: `not applicable`. Live-authorized
@@ -258,15 +260,20 @@ state: `false`.
   `execution_count=0` in `autonomy_offline_executor.py` remains open by
   deliberate scope choice, carried over from the V5.42a review. No
   `cycle_outcome` depends on it.
-- This branch is a reviewable integration candidate only. Promotion to
-  `main` is an explicit operator decision, out of scope for this task.
+- V5.43 is complete on `main`; no reconciliation or promotion gate remains.
 
 ## Next Highest-Leverage Safe Action
 
-Operator review and explicit authorization for promotion of the accepted
-feature branch to protected `main`. The integration implementation, targeted
-tests, standard verifier, canonical bounded full suite, and repository
-hygiene are complete and green; no further implementation repair is
-indicated. Until that operator decision, do not merge, force-update, or push
-`main`, and do not independently re-merge the superseded contract-only
-branch.
+Freeze `V5.44 — zero-execution outcome truthfulness` as an offline contract
+before changing source. Audit every producer and consumer of
+`all_executions_succeeded`, `execution_count`, and `cycle_outcome`, starting
+with `src/algotrader/execution/autonomy_offline_executor.py`,
+`src/algotrader/execution/autonomy_self_refresh_cycle.py`, and their unit
+tests. The contract must resolve whether zero executions needs a distinct
+not-applicable/unknown representation or an explicit false value while
+preserving the truthful `OUTCOME_NOOP_NO_ACTION` classification and existing
+fail-closed preflight and evidence-required behavior. Then implement the
+smallest coherent repair and tests, run both targeted suites, dependency
+direction, the standard offline verifier, the canonical bounded full suite,
+and hygiene checks. Keep the entire slice credential-free, network-free,
+broker-free, paper-mutation-free, and live-prohibited.
