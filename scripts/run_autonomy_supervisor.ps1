@@ -9,6 +9,11 @@ read-only. It refuses to run if a paper/live profile or any Alpaca credential or
 network-test variable is loaded so secrets never reach this reporting surface.
 No wall clock is read; -AsOf is the only time source, keeping output
 deterministic.
+
+An all-absent lane set (no local evidence under -LanesRoot) fails closed by
+default: it exits non-zero rather than reading as healthy to an unattended
+caller. Pass -AllowEmptyLab to explicitly assert an intentionally empty lab
+and accept exit 0 for that case.
 #>
 
 [CmdletBinding()]
@@ -19,6 +24,7 @@ param(
     [string]$AsOf,
     [string]$LanesRoot = "runs",
     [string[]]$Lane = @(),
+    [switch]$AllowEmptyLab,
     [string]$RunLog,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -68,6 +74,9 @@ foreach ($Override in $Lane) {
     if (-not [string]::IsNullOrWhiteSpace($Override)) {
         $Arguments += @("--lane", $Override)
     }
+}
+if ($AllowEmptyLab.IsPresent) {
+    $Arguments += "--allow-empty-lab"
 }
 if (-not [string]::IsNullOrWhiteSpace($RunLog)) {
     $Arguments += @("--run-log", $RunLog)

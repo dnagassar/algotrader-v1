@@ -482,20 +482,25 @@ class _ArtifactRead:
 
 def build_autonomy_supervisor_report(
     config: AutonomySupervisorConfig,
+    *,
+    allow_empty_lab: bool = False,
 ) -> dict[str, object]:
     """Build one consolidated offline cross-lane autonomy supervisor record."""
 
     checked_config = _config(config)
+    checked_allow_empty_lab = _bool(allow_empty_lab, "allow_empty_lab")
     lane_summaries = []
     for lane in AUTONOMY_SUPERVISOR_LANES:
         artifact = _read_lane_artifact(checked_config, lane)
         lane_summaries.append(_summarize_lane(checked_config, lane, artifact))
-    return _aggregate(checked_config, lane_summaries)
+    return _aggregate(checked_config, lane_summaries, checked_allow_empty_lab)
 
 
 def build_autonomy_supervisor_report_from_records(
     config: AutonomySupervisorConfig,
     lane_records: Mapping[str, Mapping[str, object] | None],
+    *,
+    allow_empty_lab: bool = False,
 ) -> dict[str, object]:
     """Build one report from explicit in-memory latest lane records.
 
@@ -504,6 +509,7 @@ def build_autonomy_supervisor_report_from_records(
     """
 
     checked_config = _config(config)
+    checked_allow_empty_lab = _bool(allow_empty_lab, "allow_empty_lab")
     records = _lane_records(lane_records)
     lane_summaries = []
     for lane in AUTONOMY_SUPERVISOR_LANES:
@@ -529,7 +535,7 @@ def build_autonomy_supervisor_report_from_records(
                 error="artifact_absent",
             )
         lane_summaries.append(_summarize_lane(checked_config, lane, artifact))
-    return _aggregate(checked_config, lane_summaries)
+    return _aggregate(checked_config, lane_summaries, checked_allow_empty_lab)
 
 
 def _summarize_lane(
@@ -603,6 +609,7 @@ def _summarize_lane(
 def _aggregate(
     config: AutonomySupervisorConfig,
     lane_summaries: list[dict[str, object]],
+    allow_empty_lab: bool = False,
 ) -> dict[str, object]:
     counts = {state: 0 for state in _STATE_SEVERITY}
     for summary in lane_summaries:
@@ -619,6 +626,11 @@ def _aggregate(
     )
 
     system_status = _system_status(counts, operator_gated_stale)
+    # An all-absent lane set is fail-closed by default: it must not read as a
+    # harmless "nothing to do yet" to an unattended caller. The caller may
+    # explicitly assert an intentionally empty lab to opt out, mirroring the
+    # V5.42 self-refresh cycle's ``allow_empty_lab`` exception.
+    evidence_required = system_status == SYSTEM_NO_LANE_EVIDENCE and not allow_empty_lab
     highest = _highest_priority_lane(lane_summaries)
     aggregate_blockers: list[str] = []
     for summary in lane_summaries:
@@ -642,6 +654,8 @@ def _aggregate(
         "system_blocked": system_status == SYSTEM_BLOCKED,
         "system_attention_required": system_status
         in (SYSTEM_BLOCKED, SYSTEM_ATTENTION),
+        "allow_empty_lab": allow_empty_lab,
+        "evidence_required": evidence_required,
         "blocked_lanes": _lanes_in_state(lane_summaries, STATE_BLOCKED),
         "unknown_lanes": _lanes_in_state(lane_summaries, STATE_UNKNOWN),
         "attention_lanes": _lanes_in_state(lane_summaries, STATE_ATTENTION),
@@ -712,6 +726,8 @@ def render_autonomy_supervisor_text(payload: Mapping[str, object]) -> str:
         f"as_of: {payload.get('as_of', '')}",
         f"system_status: {payload.get('system_status', '')}",
         f"system_attention_required: {_bool_text(payload.get('system_attention_required'))}",
+        f"allow_empty_lab: {_bool_text(payload.get('allow_empty_lab'))}",
+        f"evidence_required: {_bool_text(payload.get('evidence_required'))}",
         f"recommended_next_action_lane: {payload.get('recommended_next_action_lane', '')}",
         f"recommended_next_action: {payload.get('recommended_next_action', '')}",
         "lanes:",
@@ -1055,6 +1071,12 @@ def _text(value: object) -> str:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _bool(value: object, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise ValidationError(f"{field_name} must be a bool.")
+    return value
 
 
 def _true_bool(value: object, field_name: str) -> bool:

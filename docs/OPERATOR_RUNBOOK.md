@@ -1328,8 +1328,18 @@ the surfaced blockers, and one offline next action. The whole-system
 `system_status` is `blocked` if any lane is blocked, `attention_required` if any
 lane is unknown, attention, or *actionably* stale, `waiting` if any lane is
 waiting, `nominal` if at least one lane is healthy, and `no_lane_evidence` when
-nothing has run yet. Exit code is `0` for nominal/waiting/no_lane_evidence, `1`
-for attention/blocked, and `2` on input error, so it is schedulable.
+nothing has run yet.
+
+`no_lane_evidence` fails closed by default: the report carries
+`evidence_required=true` and the command exits `1`, so a wrong or empty
+`-LanesRoot` cannot read as healthy to an unattended caller. Do not suppress
+this result in unattended automation. Pass `-AllowEmptyLab` only when an
+all-absent lane set is intentional (a deliberately empty bootstrap lab); the
+exception is recorded on the report as `allow_empty_lab=true`,
+`evidence_required=false`, and the command exits `0` for that case. It must not
+be used to make an unknown lane root appear healthy. Exit code is `0` for
+nominal/waiting, `0` for no_lane_evidence only with `-AllowEmptyLab` (otherwise
+`1`), `1` for attention/blocked, and `2` on input error, so it is schedulable.
 
 Staleness splits in two. A lane whose `stale_requires_operator_action` is true
 (today: `spy_offline_daily_cycle` and `spy_market_data_soak`) has no offline

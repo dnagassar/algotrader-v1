@@ -1229,6 +1229,15 @@ or live action, and every record fixes `submitted`, `mutated`,
 actionable lane state. Staleness and safety escalations can only move a lane
 toward more attention, never toward `nominal`.
 
+An all-absent lane set (`system_status=no_lane_evidence`) is fail-closed by
+default: the report carries `evidence_required=true` and the
+`autonomy-supervisor-status` CLI exits `1`, so an empty or wrong `--lanes-root`
+cannot read as healthy to an unattended caller. `--allow-empty-lab`
+(`-AllowEmptyLab` on the wrapper) is the explicit caller assertion of an
+intentionally empty lab; it records `allow_empty_lab=true` and
+`evidence_required=false` on the report and exits `0` for that case. This
+mirrors the V5.42 self-refresh cycle's identically-named exception below.
+
 The frozen lane registry `AUTONOMY_SUPERVISOR_LANES` maps each lane to its
 default local artifact, state field(s), value-to-state normalization, staleness
 bound, and per-state offline next action. Default artifact paths are best-effort

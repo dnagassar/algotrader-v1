@@ -39,13 +39,21 @@ read-only reporting surface. It grants no new authority.
 
 - Module: `src/algotrader/execution/autonomy_supervisor.py`.
 - CLI: `python -m algotrader.cli autonomy-supervisor-status`.
-- The module is pure: `build_autonomy_supervisor_report(config)` reads local
-  artifacts; `build_autonomy_supervisor_report_from_records(config, records)`
-  accepts already-parsed latest records for deterministic evaluation and tests.
+- Wrapper: `scripts/run_autonomy_supervisor.ps1`.
+- The module is pure: `build_autonomy_supervisor_report(config, *, allow_empty_lab=False)`
+  reads local artifacts; `build_autonomy_supervisor_report_from_records(config,
+  records, *, allow_empty_lab=False)` accepts already-parsed latest records for
+  deterministic evaluation and tests. `allow_empty_lab` is keyword-only and
+  defaults to `False`, so every existing caller (`autonomy-next-plan`,
+  `autonomy-self-refresh-cycle`) keeps its prior fail-closed behavior for
+  `no_lane_evidence` unless it explicitly opts in.
 - Rendering is deterministic: `render_autonomy_supervisor_json` emits one
   sorted-key newline-free object; `render_autonomy_supervisor_text` emits a
   compact operator summary; `write_autonomy_supervisor_jsonl` writes exactly one
   newline-terminated record, replacing any prior file contents.
+- CLI flag: `--allow-empty-lab` (wrapper: `-AllowEmptyLab`) forwards to
+  `allow_empty_lab`; see "Whole-System Rollup" below for the exact exit-code
+  contract.
 
 ## Normalized State Vocabulary
 
@@ -81,9 +89,22 @@ toward more attention, never toward `nominal`.
 - else (all `absent`) → `no_lane_evidence`
 
 `recommended_next_action` is taken from the highest-severity lane, breaking ties
-by registry order. The command exits `0` for `nominal`, `waiting`, and
-`no_lane_evidence`; `1` for `attention_required` and `blocked`; and `2` on input
-validation error.
+by registry order.
+
+An all-absent lane set (`no_lane_evidence`) fails closed by default: the report
+carries `evidence_required=true` and the `autonomy-supervisor-status` CLI exits
+`1`, so an empty or wrong `--lanes-root` cannot read as healthy to an unattended
+caller. A caller that intentionally runs against a fresh, not-yet-seeded lab may
+pass `--allow-empty-lab` (`build_autonomy_supervisor_report(..., allow_empty_lab=True)`
+at the library level; `-AllowEmptyLab` on the PowerShell wrapper) to record that
+assertion explicitly on the report (`allow_empty_lab=true`,
+`evidence_required=false`) and receive exit `0` for that case. This mirrors the
+V5.42 self-refresh cycle's `allow_empty_lab` exception (see
+`docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`).
+
+The command exits `0` for `nominal` and `waiting`; `0` for `no_lane_evidence`
+only when `--allow-empty-lab` is passed (otherwise `1`); `1` for
+`attention_required` and `blocked`; and `2` on input validation error.
 
 ## Frozen Lane Registry
 

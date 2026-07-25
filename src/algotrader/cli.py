@@ -1677,6 +1677,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     autonomy_supervisor_parser.add_argument(
+        "--allow-empty-lab",
+        action="store_true",
+        default=False,
+        help=(
+            "Explicitly treat an all-absent lane set as an intentional empty "
+            "lab. Without this flag, no_lane_evidence fails closed with a "
+            "non-zero exit code."
+        ),
+    )
+    autonomy_supervisor_parser.add_argument(
         "--run-log",
         default=None,
         help="Write exactly one deterministic supervisor JSONL record to PATH.",
@@ -6031,7 +6041,8 @@ def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
                 as_of=args.as_of,
                 lanes_root=args.lanes_root,
                 lane_artifact_overrides=overrides,
-            )
+            ),
+            allow_empty_lab=args.allow_empty_lab,
         )
         if args.run_log is not None:
             write_autonomy_supervisor_jsonl(payload, args.run_log)
@@ -6044,6 +6055,11 @@ def _run_autonomy_supervisor(args: argparse.Namespace) -> int:
     else:
         print(render_autonomy_supervisor_text(payload))
 
+    # An all-absent lane set fails closed by default: it must not read as
+    # healthy to an unattended caller. --allow-empty-lab is the explicit
+    # caller assertion that opts out, mirroring autonomy-self-refresh-cycle.
+    if payload["evidence_required"]:
+        return 1
     if payload["system_status"] in ("blocked", "attention_required"):
         return 1
     return 0
