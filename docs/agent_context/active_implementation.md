@@ -3,232 +3,195 @@
 ## Classification
 
 - Milestone: `V5.46 — contract-first design for an import-pure crypto
-  readiness replay command` (correction pass; same milestone number as
-  the rejected first version, mirroring how V5.45's correction stayed
-  V5.45).
-- Date: `2026-07-25`.
-- Contract document: `docs/design/v5_46_import_pure_readiness_replay_contract.md`
-  (frozen standalone; zero `src`/`tests` files touched by this or the
-  prior pass).
-- This is a design-contract milestone, not an implementation milestone.
-  No executor, planner, supervisor, CLI, or test behavior changed. This
-  work is squarely inside every collaborator's standing authority under
-  `AGENTS.md` (design/documentation and, later, scoped source/allowlist
-  work) — no separate operator gate applies, and none of this document
-  should be read as implying one is needed.
+  readiness replay command`, third correction.
+- Contract:
+  `docs/design/v5_46_import_pure_readiness_replay_contract.md`.
+- This is a frozen design-contract milestone, not source
+  implementation. It changes no runtime capability, action
+  classification, allowlist, lane registry, broker behavior, or
+  autonomous reachability.
 - Not strategy-profit, paper-order, broker-mutation, activation, or
   live-trading evidence.
 
 ## Current Checkout And Ownership
 
-- Worktree
-  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v546-import-pure-readiness-replay-contract`,
-  branch `claude/v5.46-import-pure-readiness-replay-contract`.
-- Implementation writer: `Claude Code`. Scope of claim: this working
-  tree only.
-- Started at `9f0d45d` (`V5.45 correction: fix base-commit claim and
-  reachability enumeration errors`), verified before any edit: branch,
-  `HEAD`, `git status`, staged/unstaged/untracked diffs, and
-  credential/profile presence booleans were all clean/absent/false.
-  This worktree/branch carries the full accepted V5.45 history
-  (`...1394be0 -> c1311b6 -> 9f0d45d`) — it was not forked fresh from
-  `main`, and no rebase or branch switch was performed.
-- First pass committed and pushed at `81124ad` (`V5.46: frozen contract
-  for an import-pure crypto readiness replay command`). Independent
-  review rejected it: its import-purity proof was unsound (checked only
-  the one edge it fixed, not the six edges its own proposed mechanism
-  would actually find).
-- Second pass (first correction) committed and pushed at `9dd7e14`
-  (`V5.46 correction: fix unsound import-purity proof, atomic-publish
-  ordering, authority language, and behavior-change framing`). This
-  fixed the edge count but tried to close the remaining five edges with
-  `importlib.import_module("...")` calls confined to their existing
-  call sites, reasoning that a plain `ast.Call` is invisible to
-  `ast.Import`/`ast.ImportFrom` matching. Independent review rejected
-  this too, correctly identifying it as test evasion (hiding a real,
-  executable dependency edge from one specific checker) rather than
-  import purity (removing or isolating the edge). See "What This
-  Correction Did" below for the fully redesigned fix. This checkpoint
-  entry replaces the prior ones describing `81124ad`'s and `9dd7e14`'s
-  content, since that content is now superseded, not merely
-  supplemented.
+- Worktree:
+  `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v546-import-pure-readiness-replay-contract`.
+- Branch: `claude/v5.46-import-pure-readiness-replay-contract`.
+- Correction base and pre-edit remote feature tip:
+  `6f1566dbdfd50fba9d515fff148f3021d7bc0c9c`.
+- The worktree was clean before this correction. Branch, HEAD, staged
+  and unstaged diffs, untracked files, and remote feature ref were
+  inspected directly. No reset, clean, stash, rebase, branch switch,
+  or force operation occurred.
+- Writer for this correction: Codex orchestrator. Claude was assigned
+  the same bounded correction, but its service session limit terminated
+  the run before it read or modified the checkout. Codex verified the
+  tree was still clean before taking over.
+- A separate read-only reviewer rejected the intermediate third-
+  correction diff on six checkout-proven issues: incomplete price-read
+  delegation, wrong packet/support trust direction, an evadable AST
+  length heuristic, overbroad crash-durability wording, missing facade
+  helper imports, and underspecified central CLI behavior. All six are
+  corrected in the current diff. Re-review then found Decimal-unsafe
+  JSON rendering and two ambient profile/credential-read paths; the
+  current diff also corrects both. Independent final re-review returned
+  `ACCEPT`; its sole non-blocking credential-alias reporting typo was
+  corrected before commit.
+- Prior contract commits remain in history:
+  `81124ad` (unsound partial import proof), `9dd7e14`
+  (dynamic-loading test evasion), and `6f1566d` (real dependency
+  inversion but false multi-file atomicity claim).
 
-## Prior Milestone (V5.45, Unchanged By This One)
+## Prior Accepted Capability
 
-`V5.45 — read-only executor reachability boundary audit`
-(`docs/design/v5_45_executor_reachability_boundary_audit.md`) found no
-safe candidate to allowlist and selected V5.46 (this milestone) as its
-next action. That audit's conclusions are unchanged and re-derived, not
-just re-cited, in this contract's "Root-Cause Import-Purity Analysis"
-section.
+- V5.45 remains the latest independently accepted capability in this
+  stacked history: a read-only executor reachability audit with both
+  reachability-difference directions empty after correction.
+- V5.46 proves no runtime capability yet. It specifies the next bounded
+  implementation slice and its acceptance tests.
 
-## What This Correction Did
+## What This Third Correction Changes
 
-Independent review rejected the first correction (`9dd7e14`) on a
-single, precise, correct ground: its fix for the five deferred
-forbidden imports — confining each behind an
-`importlib.import_module("...")` call at its existing call site — is
-invisible to the specific `ast.Import`/`ast.ImportFrom`-based checker
-the proposed test used, but the dependency itself is still real and
-still executes at runtime. That is test evasion, not import purity;
-the instruction was to remove or isolate the edges, not to encode them
-so one particular scanner can't see them. This correction deletes the
-entire `importlib`-based design and replaces it with a real
-dependency-inversion boundary.
-
-**Redesign, re-verified against the actual checkout (not assumed) at
-every step:**
-
-1. `tomorrow_crypto_trader_demo.py`: `_build_alpaca_read_client` is
-   **deleted outright** (not moved-and-called-dynamically). Its one
-   call site now reads `client = broker_client or
-   (broker_client_factory() if broker_client_factory is not None else
-   None)` — when `client is None`, the **already-existing**
-   `blocked_adapter_unavailable` fail-closed branch fires; no new code
-   needed. `_read_open_orders` switches to a plain-keyword protocol
-   call (`method(status_filter="open", symbol_filter=symbol)` instead
-   of constructing `AlpacaRecentOrderQuery`), verified against
-   `_FakeBrokerReadClient.get_orders(self, query=None)`'s exact
-   signature to confirm the `except TypeError: return method()`
-   fallback preserves every existing test's asserted outcome. `main()`
-   is **removed from this file entirely** and moved verbatim to a new,
-   explicitly impure composition-root module,
-   `tomorrow_crypto_trader_demo_cli.py`, which imports both the pure
-   core and a new `tomorrow_crypto_trader_demo_broker_client_adapter.py`
-   (holding the real Alpaca-client construction, freely impure, outside
-   the closure) and wires the factory in via the DI parameter that
-   already exists on `run_tomorrow_crypto_trader_demo`'s public
-   signature today.
-2. This is a **genuine, disclosed, narrow invocation-path change**, not
-   a hidden one: `main()`'s CLI cannot carry a Python callable, and
-   `scripts/run_tomorrow_crypto_trader_demo.ps1`/
-   `scripts/validate_tomorrow_crypto_trader_demo.ps1` (both verified by
-   direct reading) invoke `python -m
-   algotrader.execution.tomorrow_crypto_trader_demo` by exact module
-   path — those two scripts and the one test assertion
-   (`test_scripts_expose_simbroker_and_validator_contracts`'s expected
-   fragment) must be updated to point at
-   `tomorrow_crypto_trader_demo_cli` instead. Verified (by reading the
-   test file's own import list) that **no other test** references
-   `main()` or the module path in-process, so this is the only test
-   change Part 2 requires.
-3. `crypto_supervised_readiness_trial.py`: split into a new pure core
-   (`crypto_supervised_readiness_trial_core.py`, everything except
-   `_validate_offline_receipt`, with a `receipt_validator` parameter
-   injected instead of an internal adapter call — failing closed with
-   `blocked_receipt_validator_not_provided` when a `receipt_root` is
-   given without one) and a facade (the existing file, now openly and
-   statically importing the adapter, correctly, since it is outside the
-   closure) that auto-supplies the validator so every existing caller
-   (`cli.py`'s `crypto-readiness-verify`, this file's own `--receipt-
-   root`-carrying `main()`, and existing tests) keeps working with
-   **zero** test or script changes — verified this split, unlike
-   `tomorrow_crypto_trader_demo.py`'s, has no `python -m <exact path>`
-   constraint forcing an invocation-path change.
-4. New static test added (not merely the two closure tests carried
-   over): directly bans `importlib.import_module`/`__import__` calls
-   and any string literal naming a forbidden module, anywhere in the
-   tracked closure — closing the exact gap the rejected design
-   exploited and guarding against related evasions (`getattr`-based
-   indirection, string-keyed lookups).
-5. Preserved unchanged from the first correction: the package-aware
-   closure-completeness walker; the packet-last bundle-commit atomic-
-   publication protocol with its interruption test; the equal-
-   authority/no-operator-gate framing for the later wiring step;
-   "additive, not zero-behavior-change" framing for the new CLI
-   command; and the exact `V5.47` milestone name.
-
-The full itemized diff against `9dd7e14` is recorded in the contract
-document's own "What Changed In This Correction" section.
+1. Rejects `6f1566d`'s in-place packet-last protocol. The current
+   validator reads the root packet and root manifest and verifies
+   manifest hashes; replacing supporting files and manifest before the
+   packet therefore invalidates the old bundle during the claimed safe
+   interruption window.
+2. Specifies immutable
+   `generations/<bundle_id>/...` supporting bundles and one atomically
+   replaced root `readiness_packet.json` commit marker. `bundle_id`
+   commits to packet semantics plus content-artifact hashes/sizes, and
+   the root packet's `artifact_integrity` commits to all four immutable
+   generation files. The manifest does not hash the packet, avoiding a
+   circular dependency while keeping the packet as trust root.
+3. Requires a regression-capable interruption test: generation A must
+   remain byte-identical and validate after a forced failure immediately
+   before the B pointer replace; an un-faulted retry must commit and
+   validate B; the rejected in-place algorithm must fail the same test.
+4. Discloses the supporting-artifact path change, requires legacy
+   fixed-root validation, and requires an implementation-time audit of
+   every consumer that hard-codes the four former root paths. The
+   review already found and specified the required update to
+   `test_crypto_supervised_readiness_trial.py`'s hard-coded
+   `operating_report.md` read.
+5. Preserves the facade's exact explicit
+   `run_crypto_supervised_readiness_trial` signature. The pure core
+   gains injected receipt-validator, broker-client-factory, and paper-
+   environment seams; the impure facade supplies all three, preserving
+   the existing two-flag broker-observed path. It explicitly
+   imports/re-exports existing
+   tested/CLI symbols, including `SCHEMA_VERSION`, `MILESTONE_NAME`,
+   `_json_safe`, and `_mapping`.
+6. Requires the broker wrapper to expose all thirteen probed read-only
+   names while deliberately not forwarding mutation methods.
+7. Extends the paper-observation source bundle to every new/relocated
+   executable module in the trial/read path.
+8. Replaces the evadable length heuristic with concrete docstring-aware
+   AST string folding, dynamic-import machinery bans, and positive/
+   negative synthetic tests.
+9. Specifies exact central CLI parser, dispatch, forwarding, text/JSON
+   rendering, and exit codes, while clarifying that this correction
+   commit itself adds no CLI command.
+10. Limits the atomicity proof to process interruption on filesystems
+    with verified same-volume atomic rename/replace semantics; power-
+    loss durability is not claimed.
+11. Moves ambient profile/credential-presence reads to impure
+    composition roots, propagates one explicit deterministic offline
+    snapshot to all six tomorrow-demo calls, makes `None` distinct from
+    `{}`, and requires a runtime environment guard that raises on any
+    protected-key access. The exact JSON handler uses `_json_safe` and
+    is tested with a real Decimal-bearing packet.
 
 ## Verification Evidence
 
-- `git branch --show-current`, `git rev-parse HEAD`, and
-  `git status --porcelain` at the start of this correction: branch
-  `claude/v5.46-import-pure-readiness-replay-contract`, `HEAD`
-  `9dd7e1478ff8ee84b50d445c57bf1e11080cc46e` (the previously-rejected
-  first-correction commit), working tree clean.
-- Credential/profile precheck: `APP_PROFILE`,
-  `ALGO_TRADER_ALLOW_NETWORK_TESTS`, and
-  `RUN_ALPACA_PAPER_INTEGRATION_TESTS` — all absent/false.
-- Re-read, directly in this checkout, every call site and test this
-  redesign depends on: `_read_open_orders`'s current body,
-  `_broker_observed_readiness_preview`'s client-resolution branch and
-  its already-existing `client is None` fail-closed path, both PS1
-  scripts' exact invocation lines, `test_scripts_expose_simbroker_and_validator_contracts`'s
-  exact assertions, the test file's full top-of-file import list (to
-  confirm no in-process `main()` usage), `_FakeBrokerReadClient`'s
-  `get_orders` signature, and every current caller of `receipt_root` on
-  `run_crypto_supervised_readiness_trial` (`cli.py`, this module's own
-  `main()`, and `test_crypto_read_only_paper_observation.py`) — not
-  re-derived from memory or from either prior pass without independent
-  re-checking.
-- `git diff --check` — clean.
-- `git status --short` — only the two docs files this correction wrote.
+- Preflight at `6f1566d`: branch and remote feature ref identical;
+  staged, unstaged, and untracked state clean.
+- Credential/profile presence checks, without values:
+  `APP_PROFILE`, `ALPACA_API_KEY`, `ALPACA_API_KEY_ID`,
+  `ALPACA_API_SECRET_KEY`, `ALPACA_SECRET_KEY`, `APCA_API_KEY_ID`,
+  `APCA_API_SECRET_KEY`, `ALGO_TRADER_ALLOW_NETWORK_TESTS`, and
+  `RUN_ALPACA_PAPER_INTEGRATION_TESTS` all absent/false.
+- Direct source inspection confirmed:
+  - current validation reads `readiness_packet.json` and
+    `manifest.json`, then verifies manifest artifact hashes;
+  - current writing overwrites the packet and four supporting files at
+    fixed paths;
+  - `test_crypto_supervised_readiness_trial.py` currently hard-codes
+    `output_root / "operating_report.md"` and must follow the packet's
+    `artifact_paths` after generational publication;
+  - the broker preview gates on `get_account`, `get_positions`,
+    `get_orders`, and `list_assets`, then probes nine quote/trade/bar
+    aliases for genuine price evidence;
+  - `_run_scenario_matrix` forwards broker flags without a client/
+    factory today and would regress if the removed self-builder were not
+    replaced by facade-to-core factory injection;
+  - `_environment_preflight()` reads `APP_PROFILE` and credential
+    aliases three times per packet today, and both tomorrow broker/
+    paper paths use `paper_environment or
+    _paper_environment_from_os()`, including when broker observation is
+    not requested;
+  - the facade's retained `main()` calls `_json_safe` and `_mapping`;
+  - the paper-observation source bundle currently binds the monolithic
+    trial file and must add the relocated/new modules;
+  - existing tests import `SCHEMA_VERSION`,
+    `run_crypto_supervised_readiness_trial`,
+    `validate_crypto_supervised_readiness_trial`, and
+    `_validate_offline_receipt` from the facade.
+- No source/test execution is claimed for this docs-only correction.
+  Independent review returned `ACCEPT`. Final `git diff --check`,
+  status, and name-only evidence is recorded immediately before commit.
 
 ## Safety And External Effects
 
-No credential value was read, enumerated, created, replaced, renamed,
-deleted, or exposed. No network, broker, or market-data request
-occurred. No paper profile was entered and no paper mutation or order
-action occurred. No canary, strategy, paper automation, live access, or
-trading effect was activated. No `src` or `tests` file was modified; no
-`AUTONOMY_EXECUTOR_ALLOWLIST`, `AUTONOMY_ACTION_CLASSIFICATION`,
-`AUTONOMY_SUPERVISOR_LANES`, or `cli.py` entry was added or changed.
-Effective paper caps: not applicable. Live-authorized state: `false`.
+- No credential value was read, requested, printed, logged, persisted,
+  or exposed.
+- No network, market-data, broker, paper, or live operation occurred.
+- No order was submitted, cancelled, replaced, closed, or liquidated.
+- Effective paper caps: not applicable.
+- Receipt/reconciliation status: not applicable to this docs-only
+  correction.
+- `live_authorized=false`.
+- No `src`, `tests`, script, classification, allowlist, or lane-registry
+  file is changed by this correction.
 
 ## Unresolved Risks
 
-- Everything in the contract's "Design" section remains a
-  specification, not a proof by execution: no code was written or run
-  in this or either prior pass. The implementer must re-verify every
-  cited line number and test signature against the actual source at
-  implementation time.
-- Part 2's invocation-path change (`tomorrow_crypto_trader_demo.py` ->
-  `tomorrow_crypto_trader_demo_cli.py`) is a genuine, narrow API/script
-  change, not backward-compatible in the strict "same `python -m`
-  target" sense — this is disclosed and justified in the contract, not
-  hidden, but an implementer or reviewer expecting zero script/test
-  changes anywhere should be aware this one exists and is required, not
-  optional.
-- The new static test banning dynamic loading and forbidden string
-  literals needs careful tuning against false positives on legitimate
-  documentation/comments quoting a forbidden module name — the contract
-  flags this as an open implementer decision, not a solved one.
-- The `no_offline_command_available` gate's comment text for
-  `rerun_supervised_readiness_trial` and
-  `run_supervised_readiness_trial_to_seed_r1_evidence` (recorded as a
-  V5.45 risk) remains unresolved by this contract.
-- The bundle-commit atomic-write protocol is specified but not
-  implemented; mandatory before allowlisting, not before merging Parts
-  1-4.
+- The corrected contract remains a design, not execution evidence. The
+  pure-module split, facade, broker wrapper, CLI, generational writer,
+  validator, and tests do not exist yet.
+- The implementation must verify same-filesystem directory rename and
+  root `os.replace` process-interruption semantics; any platform on
+  which those guarantees cannot be established must fail closed.
+  Power-loss/post-reboot durability is not proven by flush/close and is
+  outside this slice.
+- Immutable generations accumulate until a separately designed
+  retention/garbage-collection policy exists. Cleanup is out of this
+  slice and must never delete the generation referenced by the current
+  root packet.
+- Legacy fixed-root bundle support and any additional hard-coded
+  supporting-path consumers must be enumerated and tested during
+  implementation; one known test consumer is already specified.
+- The static proof is bounded to its concrete AST rules and runtime
+  smoke test; it does not prove the absence of every conceivable
+  runtime code-generation technique.
+- The `no_offline_command_available` comment text identified by V5.45
+  remains stale and is not changed here.
+- Independent review accepted this third correction; implementation
+  remains unstarted.
 
 ## Next Highest-Leverage Safe Action
 
-**Implement Parts 1-4 of the twice-corrected V5.46 contract**
-(`docs/design/v5_46_import_pure_readiness_replay_contract.md`, "Design:
-Four-Part Change Set, True Dependency Inversion" and "Tests And
-Acceptance Criteria"), in this order: (1) extract
-`crypto_market_data_symbol_normalization` into its own pure module; (2)
-in `tomorrow_crypto_trader_demo.py`, delete `_build_alpaca_read_client`
-and its self-construct fallback, switch `_read_open_orders` to the
-plain-keyword protocol call, and remove `main()` into a new
-`tomorrow_crypto_trader_demo_cli.py` composition root backed by a new
-`tomorrow_crypto_trader_demo_broker_client_adapter.py` — updating both
-PS1 scripts and the one test assertion that reference the old module
-path; (3) split `crypto_supervised_readiness_trial.py` into a pure core
-(injected, fail-closed `receipt_validator`) and an unmodified-behavior
-facade; (4) add `crypto_readiness_replay.py` (importing from the pure
-core, never the facade) and its `cli.py` subparser, plus every test in
-the contract's "Tests And Acceptance Criteria" (all thirteen items,
-including the new dynamic-loading/string-literal ban test) —
-**without** touching `AUTONOMY_ACTION_CLASSIFICATION` or
-`AUTONOMY_EXECUTOR_ALLOWLIST`. This is source-code implementation work,
-to be scoped, executed, and verified as its own milestone, separate
-from the later reachability-wiring step the contract specifies but
-reserves for a subsequent contract (a review-separation choice, not an
-authorization gap).
-
-This is not started by this correction; the contract exists so that
-milestone can be independently reviewed before any implementation
-begins.
+After independent acceptance, implement Parts 1-4 of the corrected
+V5.46 contract as V5.47 in a new branch based exactly on the accepted
+contract commit: extract the pure normalization helper; split the
+tomorrow demo into pure logic, a thirteen-name read-only broker adapter,
+and an impure CLI composition root; split the supervised trial into pure
+core and exact-signature facade with all three dependency seams; extend
+source-provenance binding; add the import-pure replay command and fully
+specified CLI subparser/dispatch; implement the root-committed
+immutable-generation publication/validator protocol and all specified
+regression tests. Do not change
+`AUTONOMY_ACTION_CLASSIFICATION`,
+`AUTONOMY_EXECUTOR_ALLOWLIST`, or autonomous reachability in that
+slice.
