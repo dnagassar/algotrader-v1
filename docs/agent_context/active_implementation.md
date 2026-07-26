@@ -222,19 +222,62 @@ from manual evidence is tracked or committed.
   hangs occurred this run, but this remains a slow, resource-sensitive gate
   worth revisiting if it starts timing out.
 
+## Independent Re-Verification (orchestrator, 2026-07-26)
+
+Re-verified the V5.48 acceptance report against a clean checkout of
+`claude/algo-trader-orchestrator-verify-a35353` at `600bf72`.
+
+- Working tree clean: no staged diff, no unstaged diff, no untracked files.
+- `HEAD == origin/main == 600bf72` (zero commits either side).
+- Contract commit `d6e408e`, implementation commit `6d4838b`, and evidence
+  commit `38399df` are all ancestors of `HEAD`.
+- Reran the six V5.48 suites (supervisor, next_plan, offline_executor,
+  self_refresh_cycle, crypto_readiness_replay, dependency_direction) →
+  **216 passed**, exactly matching the reported 174 + 42.
+- `.\scripts\verify_offline.ps1` → **PASS**; all nine credential/profile
+  precheck booleans false; 107 targeted safety-guard tests passed.
+- Source confirms the report's structural claims:
+  `rerun_offline_daily_cycle_chain` is absent from `src/` (present only as
+  negative assertions in tests); `AUTONOMY_EXECUTOR_ALLOWLIST` maps both
+  readiness tokens to `CANONICAL_REPLAY_ARGV`; canonical
+  root/cwd/lanes-root/packet validation exists independently in both
+  planner and executor; `cli.py:_run_crypto_readiness_replay` refuses an
+  explicit `--profile` via the already-parsed argv record without loading
+  a profile.
+- The stale-token risk disclosure is confirmed honest at the source level:
+  the readiness `LaneSpec` sets `max_age_hours=0`
+  (`autonomy_supervisor.py:346`) and the staleness predicate requires
+  `lane.max_age_hours > 0`, so `rerun_supervised_readiness_trial` cannot
+  fire at runtime. The packet additionally carries no `generated_at`/`as_of`
+  field at all, which blocks it a second time.
+
+Not independently reproduced: the reported full-suite run
+(**10033 passed, 5 skipped**, ~83.5 min). The targeted and safety-gate
+evidence above was reproduced in full; the full-suite figure remains
+single-sourced from the implementation lane.
+
+Also noted: `claude/agent-handoff-execution-579196@cd7e919` remains the one
+frontier tip not reachable from `main`. Its two commits are doc-only (the
+V5.43 integration contract plus a handoff), and the substantive V5.43
+reconciliation merge `52e0018` *is* in `main`, so this is a stale
+documentation branch, not unmerged capability.
+
 ## Next Action
 
-Freeze and independently review a separate V5.49 authenticated
-readiness-freshness contract before any implementation. That future
-contract must:
+**V5.49 contract is frozen and awaiting independent review.**
+See `docs/design/v5_49_authenticated_readiness_freshness_contract.md`.
 
-- Honestly define an integrity-bound freshness timestamp/clock-injection
-  mechanism and a positive, finite max age, without reusing the fixed
-  `decision_start` or weakening V5.47's deterministic/import-pure defaults.
-- Only then make the stale token's refresh converge through the existing
-  exact replay (`python -m algotrader.cli crypto-readiness-replay`) — and
-  only if a safe, fixed/validated argv design exists for doing so.
-- Introduce no broker/network/credentials/paper/live access and no LLM in
-  the executable hot path.
+The contract makes the crypto readiness lane's staleness real by adding a
+`readiness_freshness` block that is hash-bound to the packet's existing
+`receipt_chain` but excluded from the determinism hashes, so replay-hash
+equality survives; the core never reads wall time (clock is injected, and
+`None` + `write_artifacts=True` raises), the CLI handler reads it once, and
+`CANONICAL_REPLAY_ARGV` stays exactly `("crypto-readiness-replay",)` so the
+V5.48 allowlist and closure tests are untouched. `max_age_hours` goes
+`0 → 24`. Verification is fail-closed with three frozen outcomes: absent
+block → `stale` (benign skew, auto-refreshable); invalid or transplanted
+attestation → `attention_required` with zero runner calls; valid block →
+normal age comparison.
 
-No other next action is open on V5.48.
+No implementation is authorized until review records an explicit verdict on
+the four questions listed at the end of that contract.
