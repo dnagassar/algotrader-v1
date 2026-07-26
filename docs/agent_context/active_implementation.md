@@ -310,31 +310,70 @@ lessons, independent of V5.49:
    that resolver is shared by every lane. Nested paths are unsupported;
    adding them is a cross-lane change needing per-lane regression proof.
 
+## V5.50 Lane Eligibility Analysis (blocked, 2026-07-26)
+
+Operator directed broadening offline autonomy to a second lane. Surveyed
+all six registry lanes at `8406aef`. **No second lane is eligible.** Full
+analysis: `docs/design/v5_50_offline_autonomy_lane_eligibility_analysis.md`.
+
+The binding criterion is **input self-containment**: the offline executor
+can only auto-execute an action whose inputs live entirely in the repository
+and its frozen constants. The crypto readiness replay satisfies this
+uniquely — it is a pure function of constants and takes no external input.
+Every other lane's artifact is a function of real-world data:
+
+- `spy_market_data_soak` — live market-data fetch, ineligible by definition.
+- `spy_offline_daily_cycle` — closest candidate and the only other lane
+  already `offline_runnable=True`, but requires an operator-supplied
+  adjusted SPY bars CSV. Following the chain upstream does not help:
+  `local-daily-bars-intake`'s own root input is documented
+  "Operator-supplied". The pipeline canonicalizes data; it does not
+  originate it. The only committed CSVs are synthetic SMA test fixtures, and
+  wiring those in as production input would fabricate market data.
+- `crypto_forward_shadow_cycle`, `crypto_bounded_paper_probe_review`,
+  `crypto_capability_production` — all report
+  `no_offline_command_available`. Producer modules exist and are local-only,
+  so they look like V5.48-shaped wiring jobs, but they require frozen V5.25
+  terminal evidence which **does not exist anywhere in the checkout** (only
+  a design doc), and `runs/crypto_strategy_tournament/` is absent entirely.
+  Producing that evidence requires the tournament, which requires market
+  data.
+
+**Structural consequence, and the correction this produces:** offline
+autonomy cannot be broadened by wiring at all. It can only be broadened by
+giving the system a safe, authorized way to *acquire* external inputs. The
+two tracks offered after the V5.49 closure are therefore **not
+independent** — broadening offline autonomy is gated on the
+market-data/paper track, not parallel to it. The earlier recommendation to
+do (1) before (2) was wrong on that point.
+
+Note the symmetry with V5.49: the readiness replay could be automated
+*because* it is a pure function of constants, and its freshness was
+meaningless *because* it is a pure function of constants. Same fact, both
+conclusions.
+
 ## Next Action
 
-No milestone is open. V5.48 is promoted and V5.49 is closed, so the
-readiness track is fully settled and the tree is quiet.
+Operator decision between three options (detail in the V5.50 analysis):
 
-The open question is a **priority fork the operator should direct**, because
-the two candidates advance different goals:
+1. **Accept the ceiling.** Record offline autonomy as complete at one
+   action; further breadth requires external input. Costs nothing, and is
+   the honest default if the market-data track is not ready to start.
+2. **Authorize the market-data intake path**, then revisit
+   `spy_offline_daily_cycle`. The only route that broadens autonomy over
+   existing lanes, and the only one that advances trading capability. It
+   crosses the network gate and needs its own frozen contract and an
+   undivided review pass — it should be started deliberately as the
+   market-data track, not disguised as an autonomy milestone.
+3. **Add a new self-contained lane** — e.g. an offline determinism
+   /regression canary over the repository. Unlike V5.49's rejected freshness
+   field, its evidence would vary with real code changes, so it would attest
+   something. Broadens executor breadth without touching the network gate,
+   but advances self-observation rather than trading. Invents new scope.
 
-1. **Broaden offline autonomy.** The executor can currently do exactly one
-   thing: seed an absent crypto readiness packet. Once that has run, every
-   remaining lane needs operator input, so the autonomous loop goes
-   permanently idle. Identifying the next lane whose next-action is
-   deterministically computable offline, and bringing it under
-   `EXECUTION_AUTO_OFFLINE` with the same contract-freeze rigor, is what
-   makes the autonomy loop more than a single-shot.
-2. **Advance the paper burn-in.** The operator envelope already authorizes
-   live market data and UNATTENDED-BOUNDED paper order submission, with
-   live capital a hard gate behind burn-in. This is the track that leads to
-   actual trading rather than to better self-observation.
-
-Recommendation: (1) first. It is fully offline, carries no broker or
-market-data risk, and compounds — each lane brought under safe offline
-execution reduces the operator input the system needs. (2) crosses into
-network and broker surfaces and deserves its own frozen contract and an
-undivided review pass rather than being started alongside other work.
+Recommendation: 1 or 3, depending on whether self-observation is worth a
+milestone now.
 
 Unchanged hard gate: **live capital remains operator-gated until burn-in
-completes.** Nothing in V5.48 or the V5.49 closure touches that.
+completes.** Nothing in V5.48, the V5.49 closure, or this analysis touches
+that.
