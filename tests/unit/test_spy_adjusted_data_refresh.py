@@ -1053,3 +1053,37 @@ def _raise_http_get(url: str, headers: Mapping[str, str]) -> bytes:
 
 def _raise_token_lookup(name: str) -> str | None:
     raise AssertionError("token lookup attempted")
+
+
+def test_read_provider_json_bytes_enforces_max_rows_cap(tmp_path: Path) -> None:
+    rows = [{"date": "2026-06-22", "adjClose": 550, "open": 550, "high": 551, "low": 549, "close": 550, "volume": 1000}] * 20001
+    data = json.dumps(rows).encode("utf-8")
+    with pytest.raises(ValidationError, match="provider_row_count_exceeded"):
+        refresh._read_provider_json_bytes(data)
+
+
+def test_tiingo_http_get_enforces_response_bytes_cap() -> None:
+    class DummyResponse:
+        status = 200
+        def read(self, amt: int) -> bytes:
+            return b"x" * amt
+
+    class DummyConnection:
+        def request(self, method: str, target: str, headers: dict[str, str]) -> None:
+            pass
+        def getresponse(self) -> DummyResponse:
+            return DummyResponse()
+        def close(self) -> None:
+            pass
+
+    import http.client
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(http.client, "HTTPSConnection", lambda host, timeout: DummyConnection())
+    try:
+        with pytest.raises(refresh.MarketDataFetchError, match="provider_response_too_large"):
+            refresh._tiingo_http_get(
+                "https://api.tiingo.com/tiingo/daily/SPY/prices?startDate=1993-01-29&endDate=2026-06-22&format=json",
+                {"Authorization": "Token dummy"},
+            )
+    finally:
+        monkeypatch.undo()
