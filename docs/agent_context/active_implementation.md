@@ -208,15 +208,38 @@ from manual evidence is tracked or committed.
 - Paper caps/receipt/reconciliation: not applicable — no paper action
   performed.
 
+## Settled Design Decisions
+
+- **Crypto readiness staleness is permanently dormant by design** (operator
+  decision, 2026-07-26). This was previously carried as an unresolved risk
+  pending a V5.49 freshness contract; that contract was frozen, reviewed,
+  and **closed without implementation**. The readiness replay is a pure
+  function of fixed constants with no time-varying input, so any freshness
+  timestamp would attest re-execution recency rather than readiness
+  recency — a weak regression canary bought at the cost of extending the
+  import-purity envelope, changing a staleness resolver shared by every
+  lane, and adding a field readers would over-trust. Readiness evidence is
+  **timeless**: proven once, deterministically; re-running proves nothing
+  new.
+  - `rerun_supervised_readiness_trial` therefore stays **deliberately dead
+    code paired with a live registration**. It remains in
+    `AUTONOMY_ACTION_CLASSIFICATION` and `AUTONOMY_EXECUTOR_ALLOWLIST`
+    because V5.48's exact two-way set-equality invariants require every
+    producer token to be classified. Deleting the mapping as "dead code"
+    would break those invariants.
+  - Enforced, not merely documented, by three tests in
+    `tests/unit/test_autonomy_supervisor.py`
+    (`test_readiness_staleness_is_permanently_dormant_by_design`,
+    `test_readiness_lane_never_goes_stale_at_any_evaluation_time`,
+    `test_readiness_stale_token_stays_registered_while_unreachable`).
+  - Reopen only if the readiness computation gains a genuinely time-varying
+    input (live market data, broker-observed state, or account state), and
+    then freeze a new contract rather than resurrecting the closed one.
+  - Rejected design record:
+    `docs/design/v5_49_authenticated_readiness_freshness_contract.md`.
+
 ## Unresolved Risks
 
-- Real age-based staleness for the crypto readiness lane remains
-  unimplemented by design (`max_age_hours=0`; V5.47 packet has no
-  authenticated freshness field). The stale token's V5.48 evidence is
-  structural (registry/classification/allowlist/planner-selection from a
-  constructed summary) only, not live reachability — as the contract
-  requires. A later, separately frozen contract is needed to introduce an
-  authenticated freshness field before stale can become truly reachable.
 - Full pytest run on this host takes on the order of 80+ minutes and
   approached tight memory headroom (~8% free at peak); no failures or
   hangs occurred this run, but this remains a slow, resource-sensitive gate
@@ -262,47 +285,56 @@ V5.43 integration contract plus a handoff), and the substantive V5.43
 reconciliation merge `52e0018` *is* in `main`, so this is a stale
 documentation branch, not unmerged capability.
 
+## V5.49 Lifecycle (closed)
+
+Frozen `44f5e32` → reviewed `fad3b82` (REQUEST CHANGES, four defects found
+and corrected) → **closed unimplemented by operator decision, 2026-07-26**.
+
+The round-1 review escalated a gating question: whether the milestone was
+worth building at all, given that the readiness replay is a pure function of
+fixed constants and a freshness field would therefore attest re-execution
+recency rather than readiness recency. The operator adjudicated: it is not.
+V5.49 is closed, the contract is retained as a rejected design record, and
+the stale token is now permanently dormant by design and pinned by test.
+
+Two defects found during that review are worth carrying forward as general
+lessons, independent of V5.49:
+
+1. `_compute_bundle_id` in `crypto_supervised_readiness_trial_core.py`
+   hashes the **entire** readiness packet minus only `artifact_paths`,
+   `artifact_integrity`, and `bundle_id` — and `bundle_id` names a
+   generation **directory**. Any future packet field that varies between
+   runs must join that exclusion list, or content-addressed idempotency
+   breaks and generation directories accumulate per run.
+2. `_staleness` resolves `as_of_fields` by **flat top-level lookup**, and
+   that resolver is shared by every lane. Nested paths are unsupported;
+   adding them is a cross-lane change needing per-lane regression proof.
+
 ## Next Action
 
-**V5.49 contract is frozen and awaiting independent review.**
-See `docs/design/v5_49_authenticated_readiness_freshness_contract.md`.
+No milestone is open. V5.48 is promoted and V5.49 is closed, so the
+readiness track is fully settled and the tree is quiet.
 
-The contract makes the crypto readiness lane's staleness real by adding a
-`readiness_freshness` block that is hash-bound to the packet's existing
-`receipt_chain` but excluded from the determinism hashes, so replay-hash
-equality survives; the core never reads wall time (clock is injected, and
-`None` + `write_artifacts=True` raises), the CLI handler reads it once, and
-`CANONICAL_REPLAY_ARGV` stays exactly `("crypto-readiness-replay",)` so the
-V5.48 allowlist and closure tests are untouched. `max_age_hours` goes
-`0 → 24`. Verification is fail-closed with three frozen outcomes: absent
-block → `stale` (benign skew, auto-refreshable); invalid or transplanted
-attestation → `attention_required` with zero runner calls; valid block →
-normal age comparison.
+The open question is a **priority fork the operator should direct**, because
+the two candidates advance different goals:
 
-**Round 1 review verdict: REQUEST CHANGES (corrections applied).** The core
-design was upheld, but four defects were found and fixed in the contract:
+1. **Broaden offline autonomy.** The executor can currently do exactly one
+   thing: seed an absent crypto readiness packet. Once that has run, every
+   remaining lane needs operator input, so the autonomous loop goes
+   permanently idle. Identifying the next lane whose next-action is
+   deterministically computable offline, and bringing it under
+   `EXECUTION_AUTO_OFFLINE` with the same contract-freeze rigor, is what
+   makes the autonomy loop more than a single-shot.
+2. **Advance the paper burn-in.** The operator envelope already authorizes
+   live market data and UNATTENDED-BOUNDED paper order submission, with
+   live capital a hard gate behind burn-in. This is the track that leads to
+   actual trading rather than to better self-observation.
 
-1. P1 — the identity-hash enumeration missed `_compute_bundle_id`, which
-   hashes the whole packet. Since `bundle_id` names a generation directory,
-   a time-varying value would have broken content-addressed idempotency and
-   created a new directory per run under daily auto-refresh.
-2. P1 — the field name overclaims. The replay is a pure function of fixed
-   constants with no time-varying input, so freshness attests
-   *re-execution recency*, not *readiness recency*. Required wording is now
-   frozen.
-3. P2 — the nested as-of extension is mandatory (the `_staleness` resolver
-   is a flat lookup) and is shared by every lane, needing per-lane
-   regression proof.
-4. P3 — nothing required the autonomy driver to pass a truthful `--as-of`.
+Recommendation: (1) first. It is fully offline, carries no broker or
+market-data risk, and compounds — each lane brought under safe offline
+execution reduces the operator input the system needs. (2) crosses into
+network and broker surfaces and deserves its own frozen contract and an
+undivided review pass rather than being started alongside other work.
 
-The original stop condition would have spuriously halted the correct
-`bundle_id` fix and has been recalibrated.
-
-**Gating question now open:** whether V5.49 is worth building at all, given
-it attests re-execution of a time-invariant computation. Closing V5.49
-unimplemented and documenting the stale token as permanently dormant by
-design is an acceptable, cheaper outcome.
-
-Review was performed by the contract's own author; an independent reviewer
-should still adjudicate that gating question. No implementation is
-authorized until then.
+Unchanged hard gate: **live capital remains operator-gated until burn-in
+completes.** Nothing in V5.48 or the V5.49 closure touches that.

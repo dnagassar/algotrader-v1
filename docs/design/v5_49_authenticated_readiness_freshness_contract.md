@@ -1,6 +1,63 @@
 # V5.49 Authenticated Readiness Freshness Contract
 
-## Status And Scope
+> **CLOSED — WILL NOT BE IMPLEMENTED (operator decision, 2026-07-26).**
+>
+> The gating question raised in round-1 review was adjudicated by the
+> operator: V5.49 is not worth building. The crypto readiness lane's
+> age-based staleness, and the `rerun_supervised_readiness_trial` token
+> that depends on it, are hereby **permanently dormant by design**.
+>
+> The decisive reason is that the readiness replay is a pure function of
+> fixed constants with no time-varying input. Any freshness timestamp would
+> attest that the computation was re-executed, not that readiness still
+> holds against current conditions. Building attestation machinery around a
+> constant would have bought a weak regression canary while extending the
+> import-purity envelope, modifying a staleness resolver shared by every
+> lane, and adding a packet field readers would predictably over-trust.
+>
+> Doing nothing is the more truthful outcome, and it is now enforced by
+> test rather than asserted in prose — see "Enforcement Of Dormancy" below.
+>
+> The remainder of this document is retained **as a rejected design record**.
+> Its technical content is not authorized for implementation. Do not treat
+> any section below as a live requirement.
+
+## Enforcement Of Dormancy
+
+Dormancy is pinned by three tests in `tests/unit/test_autonomy_supervisor.py`:
+
+- `test_readiness_staleness_is_permanently_dormant_by_design` — pins
+  `max_age_hours == 0` and `stale_requires_operator_action is False` on the
+  readiness lane, and names this document, so changing the value trips a
+  test that explains why the decision was made.
+- `test_readiness_lane_never_goes_stale_at_any_evaluation_time` — the
+  behavioural half: a record carrying every timestamp field the lane knows
+  how to read, evaluated in the year 2999, still resolves `nominal` with
+  `stale is False` and never emits the stale token.
+- `test_readiness_stale_token_stays_registered_while_unreachable` — pins
+  that the token remains mapped, so the V5.48 two-way
+  producer/classification/allowlist closure stays exact.
+
+That last point is the subtle one. `rerun_supervised_readiness_trial` is
+**deliberately dead code paired with a live registration**. It stays in
+`AUTONOMY_ACTION_CLASSIFICATION` and `AUTONOMY_EXECUTOR_ALLOWLIST` because
+V5.48's exact set-equality invariants require every producer token to be
+classified. Deleting the mapping to "clean up dead code" would break those
+invariants. This pairing is the documented steady state, not a defect.
+
+## Reopening Conditions
+
+This decision should be revisited only if the readiness computation gains a
+genuinely time-varying input — live market data, broker-observed state, or
+account state. At that point freshness would attest something real, and a
+new contract should be frozen from scratch rather than resurrecting this
+one, since the design here was built around a constant.
+
+Absent that, the honest position is that readiness evidence is
+**timeless**: it was proven once, deterministically, and re-running it
+proves nothing new.
+
+## Original Status And Scope (superseded)
 
 - Status: **frozen contract, pending independent review. No implementation is
   authorized by this document.**
