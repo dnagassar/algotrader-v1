@@ -7,119 +7,224 @@
   `docs/design/v5_48_crypto_readiness_replay_reachability_contract.md`.
 - Accepted contract commit:
   `d6e408e8d747f7af82ff2d3b2f7978289e7fa5c6`.
-- Independent review: accepted with no P0-P2 findings.
-- Promotion: verified fast-forward to `origin/main` at
-  `d6e408e8d747f7af82ff2d3b2f7978289e7fa5c6`.
-- V5.48 implementation has not started. The accepted contract grants the next
-  writer the exact implementation scope; it does not itself prove autonomous
-  reachability.
+- Implementation status: **implemented, locally committed, pushed. Not
+  merged. Independent review required before promotion.**
+- Implementation commit:
+  `6d4838b` ("Implement V5.48 crypto readiness replay reachability") on
+  `codex/v5.48-readiness-replay-reachability`, parent
+  `3c050a58c4a50edd4a4815867f99798682890337`.
 
 ## Checkout And Ownership
 
-- Contract worktree:
+- Implementation worktree:
   `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v547-import-pure-readiness-replay`.
-- Contract branch:
-  `codex/v5.48-readiness-replay-reachability-contract`.
-- Contract and promoted-main commit were equal at takeover:
-  `d6e408e8d747f7af82ff2d3b2f7978289e7fa5c6`.
-- Contract review and promotion are complete; they are no longer risks or
-  pending actions.
-- This post-promotion handoff update changes only this file. No source, test,
-  script, frozen-contract, broker, paper, or live behavior is changed.
+- Branch: `codex/v5.48-readiness-replay-reachability`.
+- Implementation ownership was explicitly transferred from Codex to Claude
+  (operator instruction) to preserve Codex credits; Codex remains
+  orchestrator/reviewer. Claude took over an already-dirty checkout
+  (uncommitted changes in the same 10 files this commit now contains),
+  inspected it against the frozen contract, found it contract-conformant,
+  ran full verification, collected manual isolated-worktree evidence, and
+  committed it as a single coherent commit.
+- Takeover preflight (presence-only, no values): `APP_PROFILE` not set; no
+  Alpaca/APCA credential alias set; no network-test alias set.
 
-## Exact Capability Boundary To Implement
+## Files Changed
 
-1. Make the existing absent-readiness token
-   `run_supervised_readiness_trial_to_seed_r1_evidence` canonically reachable
-   through `EXECUTION_AUTO_OFFLINE` and exact argv
-   `("crypto-readiness-replay",)`.
-2. Bind the distinct existing stale token
-   `rerun_supervised_readiness_trial` to the same class/argv structurally, but
-   do not claim real stale reachability. The lane has `max_age_hours=0`, and
-   the V5.47 packet has no authenticated freshness field; stale remains
-   dormant.
-3. Remove the dead, non-emittable
-   `rerun_offline_daily_cycle_chain` classification/allowlist promise while
-   preserving the underlying manually runnable M446 command.
-4. Enforce exact two-way closure:
-   supervisor producer tokens equal classification keys, and emitted
-   `EXECUTION_AUTO_OFFLINE` tokens equal executor allowlist keys.
-5. Use truthful standing-authority semantics:
-   `EXECUTION_AUTO_OFFLINE` has `gate=""` and no required operator inputs.
-   `AGENTS.md` already grants scoped offline authority; the exact allowlist,
-   canonical-target validation, credential/profile preflight, dry-run default,
-   and explicit `--apply` are controls, not missing-authority gates.
-6. Prefer a canonical `EXECUTION_AUTO_OFFLINE` action over
-   `EXECUTION_OFFLINE_OPERATOR_INPUT`, while preserving the fail-closed
-   all-absent aggregate recommendation and its separate safe per-lane action.
-7. Restrict eligibility and apply execution to the exact packet under the
-   verified executing repository root:
-   `runs/crypto_supervised_readiness_trial/latest/readiness_packet.json`.
-   The fixed argv has no output-root and no output propagation may be invented.
-8. Planner and executor independently reject noncanonical `--lanes-root`,
-   readiness `--lane` override, cwd/root, path/symlink escape,
-   supplied-plan/report mismatch, action/command/argv drift, and
-   non-repository execution before any runner call or refresh claim.
-9. Copy the supervisor lane's existing `artifact_path` into the plan action
-   only for validation. Executor compares it with top-level `lanes_root`,
-   config/overrides, a freshly re-derived report/plan, and the module-derived
-   canonical packet. It never becomes an output argument.
-10. Reject explicit replay `--profile` before replay dispatch; broker,
-    paper-read, receipt, credential-looking, network, paper, and live options
-    remain unavailable.
-11. Prove the exact executable launcher
-    `python -m algotrader.cli crypto-readiness-replay`, not only the V5.47
-    replay-module closure. Evidence must cover the central CLI's eager pure
-    `paper_order_policy` and package dependencies, fresh-process protected
-    environment traps, exact dispatch, canonical artifact, and post-run
-    forbidden-`sys.modules` audit.
-12. Keep LLMs and agents outside the executable hot path.
+- `src/algotrader/execution/autonomy_next_plan.py`
+- `src/algotrader/execution/autonomy_offline_executor.py`
+- `src/algotrader/cli.py` (replay-specific explicit `--profile` refusal)
+- `tests/unit/test_autonomy_next_plan.py`
+- `tests/unit/test_autonomy_offline_executor.py`
+- `tests/unit/test_autonomy_self_refresh_cycle.py`
+- `tests/unit/test_crypto_readiness_replay.py`
+- `tests/unit/test_dependency_direction.py` (exact central-launcher
+  eager-import purity scan)
+- `docs/design/v5_38_offline_autonomy_next_action_planner.md`
+- `docs/design/v5_39_gated_offline_autonomy_executor.md`
 
-## Required Safety Posture
+All within the contract's frozen implementation scope. No file outside
+that list was touched.
 
-- Default tests remain offline, deterministic, credential-free, network-free,
-  and broker-free.
-- No credential value may be requested, read, printed, logged, persisted, or
-  exposed.
-- No network, market-data, broker, or paper profile is used.
-- No order is submitted, cancelled, replaced, closed, or liquidated.
-- No broker or paper-account mutation occurs.
-- Paper quantity/notional caps: not applicable; no paper action.
-- Broker receipt/reconciliation: not applicable; no broker operation.
-- `live_authorized=false`; live access, live trading, and real-capital activity
-  remain prohibited.
-- Generated readiness and manual evidence stays ignored under `runs/`.
+## Contract Conformance Summary
 
-## Verification And Yield Requirements
+- Both readiness tokens (`run_supervised_readiness_trial_to_seed_r1_evidence`
+  absent, `rerun_supervised_readiness_trial` stale) are classified
+  `EXECUTION_AUTO_OFFLINE`, `gate=""`, `command="python -m algotrader.cli
+  crypto-readiness-replay"`, `required_operator_inputs=()`, exactly per the
+  frozen `ActionClass` shape.
+- `rerun_offline_daily_cycle_chain` removed from both
+  `AUTONOMY_ACTION_CLASSIFICATION` and the executor allowlist; the M446 CLI
+  command remains manually runnable.
+- Exact two-way closure holds: `set(AUTONOMY_ACTION_CLASSIFICATION) ==
+  producer_tokens` and `set(AUTONOMY_EXECUTOR_ALLOWLIST) ==
+  auto_offline_tokens` (proven by dedicated tests).
+- `AUTONOMY_EXECUTOR_ALLOWLIST` maps both readiness tokens to exactly
+  `("crypto-readiness-replay",)`.
+- Planner (`autonomy_next_plan.py`) and executor
+  (`autonomy_offline_executor.py`) each independently verify: executing
+  repository root has `.git` + `src/algotrader/cli.py`; process cwd equals
+  that root; `lanes_root` resolves to `<root>/runs`; the crypto lane's
+  `artifact_path` resolves to
+  `<root>/runs/crypto_supervised_readiness_trial/latest/readiness_packet.json`;
+  no symlink escape; lane id/state/action/classification/command agree. Any
+  mismatch raises `ValidationError` before any runner call.
+- Executor re-derives the canonical plan from `AutonomySupervisorConfig` and
+  requires exact equality with any supplied plan/report before proceeding
+  (stricter than the contract's "agree on at least" list).
+- `src/algotrader/cli.py`'s `_run_crypto_readiness_replay` rejects an
+  explicit `--profile`/`--profile=...` (any value) using the already-parsed
+  `_argv_items` record — it does not load a profile to decide — returning
+  exit `2` before `run_crypto_readiness_replay` is called.
+- New `tests/unit/test_dependency_direction.py` cases statically prove
+  `algotrader.cli`'s only non-stdlib top-level import is
+  `algotrader.execution.paper_order_policy` (stdlib-only itself), walk the
+  full eager first-party closure (`algotrader/__init__.py`,
+  `algotrader/execution/__init__.py`), and scan the replay dispatch path and
+  handler for forbidden imports/mutation calls, with synthetic
+  evasion-detection negatives.
+- New `tests/unit/test_crypto_readiness_replay.py::
+  test_exact_central_launcher_is_protected_and_import_pure` spawns the
+  literal `<sys.executable> -m algotrader.cli crypto-readiness-replay` from
+  an isolated copied repository with a `sitecustomize`-based protected
+  environment trap and post-run `sys.modules` audit; asserts zero protected
+  accesses and zero forbidden modules loaded.
+- `autonomy_self_refresh_cycle` tests were updated to reflect truthful
+  absent-reachability: dry-run reports the crypto action eligible but
+  unexecuted (no refresh claim); apply with an injected successful runner
+  executes once, re-observes nominal, and a second cycle no longer sees the
+  action eligible (no repeat); a failed child never claims
+  `refreshed`/`converged`; every canonical-target refusal proves zero
+  runner calls.
 
-Follow the frozen contract exactly, including:
+## Verification Evidence
 
-- focused supervisor/planner/executor/self-refresh/replay/CLI tests;
-- producer/classification/allowlist closure tests;
-- all canonical-target and supplied-plan/report negative cases, proving zero
-  runner calls and no refresh/convergence claim;
-- exact-launcher static and fresh-process evidence;
-- isolated canonical-worktree dry-run and real apply-plan evidence;
-- dependency-direction gate;
-- `.\scripts\verify_offline.ps1`;
-- full default pytest when the verifier skips it;
-- `git diff --check`;
-- `git status --short`;
-- `git diff --name-only HEAD -- src`;
-- `git ls-files --others --exclude-standard src tests`;
-- exact reporting required by `AGENTS.md` and the frozen contract.
+All commands run from
+`C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v547-import-pure-readiness-replay`
+with `PYTHONPATH=src`, no `APP_PROFILE`, no credential/network-test alias
+loaded (presence-only, confirmed before and after).
 
-Before yielding, update this file with exact implementation ownership, changed
-files, test/manual evidence, safety outcomes, dirty state, commit, push state,
-unresolved risks, and the single next action.
+- `python -m pytest tests/unit/test_autonomy_supervisor.py
+  tests/unit/test_autonomy_next_plan.py
+  tests/unit/test_autonomy_offline_executor.py
+  tests/unit/test_autonomy_self_refresh_cycle.py
+  tests/unit/test_crypto_readiness_replay.py` → **174 passed**.
+- `python -m pytest tests/unit/test_dependency_direction.py` → **42
+  passed**.
+- `.\scripts\verify_offline.ps1` → **PASS** (hygiene, credential/profile
+  precheck all false, targeted offline safety-guard tests 107 passed; full
+  pytest skipped by the script itself, pending `-Full`).
+- `python -m pytest` (full default suite, since the verifier skipped it) →
+  **10033 passed, 5 skipped**, in ~83.5 minutes (5011.51s). Exit 0.
+- `git diff --check` → clean (exit 0).
+- `git status --short` → clean tree after commit `6d4838b`.
+- `git diff --name-only HEAD -- src` → n/a post-commit (matches the 3
+  committed `src` files vs. parent).
+- `git ls-files --others --exclude-standard src tests` → empty (no
+  untracked src/tests files).
 
-## Single Next Highest-Leverage Safe Action
+## Manual Isolated-Worktree Evidence (V5.48-specific)
 
-From promoted `origin/main` commit
-`d6e408e8d747f7af82ff2d3b2f7978289e7fa5c6`, create a new implementation
-feature branch (recommended:
-`codex/v5.48-readiness-replay-reachability-implementation`) and implement the
-accepted frozen V5.48 contract with exactly one implementation writer.
+Fresh temporary Git worktree created via `git worktree add --detach` at
+implementation commit `6d4838b`, empty canonical `runs/` confirmed absent
+before use, all runs from that worktree's own root as cwd. Presence-only
+credential/profile preflight confirmed empty before both the dry-run and
+the apply.
 
-Do not implement on the contract branch. Do not merge or promote the
-implementation before independent review and acceptance.
+1. **Dry-run**
+   (`autonomy-apply-plan --run-id v5_48_absent_dry_run --as-of
+   2026-07-26T12:00:00Z --lanes-root runs --format json`): exit `1`;
+   `dry_run=true`; `eligible_count=1`; `execution_count=0`; only the crypto
+   absent token eligible with argv `["crypto-readiness-replay"]`;
+   `lanes_root="runs"` (canonical); all broker/paper/live booleans false.
+2. **Apply**
+   (`autonomy-apply-plan --run-id v5_48_absent_apply --as-of
+   2026-07-26T12:00:00Z --lanes-root runs --apply --format json`): exit
+   `0`; `eligible_count=1`; `execution_count=1`; executed argv exactly
+   `["crypto-readiness-replay"]`; child `exit_code=0`;
+   `all_executions_succeeded=true`; resulting
+   `runs/crypto_supervised_readiness_trial/latest/readiness_packet.json`
+   has `trial_classification="accepted"`; no credential value in any
+   output.
+3. **Second dry-run** (same worktree, after the accepted packet exists):
+   `eligible_count=0`; crypto lane now reports
+   `r1_deterministic_readiness_proven_continue` (noop, nominal);
+   `supervisor_system_status="nominal"`. Other operator-input lane work
+   (SPY seed) correctly remains reported, not misclassified as executed.
+4. **Negative: noncanonical `--lanes-root /tmp/not-canonical` with
+   `--apply`** → `ValidationError` ("lanes_root must be the canonical
+   repository runs path."), exit `2`, zero runner calls.
+5. **Negative: non-repository cwd** (invoked from a directory outside any
+   Git checkout with `PYTHONPATH` pointed at the worktree's `src`) →
+   `ValidationError` ("process cwd must equal the executing repository
+   root."), exit `2`, zero runner calls.
+6. **Negative: noncanonical readiness `--lane` override**
+   (`--lane crypto_supervised_readiness_trial=runs/other_location/readiness_packet.json`
+   with `--apply`) → `ValidationError` ("crypto readiness lane override
+   must equal the canonical packet."), exit `2`, zero runner calls.
+7. **Negative: explicit root `--profile paper` before `crypto-readiness-replay`**
+   → `crypto_readiness_replay_validation_error=explicit_profile_option_not_permitted`,
+   exit `2`, replay never invoked.
+8. **Negative: broker/receipt/paper-read flags**
+   (`--broker-observed-readiness`, `--receipt-root foo`,
+   `--allow-alpaca-paper-read`) → each rejected by the parser, exit `2`.
+9. **Exact fresh-process launcher proof**: literal
+   `<sys.executable> -m algotrader.cli crypto-readiness-replay` run from
+   the same isolated canonical worktree with a `sitecustomize`-based
+   protected-environment trap (raises on access to `APP_PROFILE` and all
+   Alpaca/APCA/network-test keys) and a post-run `sys.modules` audit → exit
+   `0`; exact V5.47 text output
+   (`v5_47_trial_classification=accepted`, ... `v5_47_live_authorized=false`);
+   `protected_environment_accesses=[]`; `forbidden_modules_loaded=[]`
+   (checked against the same forbidden-module set used in the automated
+   test: alpaca/broker/credential/LLM modules); accepted canonical packet
+   confirmed on disk.
+
+Temporary worktree and harness directories were removed after evidence
+collection (`git worktree remove --force`); no generated `runs/` artifact
+from manual evidence is tracked or committed.
+
+## Safety Outcomes
+
+- No network, market-data, broker, or paper-account access at any point.
+- No credential value requested, read, printed, logged, persisted, or
+  exposed; only variable *names* ever appear in preflight/refusal output.
+- No order submit/cancel/replace/close/liquidation; no broker/paper
+  mutation.
+- `live_authorized=false` throughout; no live access or real-capital
+  activity.
+- Local deterministic artifact writes under `runs/` (ignored, untracked)
+  were the only side effect of `--apply`/the manual launcher run.
+- No LLM or agent in the executable hot path (dependency-direction scan
+  passed with new synthetic-evasion negatives).
+- Paper caps/receipt/reconciliation: not applicable — no paper action
+  performed.
+
+## Unresolved Risks
+
+- Real age-based staleness for the crypto readiness lane remains
+  unimplemented by design (`max_age_hours=0`; V5.47 packet has no
+  authenticated freshness field). The stale token's V5.48 evidence is
+  structural (registry/classification/allowlist/planner-selection from a
+  constructed summary) only, not live reachability — as the contract
+  requires. A later, separately frozen contract is needed to introduce an
+  authenticated freshness field before stale can become truly reachable.
+- Full pytest run on this host takes on the order of 80+ minutes and
+  approached tight memory headroom (~8% free at peak); no failures or
+  hangs occurred this run, but this remains a slow, resource-sensitive gate
+  worth revisiting if it starts timing out.
+- Not merged/promoted: per contract and AGENTS.md scope, this branch stays
+  a feature branch pending independent review and an explicit operator
+  sequencing decision.
+
+## Next Action
+
+Independent review of implementation commit `6d4838b` on
+`codex/v5.48-readiness-replay-reachability` (pushed to origin) against the
+frozen `docs/design/v5_48_crypto_readiness_replay_reachability_contract.md`.
+Review should specifically check: the exact `ActionClass`/allowlist/closure
+tests; the canonical-target validation tests (planner + executor +
+self-refresh negatives); the exact central-launcher purity tests (static
+scan and fresh-process trap); and the self-refresh truthfulness tests
+(absent execute-once/re-observe-nominal/no-repeat, child-failure
+non-claim). Do not merge or promote without that independent acceptance.
