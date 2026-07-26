@@ -6,20 +6,11 @@
   reachability contract`.
 - Frozen contract:
   `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`.
-- Review status: **round-3 REQUEST CHANGES, corrections applied, pending
-  independent round-4 review. No implementation is authorized.** Round-1
-  findings (1 P0, 4 P1, 3 P2) and round-2 findings (1 P0, 3 P1, 3 P2) remain
-  recorded in the contract's "Round-1 Independent Review" and "Round-2
-  Independent Review" sections. Round-3 findings (1 P0, 4 P1) and their
-  corrections are recorded in the contract's new "Round-3 Independent
-  Review: Findings And Corrections" section, per orchestrator adjudication
-  that every finding is required.
-- Implementation status: **still contract-only. No `src/` or `tests/` file
-  was changed. No implementation is authorized until an independent review
-  round accepts.** On acceptance, the contract authorizes exactly one
-  implementation milestone/PR with two ordered, jointly reviewed commits
-  (adapter caps + safety preflight, then executor/planner/scheduled-task
-  reachability) — no second contract is required for that pair.
+- Review status: **round-4 ACCEPTED. Implementation authorized.** Round-1
+  findings (1 P0, 4 P1, 3 P2), round-2 findings (1 P0, 3 P1, 3 P2), and round-3
+  findings (1 P0, 4 P1) and their corrections remain recorded in the contract.
+  Round-4 independent review returned ACCEPT with zero findings.
+- Implementation status: **Authorized to proceed with two ordered V5.51 commits: Commit A (adapter caps + safety preflight) then Commit B (executor/planner/scheduled-task reachability).** On acceptance, the contract authorizes exactly one implementation milestone/PR with these two ordered, jointly reviewed commits — no second contract is required.
 - This milestone is the operator's selected **option 2** from
   `docs/design/v5_50_offline_autonomy_lane_eligibility_analysis.md`
   (authorize the read-only market-data intake path); unchanged from the
@@ -174,12 +165,7 @@ This is a doc-only change, so no test suite exercises new behavior.
 
 ## Next Action
 
-Independent **round-4** review of the corrected V5.51 contract
-(`docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`).
-No implementation is authorized until that review accepts. On acceptance,
-the contract itself authorizes exactly one implementation milestone/PR with
-two ordered commits reviewed together — no separate implementation contract
-is needed.
+Round-4 contract review returned ACCEPT. Commit and push this handoff, then proceed with the implementation of Commit A (adapter caps + safety preflight) and Commit B (executor/planner/scheduled-task reachability).
 
 Unchanged hard gate: **live capital remains operator-gated until burn-in
 completes.** Nothing in this milestone touches that.
