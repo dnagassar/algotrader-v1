@@ -80,6 +80,7 @@ def compute_source_bundle_digest(repo_root: Path) -> tuple[str, dict[str, str]]:
         "src/algotrader/execution/alpaca_sdk_client.py",
         "src/algotrader/execution/alpaca_client.py",
         "src/algotrader/cli.py",
+        "src/algotrader/execution/__init__.py",
         "src/algotrader/execution/crypto_supervised_readiness_trial.py",
         "src/algotrader/execution/crypto_supervised_readiness_trial_core.py",
         "src/algotrader/execution/tomorrow_crypto_trader_demo.py",

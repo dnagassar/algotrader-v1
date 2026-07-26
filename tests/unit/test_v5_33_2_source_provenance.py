@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -49,6 +50,7 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
         assert len(provenance["adapter_source_bundle_sha256"]) == 64
         assert isinstance(provenance["source_bundle_manifest"], dict)
         assert {
+            "src/algotrader/execution/__init__.py",
             "src/algotrader/execution/crypto_supervised_readiness_trial.py",
             "src/algotrader/execution/crypto_supervised_readiness_trial_core.py",
             "src/algotrader/execution/tomorrow_crypto_trader_demo.py",
@@ -89,6 +91,7 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
 def test_each_v547_module_changes_source_bundle_digest() -> None:
     repo_root = Path(".").resolve()
     v547_modules = (
+        "src/algotrader/execution/__init__.py",
         "src/algotrader/execution/crypto_supervised_readiness_trial.py",
         "src/algotrader/execution/crypto_supervised_readiness_trial_core.py",
         "src/algotrader/execution/tomorrow_crypto_trader_demo.py",
@@ -131,6 +134,136 @@ def test_each_v547_module_changes_source_bundle_digest() -> None:
             changed_manifest[relative_path]
             != baseline_manifest[relative_path]
         ), relative_path
+
+
+def test_offline_consumer_accepts_valid_production_receipts(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+    import json
+
+    fixed_now = datetime(2026, 7, 26, 12, 0, tzinfo=UTC)
+    mock_prov = {
+        "source_commit_sha": "a" * 40,
+        "source_tree_sha": "b" * 40,
+        "source_worktree_clean": True,
+        "source_branch_or_detached": "test-branch",
+        "adapter_source_bundle_sha256": "c" * 64,
+        "source_bundle_manifest": {
+            "src/algotrader/execution/__init__.py": "d" * 64,
+        },
+    }
+    obs_receipt = {
+        "schema_version": "v5_33_production_broker_observation_receipt_v1",
+        "source_classification": "genuine_alpaca_paper_observation",
+        "paper_endpoint_classification": "https://paper-api.alpaca.markets",
+        "expected_account_match": True,
+        "target_symbol": "BTCUSD",
+        "target_asset_class": "crypto",
+        "target_tradability": True,
+        "target_orderability": True,
+        "unexpected_exposure_classification": "clean",
+        "account_status_fields": {
+            "status": "active",
+            "trading_blocked": False,
+            "account_blocked": False,
+        },
+        "truncation_indicators": {
+            "positions_truncated": False,
+            "orders_truncated": False,
+        },
+        "ambiguity_indicators": {
+            "duplicate_positions": False,
+            "duplicate_client_order_ids": False,
+        },
+        "safety_booleans": {
+            "paper_submit_authorized": False,
+            "paper_submit_performed": False,
+            "broker_mutation_authorized": False,
+            "broker_mutation_performed": False,
+            "live_authorized": False,
+        },
+    }
+    obs_canonical = json.dumps(
+        obs_receipt,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    obs_receipt["canonical_receipt_sha256"] = hashlib.sha256(
+        obs_canonical.encode("utf-8")
+    ).hexdigest()
+
+    inv_receipt = {
+        "schema_version": "v5_33_production_invocation_receipt_v1",
+        "observation_receipt_sha256": obs_receipt[
+            "canonical_receipt_sha256"
+        ],
+        "source_commit_sha": mock_prov["source_commit_sha"],
+        "source_tree_sha": mock_prov["source_tree_sha"],
+        "source_worktree_clean": True,
+        "adapter_source_bundle_sha256": mock_prov[
+            "adapter_source_bundle_sha256"
+        ],
+        "source_bundle_manifest": mock_prov["source_bundle_manifest"],
+        "normalized_paper_endpoint": "https://paper-api.alpaca.markets",
+        "call_counters": {
+            "account_read_count": 1,
+            "positions_read_count": 1,
+            "orders_read_count": 1,
+            "target_asset_read_count": 1,
+        },
+        "observation_completion_utc": fixed_now.isoformat(),
+        "safety_booleans": {
+            "paper_submit_authorized": False,
+            "paper_submit_performed": False,
+            "broker_mutation_authorized": False,
+            "broker_mutation_performed": False,
+            "live_authorized": False,
+        },
+    }
+    inv_canonical = json.dumps(
+        inv_receipt,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    inv_receipt["canonical_invocation_sha256"] = hashlib.sha256(
+        inv_canonical.encode("utf-8")
+    ).hexdigest()
+
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+    (receipt_dir / "observation_receipt.json").write_text(
+        json.dumps(obs_receipt),
+        encoding="utf-8",
+    )
+    (receipt_dir / "invocation_receipt.json").write_text(
+        json.dumps(inv_receipt),
+        encoding="utf-8",
+    )
+
+    with (
+        patch(
+            "algotrader.execution."
+            "crypto_read_only_paper_observation_adapter."
+            "get_source_provenance",
+            return_value=mock_prov,
+        ),
+        patch(
+            "algotrader.execution.crypto_supervised_readiness_trial.datetime"
+        ) as receipt_datetime,
+    ):
+        receipt_datetime.fromisoformat.side_effect = datetime.fromisoformat
+        receipt_datetime.now.return_value = fixed_now
+        validation = _validate_offline_receipt(receipt_dir)
+
+    assert validation["valid"] is True
+    assert (
+        validation["classification"]
+        == "broker_observed_no_submit_completed"
+    )
+    assert validation["broker_state_observed"] is True
+    assert validation["network_used"] is True
+    assert validation["broker_read_occurred"] is True
 
 
 def test_dirty_source_worktree_blocks_before_client_construction(tmp_path: Path) -> None:
