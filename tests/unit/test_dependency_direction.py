@@ -1672,7 +1672,10 @@ def _relative_import_base(path: Path, level: int) -> str:
 
 def _module_name(path: Path) -> str:
     relative_path = path.relative_to(SRC_PACKAGE_ROOT.parent)
-    return ".".join(relative_path.with_suffix("").parts)
+    parts = list(relative_path.with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
 
 
 def _matches_forbidden_prefix(module: str, forbidden_prefixes: tuple[str, ...]) -> bool:
@@ -1974,3 +1977,319 @@ def _call_name(node: ast.AST) -> str:
         return f"{parent}.{node.attr}" if parent else node.attr
 
     return ""
+
+
+def _package_files(package_name: str) -> tuple[Path, ...]:
+    pkg_dir = Path("src").joinpath(*package_name.split("."))
+    return tuple(sorted(pkg_dir.glob("*.py")))
+
+
+CRYPTO_READINESS_REPLAY_MODULE_PATHS = (
+    _module_path("algotrader.execution.crypto_readiness_replay"),
+    _module_path("algotrader.execution.crypto_supervised_readiness_trial_core"),
+    _module_path("algotrader.execution.tomorrow_crypto_trader_demo"),
+    _module_path("algotrader.execution.crypto_market_data_symbol_normalization"),
+    _module_path("algotrader.execution.simulator"),
+    _module_path("algotrader.orchestration.execution_planning_flow"),
+    _module_path("algotrader.orchestration.execution_planning_policy"),
+    _module_path("algotrader.orchestration.risk_execution_flow"),
+    _module_path("algotrader.orchestration.screener_signal_flow"),
+    _module_path("algotrader.orchestration.signal_risk_flow"),
+    _module_path("algotrader.portfolio.state"),
+    _module_path("algotrader.risk.config"),
+    _module_path("algotrader.risk.context"),
+    _module_path("algotrader.risk.engine"),
+    _module_path("algotrader.risk.state"),
+    _module_path("algotrader.signals.crypto_trend"),
+    _module_path("algotrader.signals.simple_rule"),
+    _module_path("algotrader.core.types"),
+    _module_path("algotrader.core.validation"),
+    _module_path("algotrader.core.time"),
+    _module_path("algotrader.errors"),
+    *_package_files("algotrader.screener"),
+)
+
+CRYPTO_READINESS_REPLAY_FORBIDDEN_MODULE_SUBSTRINGS = (
+    "algotrader.config",
+    "algotrader.execution.alpaca_sdk_client",
+    "algotrader.execution.alpaca_client",
+    "algotrader.execution.alpaca_broker",
+    "algotrader.execution.alpaca_adapter",
+    "algotrader.execution.alpaca_mapper",
+    "algotrader.execution.alpaca_translator",
+    "algotrader.execution.live_capital_interlock",
+    "algotrader.execution.crypto_read_only_paper_observation_adapter",
+    "algotrader.execution.tomorrow_crypto_trader_demo_broker_client_adapter",
+    "algotrader.execution.tomorrow_crypto_trader_demo_cli",
+    "alpaca",
+    "alpaca_trade_api",
+    "requests",
+    "httpx",
+    "socket",
+    "urllib",
+    "importlib",
+    "runpy",
+    "pkgutil",
+)
+
+
+def test_crypto_readiness_replay_import_closure_is_broker_credential_and_profile_free() -> None:
+    rule = DependencyRule(
+        source="crypto readiness replay import closure",
+        paths=CRYPTO_READINESS_REPLAY_MODULE_PATHS,
+        forbidden_prefixes=CRYPTO_READINESS_REPLAY_FORBIDDEN_MODULE_SUBSTRINGS,
+    )
+    assert _dependency_violations(rule) == []
+
+
+def _ast_docstring_constant_nodes(tree: ast.AST) -> set[int]:
+    docstring_nodes: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            if (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)
+            ):
+                docstring_nodes.add(id(node.body[0].value))
+    return docstring_nodes
+
+
+def _fold_static_string(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _fold_static_string(node.left)
+        right = _fold_static_string(node.right)
+        if left is not None and right is not None:
+            return left + right
+    if isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for val in node.values:
+            folded = _fold_static_string(val)
+            if folded is None:
+                return None
+            parts.append(folded)
+        return "".join(parts)
+    if isinstance(node, ast.FormattedValue):
+        return _fold_static_string(node.value)
+    return None
+
+
+def _import_aliases_for_module(tree: ast.AST, target_module: str) -> set[str]:
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == target_module:
+                    aliases.add(alias.asname or alias.name)
+    return aliases
+
+
+def _check_tree_bans(tree: ast.AST, filename: str) -> list[str]:
+    violations: list[str] = []
+    banned_call_names = {"import_module", "__import__"}
+    forbidden_literal_roots = tuple(
+        item.lower()
+        for item in CRYPTO_READINESS_REPLAY_FORBIDDEN_MODULE_SUBSTRINGS
+    )
+    docstring_nodes = _ast_docstring_constant_nodes(tree)
+    os_aliases = _import_aliases_for_module(tree, "os")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "os":
+            names_set = {alias.name for alias in node.names}
+            if names_set.intersection({"environ", "getenv"}):
+                violations.append(f"{filename}:{node.lineno}: ambient environment access is banned")
+        if isinstance(node, ast.Name):
+            if node.id in {"importlib", "runpy", "pkgutil", "__import__"}:
+                violations.append(f"{filename}:{node.lineno}: dynamic import machinery is banned")
+        if isinstance(node, ast.Call):
+            func = node.func
+            called_name = (
+                func.attr if isinstance(func, ast.Attribute)
+                else func.id if isinstance(func, ast.Name)
+                else None
+            )
+            if called_name in banned_call_names:
+                violations.append(f"{filename}:{node.lineno}: dynamic module loading via {called_name!r} is banned")
+            if called_name == "getattr" and len(node.args) >= 2:
+                attribute_name = _fold_static_string(node.args[1])
+                if attribute_name in banned_call_names:
+                    violations.append(f"{filename}:{node.lineno}: constructed lookup of {attribute_name!r} is banned")
+                if (
+                    isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in os_aliases
+                ):
+                    if attribute_name in {"environ", "getenv"}:
+                        violations.append(f"{filename}:{node.lineno}: constructed ambient environment access is banned")
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in os_aliases
+        ):
+            if node.attr in {"environ", "getenv"}:
+                violations.append(f"{filename}:{node.lineno}: ambient environment access is banned")
+        folded = _fold_static_string(node)
+        if folded is not None and id(node) not in docstring_nodes:
+            normalized = folded.strip().lower()
+            if any(
+                normalized == root or normalized.startswith(root + ".")
+                for root in forbidden_literal_roots
+            ):
+                violations.append(f"{filename}:{node.lineno}: forbidden module literal {folded!r}")
+    return violations
+
+
+def test_crypto_readiness_replay_import_closure_bans_dynamic_loading_and_forbidden_literals() -> None:
+    for path in CRYPTO_READINESS_REPLAY_MODULE_PATHS:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        violations = _check_tree_bans(tree, str(path))
+        assert not violations, "\n".join(violations)
+
+    # Negative test cases proving detection works on evasions
+    negative_cases = [
+        "import importlib; importlib.import_module('algotrader.config')",
+        "__import__('algotrader.config')",
+        "getattr(importlib, 'im' + 'port_module')('alpaca.data.historical')",
+        "x = 'socket.socket'",
+        "import os; env = os.environ",
+        "import os; val = os.getenv('APP_PROFILE')",
+        "from os import environ",
+        "import os; val = getattr(os, 'en' + 'viron')",
+    ]
+    for case in negative_cases:
+        tree = ast.parse(case, filename="<synthetic>")
+        violations = _check_tree_bans(tree, "<synthetic>")
+        assert len(violations) > 0, f"Expected violations for negative synthetic case: {case!r}"
+
+    # Positive test cases proving valid non-evasion passes
+    positive_cases = [
+        "'''Docs referencing importlib and os.environ are allowed.'''\nx = 'allow_alpaca_paper_read'",
+    ]
+    for case in positive_cases:
+        tree = ast.parse(case, filename="<synthetic>")
+        violations = _check_tree_bans(tree, "<synthetic>")
+        assert violations == [], f"Unexpected violations for positive synthetic case: {violations}"
+
+
+def test_crypto_readiness_replay_import_closure_has_no_untracked_first_party_imports() -> None:
+    tracked_paths = set(CRYPTO_READINESS_REPLAY_MODULE_PATHS)
+    tracked_modules = {_module_name(path) for path in tracked_paths}
+    discovered_modules: set[str] = set(tracked_modules)
+    frontier = list(tracked_paths)
+    while frontier:
+        path = frontier.pop()
+        for import_reference in _import_references(path):
+            module = import_reference.module
+            if not module.startswith("algotrader.") or module in discovered_modules:
+                continue
+            discovered_modules.add(module)
+            candidate_module_path = _module_path(module)
+            candidate_package_dir = Path("src").joinpath(*module.split("."))
+            if candidate_module_path.is_file():
+                frontier.append(candidate_module_path)
+            elif candidate_package_dir.is_dir():
+                frontier.extend(_package_files(module))
+            else:
+                raise AssertionError(
+                    f"import reference {module!r} (from {path}:"
+                    f"{import_reference.line}) resolves to neither a "
+                    "module file nor a package directory."
+                )
+    assert discovered_modules == tracked_modules, (
+        "crypto_readiness_replay's real import closure has grown beyond "
+        "CRYPTO_READINESS_REPLAY_MODULE_PATHS; add the new module(s) and "
+        "re-verify them before allowlisting."
+    )
+
+
+def test_crypto_readiness_replay_fresh_process_sys_modules_smoke() -> None:
+    import subprocess
+    import sys
+    code = (
+        "import sys; sys.path.insert(0, 'src'); "
+        "import algotrader.execution.crypto_readiness_replay; "
+        "forbidden = {'algotrader.execution.alpaca_sdk_client', "
+        "'algotrader.execution.alpaca_client', 'algotrader.config', "
+        "'algotrader.execution.live_capital_interlock', "
+        "'algotrader.execution.crypto_read_only_paper_observation_adapter', "
+        "'algotrader.execution.tomorrow_crypto_trader_demo_broker_client_adapter', "
+        "'algotrader.execution.tomorrow_crypto_trader_demo_cli'}; "
+        "loaded = set(sys.modules.keys()).intersection(forbidden); "
+        "assert not loaded, f'Forbidden modules loaded: {loaded}'"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, f"Fresh process sys.modules smoke test failed: {result.stderr}"
+
+
+def test_crypto_readiness_replay_raising_protected_environment(tmp_path: Path) -> None:
+    import json
+    import os
+    from algotrader.execution.crypto_readiness_replay import run_crypto_readiness_replay
+    from algotrader.execution.crypto_supervised_readiness_trial_core import (
+        _json_safe,
+    )
+
+    protected_keys = {
+        "APP_PROFILE",
+        "ALPACA_API_KEY",
+        "ALPACA_API_SECRET_KEY",
+        "ALPACA_SECRET_KEY",
+        "APCA_API_KEY_ID",
+        "APCA_API_SECRET_KEY",
+        "ALPACA_BASE_URL",
+        "ALPACA_PAPER_BASE_URL",
+        "APCA_API_BASE_URL",
+    }
+
+    class RaisingEnvMap(dict):
+        def __getitem__(self, key: object) -> str:
+            if str(key) in protected_keys:
+                raise RuntimeError(f"Protected environment key accessed: {key}")
+            return super().__getitem__(key)
+
+        def get(self, key: object, default: object = None) -> object:
+            if str(key) in protected_keys:
+                raise RuntimeError(f"Protected environment key accessed: {key}")
+            return super().get(key, default)
+
+        def __contains__(self, key: object) -> bool:
+            if str(key) in protected_keys:
+                raise RuntimeError(f"Protected environment key accessed: {key}")
+            return super().__contains__(key)
+
+        def __iter__(self):
+            for key in super().__iter__():
+                decoded = (
+                    key.decode(errors="replace")
+                    if isinstance(key, bytes)
+                    else str(key)
+                )
+                if decoded in protected_keys:
+                    raise RuntimeError(
+                        f"Protected environment key iterated: {decoded}"
+                    )
+                yield key
+
+    original_env = os.environ._data
+    try:
+        os.environ._data = RaisingEnvMap(original_env)
+        output_root = tmp_path / "replay_output"
+        packet = run_crypto_readiness_replay(
+            output_root=output_root,
+            cycle_count=8,
+            write_artifacts=True,
+        )
+        assert packet["trial_classification"] == "accepted"
+        assert packet["safety"]["app_profile_paper"] is False
+        assert packet["safety"]["app_profile_live"] is False
+        assert packet["safety"]["credentials_present"] is False
+        assert packet["safety"]["network_used"] is False
+        assert packet["safety"]["broker_read_occurred"] is False
+        assert packet["safety"]["credentials_present"] is False
+        rendered = json.dumps(_json_safe(packet), sort_keys=True)
+        assert '"trial_classification": "accepted"' in rendered
+    finally:
+        os.environ._data = original_env

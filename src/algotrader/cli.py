@@ -4215,6 +4215,23 @@ def build_parser() -> argparse.ArgumentParser:
     crypto_consume_parser.add_argument("--receipt-root", required=True)
     crypto_consume_parser.add_argument("--output-root", default="runs/crypto_supervised_readiness_trial/latest")
 
+    crypto_replay_parser = subparsers.add_parser(
+        "crypto-readiness-replay",
+        help="Import-pure default-path crypto readiness trial replay.",
+    )
+    crypto_replay_parser.add_argument(
+        "--output-root", type=Path, default="runs/crypto_supervised_readiness_trial/latest",
+    )
+    crypto_replay_parser.add_argument(
+        "--decision-start", default="2026-07-19T12:00:00+00:00",
+    )
+    crypto_replay_parser.add_argument(
+        "--cycle-count", type=int, default=24,
+    )
+    crypto_replay_parser.add_argument(
+        "--format", choices=("text", "json"), default="text",
+    )
+
     return parser
 
 
@@ -4487,6 +4504,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_crypto_paper_broker_observation(args)
     if command == "crypto-readiness-consume":
         return _run_crypto_readiness_consume(args)
+    if command == "crypto-readiness-replay":
+        return _run_crypto_readiness_replay(args)
 
     config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
@@ -14072,6 +14091,36 @@ def _run_crypto_readiness_consume(args: argparse.Namespace) -> int:
     )
     print(f"crypto_consume_classification={packet['trial_classification']}")
     print(f"crypto_consume_current_readiness_rung={packet['current_readiness_rung_code']}")
+    return 0 if packet["trial_classification"] == "accepted" else 2
+
+
+def _run_crypto_readiness_replay(args: argparse.Namespace) -> int:
+    import json
+    from .execution.crypto_readiness_replay import run_crypto_readiness_replay
+    from .execution.crypto_supervised_readiness_trial_core import _json_safe, _mapping
+
+    packet = run_crypto_readiness_replay(
+        output_root=args.output_root,
+        decision_start=args.decision_start,
+        cycle_count=args.cycle_count,
+        write_artifacts=True,
+    )
+    if args.format == "json":
+        print(json.dumps(_json_safe(packet), sort_keys=True))
+    else:
+        print(f"v5_47_trial_classification={packet['trial_classification']}")
+        print(
+            "v5_47_current_readiness_rung="
+            f"{packet['current_readiness_rung_code']}"
+        )
+        print(f"v5_47_cycle_count={packet['cycle_count']}")
+        print(
+            "v5_47_receipt_chain_hash="
+            f"{_mapping(packet.get('receipt_chain')).get('final_receipt_hash')}"
+        )
+        print("v5_47_paper_submit_performed=false")
+        print("v5_47_broker_mutation_performed=false")
+        print("v5_47_live_authorized=false")
     return 0 if packet["trial_classification"] == "accepted" else 2
 
 

@@ -2558,7 +2558,7 @@ def test_scripts_expose_simbroker_and_validator_contracts() -> None:
         "tomorrow_crypto_trader_demo_broker_read_authorized=",
         "tomorrow_crypto_trader_demo_status=blocked_not_authorized",
         "Credential values are never printed",
-        "algotrader.execution.tomorrow_crypto_trader_demo",
+        "algotrader.execution.tomorrow_crypto_trader_demo_cli",
         "--allow-alpaca-paper-mutation",
         "--broker-observed-readiness",
         "--allow-alpaca-paper-read",

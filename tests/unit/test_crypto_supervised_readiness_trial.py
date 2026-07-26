@@ -110,12 +110,12 @@ def test_rerun_at_same_root_restarts_from_canonical_state(
 
 def test_validator_detects_artifact_tampering(tmp_path: Path) -> None:
     output_root = tmp_path / "runs" / "trial"
-    run_crypto_supervised_readiness_trial(
+    packet = run_crypto_supervised_readiness_trial(
         output_root=output_root,
         cycle_count=8,
         write_artifacts=True,
     )
-    report_path = output_root / "operating_report.md"
+    report_path = Path(packet["artifact_paths"]["operating_report"])
     report_path.write_text("tampered\n", encoding="utf-8")
 
     validation = validate_crypto_supervised_readiness_trial(output_root)

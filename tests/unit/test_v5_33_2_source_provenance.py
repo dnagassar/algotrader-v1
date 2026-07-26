@@ -10,6 +10,7 @@ import pytest
 
 from algotrader.execution.crypto_read_only_paper_observation_adapter import (
     PreflightCheckError,
+    compute_source_bundle_digest,
     get_source_provenance,
 )
 from algotrader.execution.crypto_supervised_readiness_trial import _validate_offline_receipt
@@ -48,6 +49,13 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
         assert len(provenance["adapter_source_bundle_sha256"]) == 64
         assert isinstance(provenance["source_bundle_manifest"], dict)
         assert {
+            "src/algotrader/execution/crypto_supervised_readiness_trial.py",
+            "src/algotrader/execution/crypto_supervised_readiness_trial_core.py",
+            "src/algotrader/execution/tomorrow_crypto_trader_demo.py",
+            "src/algotrader/execution/tomorrow_crypto_trader_demo_broker_client_adapter.py",
+            "src/algotrader/execution/tomorrow_crypto_trader_demo_cli.py",
+            "src/algotrader/execution/crypto_market_data_symbol_normalization.py",
+            "src/algotrader/execution/crypto_readiness_replay.py",
             "src/algotrader/execution/secure_credential_provider.py",
             "src/algotrader/execution/v535_unattended_readonly.py",
             "src/algotrader/execution/v535_burn_in_status.py",
@@ -76,6 +84,53 @@ def test_clean_source_provenance_structure(tmp_path: Path) -> None:
             "docs/design/v5_36_5a_concurrent_evidence_scan_coordination_contract.md",
             "docs/design/crypto_tournament_v2_oos_scheduler_task.xml",
         }.issubset(provenance["source_bundle_manifest"])
+
+
+def test_each_v547_module_changes_source_bundle_digest() -> None:
+    repo_root = Path(".").resolve()
+    v547_modules = (
+        "src/algotrader/execution/crypto_supervised_readiness_trial.py",
+        "src/algotrader/execution/crypto_supervised_readiness_trial_core.py",
+        "src/algotrader/execution/tomorrow_crypto_trader_demo.py",
+        "src/algotrader/execution/"
+        "tomorrow_crypto_trader_demo_broker_client_adapter.py",
+        "src/algotrader/execution/tomorrow_crypto_trader_demo_cli.py",
+        "src/algotrader/execution/"
+        "crypto_market_data_symbol_normalization.py",
+        "src/algotrader/execution/crypto_readiness_replay.py",
+    )
+    git_unavailable = MagicMock(returncode=1, stdout=b"")
+    with patch("subprocess.run", return_value=git_unavailable):
+        baseline_digest, baseline_manifest = compute_source_bundle_digest(
+            repo_root
+        )
+
+    original_read_bytes = Path.read_bytes
+    for relative_path in v547_modules:
+        target = (repo_root / relative_path).resolve()
+
+        def perturbed_read_bytes(
+            path: Path,
+            *,
+            _target: Path = target,
+        ) -> bytes:
+            content = original_read_bytes(path)
+            if path.resolve() == _target:
+                return content + b"\n# deterministic digest perturbation\n"
+            return content
+
+        with (
+            patch.object(Path, "read_bytes", perturbed_read_bytes),
+            patch("subprocess.run", return_value=git_unavailable),
+        ):
+            changed_digest, changed_manifest = compute_source_bundle_digest(
+                repo_root
+            )
+        assert changed_digest != baseline_digest, relative_path
+        assert (
+            changed_manifest[relative_path]
+            != baseline_manifest[relative_path]
+        ), relative_path
 
 
 def test_dirty_source_worktree_blocks_before_client_construction(tmp_path: Path) -> None:

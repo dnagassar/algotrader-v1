@@ -9,7 +9,6 @@ emits a deterministic no-submit paper-readiness preview packet.
 
 from __future__ import annotations
 
-import argparse
 from collections.abc import Callable, Iterable, Mapping, Sequence
 import csv
 from dataclasses import dataclass
@@ -20,10 +19,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from types import MappingProxyType
 from typing import Any, Literal
 
 from algotrader.core.types import Bar, Fill, OrderSide, OrderStatus, OrderType, ProposedOrder, Quote
-from algotrader.execution.alpaca_sdk_client import (
+from algotrader.execution.crypto_market_data_symbol_normalization import (
     crypto_market_data_symbol_normalization,
 )
 from algotrader.execution.simulator import ExecutionResult, simulate_order
@@ -3094,6 +3094,19 @@ def _alpaca_paper_packet(
     }
 
 
+OFFLINE_PAPER_ENVIRONMENT: Mapping[str, object] = MappingProxyType({
+    "APP_PROFILE": "",
+    "ALPACA_API_KEY": False,
+    "ALPACA_API_SECRET_KEY": False,
+    "ALPACA_SECRET_KEY": False,
+    "APCA_API_KEY_ID": False,
+    "APCA_API_SECRET_KEY": False,
+    "ALPACA_BASE_URL": "",
+    "ALPACA_PAPER_BASE_URL": "",
+    "APCA_API_BASE_URL": "",
+})
+
+
 def _alpaca_paper_status(
     *,
     allow_alpaca_paper_mutation: bool,
@@ -3102,7 +3115,11 @@ def _alpaca_paper_status(
 ) -> str:
     if not allow_alpaca_paper_mutation:
         return "blocked_not_authorized"
-    env = paper_environment or _paper_environment_from_os()
+    env = (
+        dict(OFFLINE_PAPER_ENVIRONMENT)
+        if paper_environment is None
+        else dict(paper_environment)
+    )
     if _text(env.get("APP_PROFILE")) != "paper":
         return "blocked_not_paper_profile"
     if not _paper_credentials_loaded(env):
@@ -3121,34 +3138,6 @@ def _alpaca_paper_status(
     ) is False:
         return "blocked_min_notional_or_increment_not_verified"
     return "not_attempted"
-
-
-def _paper_environment_from_os() -> dict[str, object]:
-    names = (
-        "APP_PROFILE",
-        "ALPACA_API_KEY",
-        "ALPACA_API_SECRET_KEY",
-        "ALPACA_SECRET_KEY",
-        "APCA_API_KEY_ID",
-        "APCA_API_SECRET_KEY",
-        "ALPACA_BASE_URL",
-        "ALPACA_PAPER_BASE_URL",
-        "APCA_API_BASE_URL",
-    )
-    return {
-        name: (
-            os.environ.get(name)
-            if name
-            in {
-                "APP_PROFILE",
-                "ALPACA_BASE_URL",
-                "ALPACA_PAPER_BASE_URL",
-                "APCA_API_BASE_URL",
-            }
-            else bool(os.environ.get(name))
-        )
-        for name in names
-    }
 
 
 def _paper_credentials_loaded(env: Mapping[str, object]) -> bool:
@@ -3195,7 +3184,11 @@ def _broker_observed_readiness_preview(
     broker_client_factory: Callable[[], object] | None,
     network_used: bool | None,
 ) -> dict[str, object]:
-    env = paper_environment or _paper_environment_from_os()
+    env = (
+        dict(OFFLINE_PAPER_ENVIRONMENT)
+        if paper_environment is None
+        else dict(paper_environment)
+    )
     endpoint = _broker_endpoint_status(env)
     symbol = _text(fixture_readiness.get("symbol"))
     side = _text(fixture_readiness.get("side"))
@@ -3388,7 +3381,7 @@ def _broker_observed_readiness_preview(
     read_attempted = False
     try:
         client = broker_client or (
-            broker_client_factory() if broker_client_factory is not None else _build_alpaca_read_client()
+            broker_client_factory() if broker_client_factory is not None else None
         )
         if client is None:
             return _broker_observed_packet_with_decision(
@@ -3556,22 +3549,7 @@ def _broker_observed_readiness_preview(
     )
 
 
-def _build_alpaca_read_client() -> object:
-    from algotrader.config import AlpacaPaperConfig
-    from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
 
-    env = os.environ
-    config = AlpacaPaperConfig(
-        app_profile=env.get("APP_PROFILE", ""),
-        alpaca_api_key=env.get("ALPACA_API_KEY") or env.get("APCA_API_KEY_ID"),
-        alpaca_secret_key=(
-            env.get("ALPACA_SECRET_KEY")
-            or env.get("ALPACA_API_SECRET_KEY")
-            or env.get("APCA_API_SECRET_KEY")
-        ),
-        alpaca_paper_base_url=env.get("ALPACA_PAPER_BASE_URL", DEFAULT_ALPACA_PAPER_ENDPOINT),
-    )
-    return AlpacaSdkClient(config)
 
 
 def _broker_observed_packet_with_decision(
@@ -3937,9 +3915,7 @@ def _call_read_method(client: object, method_name: str) -> object:
 def _read_open_orders(client: object, symbol: str) -> Sequence[object]:
     method = getattr(client, "get_orders")
     try:
-        from algotrader.execution.alpaca_client import AlpacaRecentOrderQuery
-
-        return method(AlpacaRecentOrderQuery(status_filter="open", symbol_filter=symbol))
+        return method(status_filter="open", symbol_filter=symbol)
     except TypeError:
         return method()
 
@@ -7902,66 +7878,3 @@ def _json_safe(value: object) -> object:
     if isinstance(value, list):
         return [_json_safe(item) for item in value]
     return value
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog=COMMAND_NAME,
-        description="Run or validate the v6.1 crypto SimBroker operating loop.",
-    )
-    parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
-    parser.add_argument("--state-root", type=Path, default=None)
-    parser.add_argument("--mode", choices=("SimBroker", "AlpacaPaper"), default="SimBroker")
-    parser.add_argument("--allow-alpaca-paper-mutation", action="store_true")
-    parser.add_argument("--broker-observed-readiness", action="store_true")
-    parser.add_argument("--allow-alpaca-paper-read", action="store_true")
-    parser.add_argument("--as-of", default="")
-    parser.add_argument(
-        "--scenario",
-        choices=("risk_on", "risk_off", "all_blocked", "bad_data"),
-        default=DEFAULT_SCENARIO,
-    )
-    parser.add_argument("--reset-state", action="store_true")
-    parser.add_argument("--validate-only", action="store_true")
-    parser.add_argument("--format", choices=("text", "json"), default="text")
-    args = parser.parse_args(argv)
-
-    if args.validate_only:
-        validation = validate_tomorrow_crypto_trader_demo(args.output_root)
-        if args.format == "json":
-            print(json.dumps(_json_safe(validation), sort_keys=True))
-        else:
-            print(f"tomorrow_crypto_trader_demo_validation_status={validation['validation_status']}")
-            for field in BROKER_OBSERVED_CONSISTENCY_FIELDS:
-                value = validation.get(field)
-                if type(value) is bool:
-                    rendered = _bool_text(value)
-                else:
-                    rendered = _text(value)
-                print(f"tomorrow_crypto_trader_demo_validator_{field}={rendered}")
-            print("errors=" + ",".join(_string_sequence(validation.get("errors"))))
-        return 0 if validation["validation_status"] == "passed" else 1
-
-    packet = run_tomorrow_crypto_trader_demo(
-        output_root=args.output_root,
-        mode=args.mode,
-        allow_alpaca_paper_mutation=args.allow_alpaca_paper_mutation,
-        broker_observed_readiness=args.broker_observed_readiness,
-        allow_alpaca_paper_read=args.allow_alpaca_paper_read,
-        as_of=args.as_of or None,
-        state_root=args.state_root,
-        scenario=args.scenario,
-        reset_state=args.reset_state,
-        write_artifacts=True,
-    )
-    if args.format == "json":
-        print(json.dumps(_json_safe(packet), sort_keys=True))
-    else:
-        run_summary = _run_summary_payload(packet)
-        for line in _string_sequence(run_summary.get("console_lines")):
-            print(line)
-    return 0
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())

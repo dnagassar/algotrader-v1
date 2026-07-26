@@ -36,7 +36,7 @@ Write-Host "Credential values are never printed"
 
 $Python = Get-PythonCommand
 $Args = @(
-    "-m", "algotrader.execution.tomorrow_crypto_trader_demo",
+    "-m", "algotrader.execution.tomorrow_crypto_trader_demo_cli",
     "--validate-only",
     "--output-root", $OutputRoot,
     "--format", $Format

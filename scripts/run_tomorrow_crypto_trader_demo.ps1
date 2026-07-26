@@ -145,7 +145,7 @@ else {
 
 $Python = Get-PythonCommand
 $Args = @(
-    "-m", "algotrader.execution.tomorrow_crypto_trader_demo",
+    "-m", "algotrader.execution.tomorrow_crypto_trader_demo_cli",
     "--output-root", $OutputRoot,
     "--mode", $Mode,
     "--scenario", $Scenario,
