@@ -71,12 +71,38 @@
   V5.51 contract, itself based on `6797e95`/`b79c721`), clean working tree,
   upstream `origin/claude/v5.51-readonly-spy-market-data-contract` up to
   date at takeover.
+- **Round-2 remediation committed and pushed: `703615f`** (`git log -1
+  --format="%H %cI"` → `703615f752f7acec6efa9c4e0eaf1d07649d433e
+  2026-07-26T18:40:13-04:00`). Post-push checkout evidence, re-verified this
+  pass: `git rev-parse --abbrev-ref HEAD` → `claude/v5.51-readonly-spy-market-data-contract`;
+  `git rev-parse --abbrev-ref --symbolic-full-name @{u}` →
+  `origin/claude/v5.51-readonly-spy-market-data-contract`; `git status
+  --porcelain=v2 --branch` → `branch.ab +0 -0` (local exactly matches
+  upstream, nothing ahead or behind, working tree clean).
+- **Post-commit re-read for internal contradictions (this pass):** read the
+  full corrected contract (1123 lines) end to end, specifically checking the
+  "Read-Only Market-Data Is Not Live Trading" section near the end for the
+  stale, unsatisfiable transitive-import ban round-2 finding #1 targeted.
+  Confirmed the live text (lines 988-1062) already carries the round-2
+  correction — the ban is scoped to *direct* seam imports and to
+  `require_live_capital_interlock`/broker-SDK/mutation-callables with no
+  exception, while `AlpacaPaperConfig`/`require_paper_profile` are
+  permitted only as members of `live_capital_interlock`'s own transitive
+  closure. Grepped every remaining `AlpacaPaperConfig`/`require_paper_profile`
+  occurrence (11 hits) and every remaining `seven canonical`/`beyond one
+  dry-run ledger record`/`<UTC timestamp resolved at trigger time>`/`1 per
+  UTC day` occurrence: all surviving hits are inside the "Round-1/Round-2
+  Independent Review" finding tables or the "Windows Scheduled Task Update"
+  correction note, describing the *prior, superseded* wording for the
+  historical record — none remain in live specification text. No
+  contradiction found; no further edit to the contract or `AGENTS.md` was
+  needed or made this pass.
 - Sole implementation writer for this round's contract-remediation-only
   milestone; Codex remains orchestrator/reviewer per operator instruction.
-- Preflight (presence-only, no values): `APP_PROFILE` not set; no
-  Alpaca/APCA credential alias set (`ALPACA_API_KEY`, `ALPACA_API_KEY_ID`,
-  `APCA_API_KEY_ID`, `ALPACA_SECRET_KEY`, `ALPACA_API_SECRET_KEY`,
-  `APCA_API_SECRET_KEY`); no `TIINGO_API_KEY` set. Re-checked before commit.
+- Preflight (presence-only, no values), re-run this pass: `APP_PROFILE` not
+  set; no Alpaca/APCA credential alias set (`ALPACA_API_KEY`,
+  `ALPACA_API_KEY_ID`, `APCA_API_KEY_ID`, `ALPACA_SECRET_KEY`,
+  `ALPACA_API_SECRET_KEY`, `APCA_API_SECRET_KEY`); no `TIINGO_API_KEY` set.
 
 ## Files Changed This Round
 
@@ -117,25 +143,30 @@ None of those files was modified.
 ## Verification Evidence
 
 This is a doc-only change, so no test suite exercises new behavior. Ran the
-checks applicable to doc-only work per `AGENTS.md`:
+checks applicable to doc-only work per `AGENTS.md`, both at commit time and
+re-run this pass after the commit/push to confirm the pushed state matches:
 
-- `git status --short` → reports exactly the two files listed above
-  (`AGENTS.md`, the V5.51 contract) before commit; `active_implementation.md`
-  is the third, overwritten as part of this same commit.
-- `git diff --check` → clean (no whitespace-conflict markers).
-- `git diff --name-only HEAD -- src` → empty (no `src/` change).
-- `git ls-files --others --exclude-standard src tests` → empty (no
-  untracked `src`/`tests` files).
-- Presence-only credential/profile preflight (`APP_PROFILE`, all six
-  Alpaca/APCA aliases, `TIINGO_API_KEY`) confirmed absent before commit.
-- No network or broker command was run. `.\scripts\verify_offline.ps1` and
-  the default pytest suite were **not run** this round: this is a
-  documentation-only diff with no source impact, so per `AGENTS.md`'s
-  "Preflight and Verification" section (targeted tests, then
-  `verify_offline.ps1`, apply to implementation work) there is no changed
-  `src/`/`tests/` behavior for them to exercise. This is recorded
-  truthfully as "not run" rather than claimed as passing evidence,
-  consistent with prior rounds' practice.
+- **At commit time (round-2 remediation, `703615f`):** `git status --short`
+  reported exactly the three files listed under "Files Changed This Round"
+  staged; `git diff --check` clean; `git diff --name-only HEAD -- src`
+  empty; `git ls-files --others --exclude-standard src tests` empty;
+  presence-only preflight confirmed all seven variables (`APP_PROFILE`, six
+  Alpaca/APCA aliases, `TIINGO_API_KEY`) absent.
+- **This pass (post-push re-verification, no contract edit made):**
+  `git status --short` → empty (nothing staged or unstaged — the working
+  tree exactly matches `703615f`); `git diff --check` → clean; `git diff
+  --name-only HEAD -- src` → empty; `git ls-files --others
+  --exclude-standard src tests` → empty; presence-only preflight re-run,
+  all seven variables confirmed absent again, no values printed either
+  time.
+- No network or broker command was run in either pass.
+  `.\scripts\verify_offline.ps1` and the default pytest suite were **not
+  run**: this remains a documentation-only diff with no `src`/`tests`
+  impact (confirmed again this pass — `git diff --name-only HEAD -- src`
+  and the untracked-file check are both empty), so per `AGENTS.md`'s
+  "Preflight and Verification" section there is no changed `src`/`tests`
+  behavior for them to exercise. Recorded truthfully as "not run" rather
+  than claimed as passing evidence, consistent with prior rounds' practice.
 
 ## Unresolved Risks
 
