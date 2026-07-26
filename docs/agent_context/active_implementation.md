@@ -7,12 +7,20 @@
   `docs/design/v5_48_crypto_readiness_replay_reachability_contract.md`.
 - Accepted contract commit:
   `d6e408e8d747f7af82ff2d3b2f7978289e7fa5c6`.
-- Implementation status: **implemented, locally committed, pushed. Not
-  merged. Independent review required before promotion.**
+- Implementation status: **accepted and promoted. `origin/main` fast-forwarded
+  to evidence commit `38399df` (which carries implementation commit
+  `6d4838b`).**
 - Implementation commit:
   `6d4838b` ("Implement V5.48 crypto readiness replay reachability") on
   `codex/v5.48-readiness-replay-reachability`, parent
   `3c050a58c4a50edd4a4815867f99798682890337`.
+- Evidence/promotion commit:
+  `38399df9a018430d61c9dce20e170a258a0ed315` ("Record V5.48 implementation
+  evidence and handoff") — fast-forward promoted to `origin/main`.
+- Independent acceptance: static review found no P0-P2 findings. Orchestrator
+  independently reran the planner/executor/supervisor/self-refresh suite
+  (158 passed), the exact central-launcher purity test (1 passed), and three
+  static launcher/evasion tests, all passing.
 
 ## Checkout And Ownership
 
@@ -213,18 +221,20 @@ from manual evidence is tracked or committed.
   approached tight memory headroom (~8% free at peak); no failures or
   hangs occurred this run, but this remains a slow, resource-sensitive gate
   worth revisiting if it starts timing out.
-- Not merged/promoted: per contract and AGENTS.md scope, this branch stays
-  a feature branch pending independent review and an explicit operator
-  sequencing decision.
 
 ## Next Action
 
-Independent review of implementation commit `6d4838b` on
-`codex/v5.48-readiness-replay-reachability` (pushed to origin) against the
-frozen `docs/design/v5_48_crypto_readiness_replay_reachability_contract.md`.
-Review should specifically check: the exact `ActionClass`/allowlist/closure
-tests; the canonical-target validation tests (planner + executor +
-self-refresh negatives); the exact central-launcher purity tests (static
-scan and fresh-process trap); and the self-refresh truthfulness tests
-(absent execute-once/re-observe-nominal/no-repeat, child-failure
-non-claim). Do not merge or promote without that independent acceptance.
+Freeze and independently review a separate V5.49 authenticated
+readiness-freshness contract before any implementation. That future
+contract must:
+
+- Honestly define an integrity-bound freshness timestamp/clock-injection
+  mechanism and a positive, finite max age, without reusing the fixed
+  `decision_start` or weakening V5.47's deterministic/import-pure defaults.
+- Only then make the stale token's refresh converge through the existing
+  exact replay (`python -m algotrader.cli crypto-readiness-replay`) — and
+  only if a safe, fixed/validated argv design exists for doing so.
+- Introduce no broker/network/credentials/paper/live access and no LLM in
+  the executable hot path.
+
+No other next action is open on V5.48.
