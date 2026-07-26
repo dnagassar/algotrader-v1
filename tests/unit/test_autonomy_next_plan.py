@@ -40,6 +40,7 @@ from algotrader.execution.autonomy_next_plan import (
 
 
 MODULE_PATH = Path("src/algotrader/execution/autonomy_next_plan.py")
+REPO_ROOT = Path(__file__).resolve().parents[2]
 AS_OF = "2026-07-24T00:00:00Z"
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -97,10 +98,21 @@ def _config(tmp_path: Path, **overrides) -> AutonomySupervisorConfig:  # noqa: A
     kwargs = {
         "run_id": "plan-test",
         "as_of": AS_OF,
-        "lanes_root": tmp_path,
+        "lanes_root": Path("runs"),
     }
     kwargs.update(overrides)
     return AutonomySupervisorConfig(**kwargs)
+
+
+def _plan_from_records(
+    tmp_path: Path,
+    records: dict[str, object] | None = None,
+) -> dict[str, object]:
+    report = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path),
+        records or {},
+    )
+    return build_autonomy_next_plan_from_report(report)
 
 
 def _action(payload: dict, lane_id: str) -> dict:
@@ -119,11 +131,12 @@ def _assert_safety_booleans_false(payload: dict) -> None:
 # Classification registry
 # --------------------------------------------------------------------------- #
 def test_every_supervisor_action_is_classified() -> None:
-    tokens = set()
-    for lane in AUTONOMY_SUPERVISOR_LANES:
-        tokens.update(lane.next_actions.values())
-    missing = sorted(t for t in tokens if t not in AUTONOMY_ACTION_CLASSIFICATION)
-    assert missing == [], f"unclassified supervisor actions: {missing}"
+    producer_tokens = {
+        token
+        for lane in AUTONOMY_SUPERVISOR_LANES
+        for token in lane.next_actions.values()
+    } | {ALL_LANES_ABSENT_ACTION}
+    assert set(AUTONOMY_ACTION_CLASSIFICATION) == producer_tokens
 
 
 # --------------------------------------------------------------------------- #
@@ -253,7 +266,7 @@ def test_classification_registry_is_internally_consistent() -> None:
             assert classified.command != "", token
         else:
             assert classified.command == "", token
-        if classified.execution_class == EXECUTION_NOOP:
+        if classified.execution_class in (EXECUTION_AUTO_OFFLINE, EXECUTION_NOOP):
             assert classified.gate == "", token
         else:
             assert classified.gate != "", token
@@ -271,7 +284,7 @@ def test_action_class_rejects_offline_runnable_without_command() -> None:
         ActionClass(
             execution_class=EXECUTION_AUTO_OFFLINE,
             offline_runnable=True,
-            gate="unattended_execution_authority",
+            gate="",
             gate_detail="x",
             command="",
         )
@@ -301,21 +314,45 @@ def test_action_class_rejects_noop_with_gate() -> None:
 # --------------------------------------------------------------------------- #
 # Whole-system plan behaviour
 # --------------------------------------------------------------------------- #
-def test_clean_checkout_offers_offline_daily_cycle_seed(tmp_path: Path) -> None:
-    payload = build_autonomy_next_plan(_config(tmp_path))
+def test_all_absent_preserves_aggregate_and_selects_crypto_replay(
+    tmp_path: Path,
+) -> None:
+    payload = _plan_from_records(tmp_path)
 
     assert payload["record_type"] == "autonomy_next_plan"
     assert payload["labels"] == list(AUTONOMY_NEXT_PLAN_LABELS)
     assert payload["profit_claim"] == "none"
-    # In a clean checkout the only offline-runnable lane is the daily cycle.
     assert payload["plan_class"] == PLAN_OFFLINE_ACTION_AVAILABLE
-    assert payload["next_offline_action_lane"] == "spy_offline_daily_cycle"
-    assert payload["offline_runnable_lanes"] == ["spy_offline_daily_cycle"]
+    assert payload["supervisor_recommended_action"] == ALL_LANES_ABSENT_ACTION
+    assert payload["supervisor_recommended_action_lane"] == ""
+    assert payload["next_offline_action_lane"] == "crypto_supervised_readiness_trial"
+    assert payload["offline_runnable_lanes"] == [
+        "spy_offline_daily_cycle",
+        "crypto_supervised_readiness_trial",
+    ]
     seed = _action(payload, "spy_offline_daily_cycle")
     assert seed["execution_class"] == EXECUTION_OFFLINE_OPERATOR_INPUT
     assert seed["offline_runnable"] is True
     assert "etf-sma-offline-daily-cycle-run" in seed["command"]
     assert seed["required_operator_inputs"]
+    readiness = _action(payload, "crypto_supervised_readiness_trial")
+    assert readiness["recommended_action"] == (
+        "run_supervised_readiness_trial_to_seed_r1_evidence"
+    )
+    assert readiness["execution_class"] == EXECUTION_AUTO_OFFLINE
+    assert readiness["gate"] == ""
+    assert readiness["required_operator_inputs"] == []
+    assert readiness["command"] == (
+        "python -m algotrader.cli crypto-readiness-replay"
+    )
+    assert Path(readiness["artifact_path"]).resolve() == (
+        REPO_ROOT
+        / "runs"
+        / "crypto_supervised_readiness_trial"
+        / "latest"
+        / "readiness_packet.json"
+    ).resolve()
+    assert payload["next_offline_action"] == readiness
     # The market-data soak seed requires a network fetch: operator-gated.
     soak = _action(payload, "spy_market_data_soak")
     assert soak["execution_class"] == EXECUTION_OPERATOR_GATED
@@ -385,32 +422,51 @@ def test_operator_authority_required_when_no_offline_action(tmp_path: Path) -> N
     assert gated["gate"] == "operator_review"
 
 
-def test_stale_daily_cycle_offers_auto_offline_rerun(tmp_path: Path) -> None:
-    # Force the daily cycle lane stale by overriding it with a stale nominal
-    # record, and give it a max_age lane... the daily cycle disables staleness,
-    # so instead drive the auto_offline rerun via a direct classify check plus a
-    # crafted supervisor lane whose next_action is the rerun token.
-    classified = classify_action("rerun_offline_daily_cycle_chain")
-    assert classified.execution_class == EXECUTION_AUTO_OFFLINE
-    assert classified.offline_runnable is True
-    assert "etf-sma-offline-daily-cycle-rerun-m446" in classified.command
-    assert classified.required_operator_inputs == ()
-    assert classified.preconditions  # depends on the refreshed M446 CSV
+def test_readiness_stale_token_is_structurally_bound_but_not_claimed_reachable(
+    tmp_path: Path,
+) -> None:
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    readiness = next(
+        lane
+        for lane in report["lanes"]
+        if lane["lane_id"] == "crypto_supervised_readiness_trial"
+    )
+    readiness["normalized_state"] = "stale"
+    readiness["next_action"] = "rerun_supervised_readiness_trial"
+
+    payload = build_autonomy_next_plan_from_report(report)
+    action = _action(payload, "crypto_supervised_readiness_trial")
+    assert action["execution_class"] == EXECUTION_AUTO_OFFLINE
+    assert action["command"] == "python -m algotrader.cli crypto-readiness-replay"
+    assert action["gate"] == ""
+    assert payload["next_offline_action"] == action
+    assert "rerun_offline_daily_cycle_chain" not in AUTONOMY_ACTION_CLASSIFICATION
 
 
-def test_next_offline_action_prefers_higher_severity(tmp_path: Path) -> None:
-    # spy_market_data_soak stale (attention-ish) is operator-gated; the daily
-    # cycle absent seed is offline-runnable. Only offline-runnable lanes are
-    # eligible for next_offline_action, and among them the most severe wins.
-    payload = build_autonomy_next_plan(_config(tmp_path))
+def test_auto_offline_action_outranks_operator_input(tmp_path: Path) -> None:
+    payload = _plan_from_records(tmp_path)
+    assert payload["next_offline_action"]["lane_id"] == (
+        "crypto_supervised_readiness_trial"
+    )
+    assert "spy_offline_daily_cycle" in payload["offline_runnable_lanes"]
+
+
+def test_operator_input_is_fallback_when_no_auto_action(tmp_path: Path) -> None:
+    payload = _plan_from_records(
+        tmp_path,
+        {"crypto_supervised_readiness_trial": {"trial_classification": "accepted"}},
+    )
     assert payload["next_offline_action"]["lane_id"] == "spy_offline_daily_cycle"
+    assert payload["next_offline_action"]["execution_class"] == (
+        EXECUTION_OFFLINE_OPERATOR_INPUT
+    )
 
 
 # --------------------------------------------------------------------------- #
 # Rendering, writing, determinism
 # --------------------------------------------------------------------------- #
 def test_render_json_is_deterministic_and_sorted(tmp_path: Path) -> None:
-    payload = build_autonomy_next_plan(_config(tmp_path))
+    payload = _plan_from_records(tmp_path)
     rendered = render_autonomy_next_plan_json(payload)
     assert "\n" not in rendered
     reparsed = json.loads(rendered)
@@ -421,7 +477,7 @@ def test_render_json_is_deterministic_and_sorted(tmp_path: Path) -> None:
 
 
 def test_render_text_lists_actions_and_safety(tmp_path: Path) -> None:
-    payload = build_autonomy_next_plan(_config(tmp_path))
+    payload = _plan_from_records(tmp_path)
     text = render_autonomy_next_plan_text(payload)
     assert "Offline autonomy next-action plan" in text
     assert "spy_offline_daily_cycle" in text
@@ -429,15 +485,15 @@ def test_render_text_lists_actions_and_safety(tmp_path: Path) -> None:
 
 
 def test_report_is_deterministic_for_same_inputs(tmp_path: Path) -> None:
-    first = build_autonomy_next_plan(_config(tmp_path))
-    second = build_autonomy_next_plan(_config(tmp_path))
+    first = _plan_from_records(tmp_path)
+    second = _plan_from_records(tmp_path)
     assert render_autonomy_next_plan_json(first) == render_autonomy_next_plan_json(
         second
     )
 
 
 def test_write_jsonl_writes_exactly_one_record(tmp_path: Path) -> None:
-    payload = build_autonomy_next_plan(_config(tmp_path))
+    payload = _plan_from_records(tmp_path)
     out = tmp_path / "nested" / "plan.jsonl"
     result = write_autonomy_next_plan_jsonl(payload, out)
     assert result.record_count == 1
@@ -478,10 +534,114 @@ def test_build_rejects_wrong_config_type() -> None:
         build_autonomy_next_plan({"run_id": "x"})  # type: ignore[arg-type]
 
 
+def test_planner_rejects_noncanonical_lanes_root(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="canonical repository runs"):
+        build_autonomy_next_plan(
+            _config(tmp_path, lanes_root=tmp_path / "arbitrary-runs")
+        )
+
+
+def test_planner_rejects_noncanonical_readiness_override(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="readiness lane override"):
+        build_autonomy_next_plan(
+            _config(
+                tmp_path,
+                lane_artifact_overrides={
+                    "crypto_supervised_readiness_trial": tmp_path / "packet.json"
+                },
+            )
+        )
+
+
+def test_planner_rejects_report_artifact_and_action_drift(tmp_path: Path) -> None:
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    readiness = next(
+        lane
+        for lane in report["lanes"]
+        if lane["lane_id"] == "crypto_supervised_readiness_trial"
+    )
+    readiness["artifact_path"] = str(tmp_path / "readiness_packet.json")
+    with pytest.raises(ValidationError, match="artifact_path"):
+        build_autonomy_next_plan_from_report(report)
+
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    readiness = next(
+        lane
+        for lane in report["lanes"]
+        if lane["lane_id"] == "crypto_supervised_readiness_trial"
+    )
+    readiness["next_action"] = "rerun_supervised_readiness_trial"
+    with pytest.raises(ValidationError, match="does not match"):
+        build_autonomy_next_plan_from_report(report)
+
+
+def test_planner_rejects_non_repository_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValidationError, match="cwd"):
+        build_autonomy_next_plan_from_report(report)
+
+
+def test_planner_rejects_source_tree_without_git_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_root = tmp_path / "fake-repo"
+    fake_module = (
+        fake_root
+        / "src"
+        / "algotrader"
+        / "execution"
+        / "autonomy_next_plan.py"
+    )
+    fake_module.parent.mkdir(parents=True)
+    fake_module.write_text("# fake", encoding="utf-8")
+    cli_path = fake_root / "src" / "algotrader" / "cli.py"
+    cli_path.write_text("# fake", encoding="utf-8")
+    monkeypatch.setattr(plan_module, "__file__", str(fake_module))
+    monkeypatch.chdir(fake_root)
+    with pytest.raises(ValidationError, match="Git checkout"):
+        build_autonomy_next_plan_from_report(
+            build_autonomy_supervisor_report_from_records(
+                AutonomySupervisorConfig(
+                    run_id="fake",
+                    as_of=AS_OF,
+                    lanes_root="runs",
+                ),
+                {},
+            )
+        )
+
+
+def test_planner_rejects_symlink_artifact_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    link = tmp_path / "readiness_packet.json"
+    original_is_symlink = Path.is_symlink
+    monkeypatch.setattr(
+        Path,
+        "is_symlink",
+        lambda self: self == link or original_is_symlink(self),
+    )
+    report = build_autonomy_supervisor_report_from_records(_config(tmp_path), {})
+    readiness = next(
+        lane
+        for lane in report["lanes"]
+        if lane["lane_id"] == "crypto_supervised_readiness_trial"
+    )
+    readiness["artifact_path"] = str(link)
+    with pytest.raises(ValidationError, match="symlink"):
+        build_autonomy_next_plan_from_report(report)
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
-def test_cli_command_registered_and_runs(tmp_path: Path) -> None:
+def test_cli_command_registered_and_runs_from_canonical_root() -> None:
     buffer = io.StringIO()
     with redirect_stdout(buffer):
         exit_code = cli_module.main(
@@ -492,34 +652,24 @@ def test_cli_command_registered_and_runs(tmp_path: Path) -> None:
                 "--as-of",
                 AS_OF,
                 "--lanes-root",
-                str(tmp_path),
+                "runs",
                 "--format",
                 "json",
             ]
         )
     payload = json.loads(buffer.getvalue().strip())
-    # Clean checkout: offline daily-cycle seed available -> action pending -> 1.
-    assert exit_code == 1
+    assert exit_code in (0, 1)
     assert payload["record_type"] == "autonomy_next_plan"
-    assert payload["plan_class"] == PLAN_OFFLINE_ACTION_AVAILABLE
+    assert Path(payload["lanes_root"]).resolve() == (REPO_ROOT / "runs").resolve()
     _assert_safety_booleans_false(payload)
 
 
-def test_cli_all_nominal_returns_zero_exit(tmp_path: Path) -> None:
-    # Seed every lane nominal/waiting via per-lane overrides.
+def test_cli_rejects_noncanonical_readiness_override(tmp_path: Path) -> None:
     def _write(name: str, obj: dict) -> str:
         path = tmp_path / f"{name}.json"
         path.write_text(json.dumps(obj), encoding="utf-8")
         return str(path)
 
-    overrides = [
-        f"spy_market_data_soak={_write('soak', {'evidence_state': 'accepted_unattended_market_data_soak', 'latest_attempted_session_date': AS_OF})}",
-        f"spy_offline_daily_cycle={_write('daily', {'daily_chain_state': 'accepted_observe_hold_noop'})}",
-        f"crypto_supervised_readiness_trial={_write('trial', {'trial_classification': 'accepted'})}",
-        f"crypto_forward_shadow_cycle={_write('shadow', {'classification': 'waiting_for_tournament_terminal'})}",
-        f"crypto_bounded_paper_probe_review={_write('probe', {'classification': 'waiting_for_v5_25_terminal_evidence'})}",
-        f"crypto_capability_production={_write('cap', {'classification': 'candidate_deferred_pending_terminal_winner'})}",
-    ]
     argv = [
         "autonomy-next-plan",
         "--run-id",
@@ -527,12 +677,15 @@ def test_cli_all_nominal_returns_zero_exit(tmp_path: Path) -> None:
         "--as-of",
         AS_OF,
         "--lanes-root",
-        str(tmp_path),
+        "runs",
+        "--lane",
+        (
+            "crypto_supervised_readiness_trial="
+            f"{_write('trial', {'trial_classification': 'accepted'})}"
+        ),
         "--format",
         "json",
     ]
-    for override in overrides:
-        argv.extend(["--lane", override])
     run_log = tmp_path / "plan.jsonl"
     argv.extend(["--run-log", str(run_log)])
 
@@ -540,9 +693,8 @@ def test_cli_all_nominal_returns_zero_exit(tmp_path: Path) -> None:
     with redirect_stdout(buffer):
         exit_code = cli_module.main(argv)
 
-    assert exit_code == 0
-    record = json.loads(run_log.read_text(encoding="utf-8").strip())
-    assert record["plan_class"] == PLAN_ALL_NOMINAL_OR_WAITING
+    assert exit_code == 2
+    assert not run_log.exists()
 
 
 def test_cli_bad_lane_override_returns_validation_exit(tmp_path: Path) -> None:

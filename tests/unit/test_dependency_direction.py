@@ -2293,3 +2293,298 @@ def test_crypto_readiness_replay_raising_protected_environment(tmp_path: Path) -
         assert '"trial_classification": "accepted"' in rendered
     finally:
         os.environ._data = original_env
+
+
+# --------------------------------------------------------------------------- #
+# V5.48: exact central CLI launcher eager/path-specific purity proof.
+# --------------------------------------------------------------------------- #
+CENTRAL_REPLAY_LAUNCHER_FORBIDDEN_IMPORT_PREFIXES = (
+    "aiohttp",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "httpx",
+    "langchain",
+    "langgraph",
+    "openai",
+    "requests",
+    "socket",
+    "urllib",
+    "algotrader.config",
+    "algotrader.execution.alpaca_adapter",
+    "algotrader.execution.alpaca_broker",
+    "algotrader.execution.alpaca_client",
+    "algotrader.execution.alpaca_sdk_client",
+    "algotrader.execution.alpaca_mapper",
+    "algotrader.execution.alpaca_translator",
+    "algotrader.execution.crypto_read_only_paper_observation_adapter",
+    "algotrader.execution.live_capital_interlock",
+    "algotrader.execution.read_only_paper_broker_snapshot_operator_review",
+    "algotrader.execution.read_only_paper_broker_snapshot_reconciliation",
+    "algotrader.execution.secure_credential_provider",
+    "algotrader.execution.tomorrow_crypto_trader_demo_broker_client_adapter",
+    "algotrader.execution.tomorrow_crypto_trader_demo_cli",
+    "algotrader.execution.v536_credential_provisioning",
+    "algotrader.orchestration.etf_sma_paper_broker_preview",
+)
+
+_CENTRAL_REPLAY_MUTATION_CALLS = {
+    "cancel_order",
+    "close_all_positions",
+    "close_position",
+    "create_order",
+    "liquidate",
+    "replace_order",
+    "submit_order",
+    "submit_order_request",
+}
+
+
+def _top_level_import_references(path: Path) -> tuple[ImportReference, ...]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imports: list[ImportReference] = []
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            imports.extend(
+                ImportReference(path=path, line=node.lineno, module=alias.name)
+                for alias in node.names
+            )
+        elif isinstance(node, ast.ImportFrom):
+            imports.extend(
+                ImportReference(path=path, line=node.lineno, module=module)
+                for module in _import_from_modules(path, node)
+            )
+    return tuple(imports)
+
+
+def _first_party_module_path(module: str) -> Path | None:
+    module_path = _module_path(module)
+    if module_path.is_file():
+        return module_path
+    package_init = Path("src").joinpath(*module.split("."), "__init__.py")
+    if package_init.is_file():
+        return package_init
+    return None
+
+
+def _implicit_package_initializers(module: str) -> tuple[Path, ...]:
+    parts = module.split(".")
+    initializers: list[Path] = []
+    for index in range(1, len(parts)):
+        init_path = Path("src").joinpath(*parts[:index], "__init__.py")
+        if init_path.is_file():
+            initializers.append(init_path)
+    return tuple(initializers)
+
+
+def _central_replay_eager_closure() -> tuple[Path, ...]:
+    seeds = {
+        Path("src/algotrader/__init__.py"),
+        Path("src/algotrader/execution/__init__.py"),
+        _module_path("algotrader.cli"),
+    }
+    discovered = set(seeds)
+    frontier = list(seeds)
+    while frontier:
+        path = frontier.pop()
+        for reference in _top_level_import_references(path):
+            if not reference.module.startswith("algotrader"):
+                continue
+            candidates = list(_implicit_package_initializers(reference.module))
+            module_path = _first_party_module_path(reference.module)
+            if module_path is not None:
+                candidates.append(module_path)
+            for candidate in candidates:
+                if candidate not in discovered:
+                    discovered.add(candidate)
+                    frontier.append(candidate)
+    return tuple(sorted(discovered))
+
+
+def _top_level_executed_nodes(tree: ast.Module) -> tuple[ast.AST, ...]:
+    resolved: list[ast.AST] = []
+
+    def _visit(node: ast.AST) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return
+        if isinstance(node, ast.ClassDef):
+            for decorator in node.decorator_list:
+                resolved.extend(ast.walk(decorator))
+            return
+        resolved.append(node)
+        for child in ast.iter_child_nodes(node):
+            _visit(child)
+
+    for statement in tree.body:
+        _visit(statement)
+    return tuple(resolved)
+
+
+def _launcher_scanner_violations(
+    tree: ast.Module,
+    filename: str,
+    *,
+    imports: tuple[ImportReference, ...] = (),
+    mutation_scope: tuple[ast.AST, ...] | None = None,
+) -> list[str]:
+    violations = _check_tree_bans(tree, filename)
+    for reference in imports:
+        if _matches_forbidden_prefix(
+            reference.module,
+            CENTRAL_REPLAY_LAUNCHER_FORBIDDEN_IMPORT_PREFIXES,
+        ):
+            violations.append(
+                f"{reference.path}:{reference.line}: forbidden launcher import "
+                f"{reference.module}"
+            )
+    nodes = tuple(ast.walk(tree)) if mutation_scope is None else mutation_scope
+    for node in nodes:
+        if isinstance(node, ast.Call):
+            called = _call_name(node.func)
+            if called.rsplit(".", maxsplit=1)[-1] in _CENTRAL_REPLAY_MUTATION_CALLS:
+                violations.append(
+                    f"{filename}:{node.lineno}: mutation call {called} is banned"
+                )
+    return violations
+
+
+def test_central_replay_launcher_static_eager_closure_is_pure() -> None:
+    cli_path = _module_path("algotrader.cli")
+    cli_imports = _top_level_import_references(cli_path)
+    assert {reference.module for reference in cli_imports} == {
+        "__future__",
+        "argparse",
+        "collections.abc",
+        "decimal",
+        "json",
+        "pathlib",
+        "sys",
+        "types",
+        "algotrader.execution.paper_order_policy",
+    }
+
+    policy_path = _module_path("algotrader.execution.paper_order_policy")
+    assert {
+        reference.module
+        for reference in _top_level_import_references(policy_path)
+    } == {"__future__", "dataclasses", "decimal"}
+
+    closure = _central_replay_eager_closure()
+    assert Path("src/algotrader/__init__.py") in closure
+    assert Path("src/algotrader/execution/__init__.py") in closure
+    assert policy_path in closure
+
+    violations: list[str] = []
+    for path in closure:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imports = _top_level_import_references(path)
+        scanned_tree = tree
+        if path == cli_path:
+            scanned_tree = ast.Module(
+                body=[
+                    node
+                    for node in tree.body
+                    if not isinstance(
+                        node,
+                        (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+                    )
+                ],
+                type_ignores=[],
+            )
+        violations.extend(
+            _launcher_scanner_violations(
+                scanned_tree,
+                str(path),
+                imports=imports,
+                mutation_scope=_top_level_executed_nodes(scanned_tree),
+            )
+        )
+    assert violations == []
+
+
+def test_central_replay_cli_selected_path_imports_are_exact() -> None:
+    cli_path = _module_path("algotrader.cli")
+    tree = ast.parse(cli_path.read_text(encoding="utf-8"), filename=str(cli_path))
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    handler = functions["_run_crypto_readiness_replay"]
+    handler_imports: list[str] = []
+    for node in ast.walk(handler):
+        if isinstance(node, ast.Import):
+            handler_imports.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            handler_imports.extend(_import_from_modules(cli_path, node))
+    assert set(handler_imports) == {
+        "json",
+        "algotrader.execution.crypto_readiness_replay",
+        "algotrader.execution.crypto_supervised_readiness_trial_core",
+    }
+
+    main = functions["main"]
+    replay_branch = next(
+        node
+        for node in ast.walk(main)
+        if isinstance(node, ast.If)
+        and any(
+            isinstance(value, ast.Constant)
+            and value.value == "crypto-readiness-replay"
+            for value in ast.walk(node.test)
+        )
+    )
+    replay_return = next(
+        node for node in replay_branch.body if isinstance(node, ast.Return)
+    )
+    assert _call_name(replay_return.value.func) == "_run_crypto_readiness_replay"
+    imports_before_dispatch = [
+        node
+        for node in ast.walk(main)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        and node.lineno <= replay_branch.lineno
+    ]
+    assert imports_before_dispatch == []
+
+    parser_function = functions["build_parser"]
+    replay_literals = {
+        node.value
+        for node in ast.walk(parser_function)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert {
+        "crypto-readiness-replay",
+        "--output-root",
+        "--decision-start",
+        "--cycle-count",
+        "--format",
+    } <= replay_literals
+
+
+def test_central_replay_launcher_scanner_detects_synthetic_evasions() -> None:
+    cases = (
+        "import alpaca",
+        "import openai",
+        "import importlib; importlib.import_module('algotrader.config')",
+        "import os; value = os.environ.get('APP_PROFILE')",
+        "submit_order()",
+        "client.cancel_order('id')",
+    )
+    for source in cases:
+        tree = ast.parse(source, filename="<synthetic-launcher>")
+        imports: list[ImportReference] = []
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                imports.extend(
+                    ImportReference(
+                        path=Path("<synthetic-launcher>"),
+                        line=node.lineno,
+                        module=alias.name,
+                    )
+                    for alias in node.names
+                )
+        assert _launcher_scanner_violations(
+            tree,
+            "<synthetic-launcher>",
+            imports=tuple(imports),
+        ), source

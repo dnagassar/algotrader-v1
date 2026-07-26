@@ -69,13 +69,15 @@ executor may run:
 
 | action token | argv | eligibility |
 | --- | --- | --- |
-| `rerun_offline_daily_cycle_chain` | `etf-sma-offline-daily-cycle-rerun-m446` | fully-defaulted offline; verified no network/broker/credential/profile import |
+| `run_supervised_readiness_trial_to_seed_r1_evidence` | `crypto-readiness-replay` | reachable when the canonical readiness packet is absent |
+| `rerun_supervised_readiness_trial` | `crypto-readiness-replay` | structurally bound; real stale is dormant while the lane has `max_age_hours=0` |
 
 The seed command `etf-sma-offline-daily-cycle-run` is intentionally **absent**:
 it requires operator-supplied inputs (`--validated-at`, `--daily-bars-csv`), so
 it is never eligible for unattended execution. Its plan action is skipped with
 reason `requires_operator_input`. Operator-gated actions are skipped with
-`not_offline_runnable`.
+`not_offline_runnable`. The historical M446 reproduction remains manually
+runnable but its dead, non-producer autonomy allowlist entry was removed.
 
 ## Exit Codes
 
@@ -85,28 +87,23 @@ reason `requires_operator_input`. Operator-gated actions are skipped with
   work pending.
 - `0` — nothing eligible, or every executed action succeeded.
 
-## Honest Current Limitation
+## Reachable Boundary And Canonical Target
 
-No state of any lane in the frozen supervisor registry emits
-`rerun_offline_daily_cycle_chain`, the sole allowlisted token. Consequently,
-wired to the real supervisor, the executor's eligible set is **empty today** and
-`--apply` executes nothing — which is the correct, safe, fail-closed outcome.
+The absent readiness token is now end-to-end reachable. From the verified
+executing repository root, an empty canonical `runs` tree yields exactly one
+eligible action and exact argv `("crypto-readiness-replay",)`. Dry-run executes
+nothing. Apply may execute it after preflight, and re-observation can then see
+the canonical packet as nominal. The distinct stale readiness token has the same
+structural binding but is not currently age-reachable because its lane retains
+`max_age_hours=0`; no stale convergence claim is made.
 
-The reason is *not* that daily-cycle staleness is disabled. V5.42 Stage 3 gave
-the `spy_offline_daily_cycle` lane `max_age_hours=30`, so it does reach `stale`;
-its `stale` action routes to the operator-gated
-`operator_refresh_offline_daily_cycle_inputs`, because the pinned M446 rerun
-reproduces one historical dataset and writes a different artifact, so it cannot
-cure staleness. Re-enabling or widening a staleness bound therefore does **not**
-activate the executor; only adding a fully-defaulted offline command that some
-reachable lane state actually recommends would.
-
-The executor is nonetheless the reviewed, tested seam that all future autonomous
-execution must pass through. Whether to add such a command, or an
-operator-supplied-input execution path for the seed, are operator decisions, not
-autonomous ones. A plan supplied directly to `build_offline_execution_ledger`
-(rather than derived from lane evidence) may still name the allowlisted token, so
-the allowlist entry is exercised and tested rather than dead.
+Planner and executor independently require cwd to equal the executing Git
+worktree root, top-level `lanes_root` to resolve to that root's `runs`, and the
+readiness action artifact to resolve without symlink/path escape to
+`runs/crypto_supervised_readiness_trial/latest/readiness_packet.json`. The
+executor freshly re-derives the report and plan, rejects supplied-plan/report
+drift before action partition, and launches with that verified root as cwd. No
+caller path or option is added to the fixed argv.
 
 ## What This Milestone Does Not Do
 
@@ -121,11 +118,13 @@ the allowlist entry is exercised and tested rather than dead.
 ## Verification
 
 - Focused suite `tests/unit/test_autonomy_offline_executor.py` proves the
-  allowlist contents, preflight pass/refuse (including that credential values are
-  never echoed), dry-run inertness, apply-runs-only-allowlisted-argv,
-  failed-execution recording, child-env credential stripping and PYTHONPATH via a
-  patched `subprocess.run`, the defence-in-depth argv re-check, deterministic
-  JSON/text rendering, single-record JSONL write, input validation, CLI dry-run
-  default and exit codes, and a source-scan proving no forbidden import or call.
+  exact bidirectional producer/classification/allowlist closure, preflight
+  pass/refuse (including that credential values are never echoed), dry-run
+  inertness, apply-runs-only-exact-replay-argv, failed-execution recording,
+  child-env credential stripping and PYTHONPATH via a patched `subprocess.run`,
+  canonical root/cwd/target/config/plan/report refusal before the runner, the
+  defence-in-depth argv re-check, deterministic JSON/text rendering,
+  single-record JSONL write, input validation, CLI dry-run default and exit
+  codes, and a source-scan proving no forbidden import or call.
 - The V5.37 supervisor, V5.38 planner, and dependency-direction suites and the
   targeted offline verifier remain green with the module and command in place.

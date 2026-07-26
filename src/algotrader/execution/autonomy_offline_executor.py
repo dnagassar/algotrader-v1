@@ -8,10 +8,9 @@ hard gate.
 
 Its authority is deliberately narrow:
 
-- It executes only commands on the frozen :data:`AUTONOMY_EXECUTOR_ALLOWLIST`.
-  Every allowlisted command is a fully-defaulted CLI subcommand whose producing
-  module was verified to import no network, broker, credential, or profile
-  surface. An action not on the allowlist is never executed.
+- It executes only the two supervisor-produced readiness tokens on the frozen
+  :data:`AUTONOMY_EXECUTOR_ALLOWLIST`. Both resolve to the same fully-defaulted
+  import-pure replay command. An action not on the allowlist is never executed.
 - It is **dry-run by default**. Without ``apply=True`` it resolves what *would*
   run and executes nothing (it spawns no subprocess at all).
 - Before any execution it runs a credential/profile/network preflight over the
@@ -43,11 +42,17 @@ from typing import Any
 
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_next_plan import (
+    CANONICAL_LANES_ROOT_RELPATH,
+    CANONICAL_READINESS_PACKET_RELPATH,
+    CANONICAL_REPLAY_ARGV,
     EXECUTION_AUTO_OFFLINE,
     build_autonomy_next_plan,
     build_autonomy_next_plan_from_report,
 )
-from algotrader.execution.autonomy_supervisor import AutonomySupervisorConfig
+from algotrader.execution.autonomy_supervisor import (
+    AUTONOMY_SUPERVISOR_LANES,
+    AutonomySupervisorConfig,
+)
 
 __all__ = [
     "AUTONOMY_EXECUTOR_ALLOWLIST",
@@ -91,17 +96,16 @@ CREDENTIAL_PREFLIGHT_ENV_KEYS = (
 _PROFILE_ENV_KEY = "APP_PROFILE"
 _STRIPPED_CHILD_ENV_KEYS = (*CREDENTIAL_PREFLIGHT_ENV_KEYS, _PROFILE_ENV_KEY)
 
-# Frozen allowlist mapping a V5.38 ``recommended_next_action`` token to the exact
-# CLI argv the executor is permitted to run. Every command here is a
-# fully-defaulted offline subcommand whose producing module imports no network,
-# broker, credential, or profile surface (verified: etf_sma_offline_daily_cycle_
-# rerun_m446). The seed command etf-sma-offline-daily-cycle-run is intentionally
-# absent because it requires operator-supplied inputs.
+# Frozen allowlist mapping the two readiness producer tokens to the one exact
+# import-pure replay argv. The SPY seed remains absent because it needs
+# operator-supplied inputs. The historical M446 reproduction command remains
+# manually runnable but is not an autonomy producer and is not allowlisted.
 AUTONOMY_EXECUTOR_ALLOWLIST: dict[str, tuple[str, ...]] = {
-    "rerun_offline_daily_cycle_chain": (
-        "etf-sma-offline-daily-cycle-rerun-m446",
-    ),
+    "run_supervised_readiness_trial_to_seed_r1_evidence": CANONICAL_REPLAY_ARGV,
+    "rerun_supervised_readiness_trial": CANONICAL_REPLAY_ARGV,
 }
+_READINESS_LANE_ID = "crypto_supervised_readiness_trial"
+_READINESS_REPLAY_COMMAND = "python -m algotrader.cli crypto-readiness-replay"
 
 # Reasons an offline-planned action is skipped rather than executed.
 SKIP_NOT_OFFLINE_RUNNABLE = "not_offline_runnable"
@@ -167,15 +171,20 @@ def build_offline_execution_ledger(
     if type(apply) is not bool:
         raise ValidationError("apply must be a bool.")
 
+    canonical_plan = build_autonomy_next_plan(config)
     if plan_report is None:
-        plan = build_autonomy_next_plan(config)
+        plan = canonical_plan
     else:
         source = _plan_source(plan_report)
         if source.get("record_type") == "autonomy_next_plan":
-            plan = source
+            supplied_plan = source
         else:
-            plan = build_autonomy_next_plan_from_report(source)
+            supplied_plan = build_autonomy_next_plan_from_report(source)
+        _validate_executor_target(config, supplied_plan)
+        _require_plan_match(supplied_plan, canonical_plan)
+        plan = canonical_plan
 
+    repo_root = _validate_executor_target(config, plan)
     eligible, skipped = _partition_actions(plan)
     preflight_ok, preflight_reasons = execution_preflight(environ)
 
@@ -186,8 +195,9 @@ def build_offline_execution_ledger(
             execution_refused_reason = "preflight_failed"
         elif eligible:
             active_runner = runner if runner is not None else _run_subprocess
+            child_environ = _sanitized_child_environment(environ, repo_root)
             for action in eligible:
-                executed.append(_execute(action, active_runner, environ))
+                executed.append(_execute(action, active_runner, child_environ))
 
     execution_count = len(executed)
     # V5.44: zero executions is not a success claim about anything that
@@ -250,6 +260,190 @@ def build_offline_execution_ledger(
     }
 
 
+def _executing_repository_root() -> Path:
+    """Independently verify the repository root used for execution."""
+
+    root = Path(__file__).resolve().parents[3]
+    if not _valid_git_marker(root):
+        raise ValidationError("executor source root must be a Git checkout/worktree.")
+    if not (root / "src" / "algotrader" / "cli.py").is_file():
+        raise ValidationError("executor source root is missing src/algotrader/cli.py.")
+    try:
+        cwd = Path.cwd().resolve(strict=True)
+    except OSError as exc:
+        raise ValidationError("executor cwd must resolve to the repository root.") from exc
+    if cwd != root:
+        raise ValidationError("executor cwd must equal the executing repository root.")
+    return root
+
+
+def _valid_git_marker(root: Path) -> bool:
+    marker = root / ".git"
+    if marker.is_dir():
+        return (marker / "HEAD").is_file()
+    if not marker.is_file():
+        return False
+    try:
+        text = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if not text.startswith("gitdir:"):
+        return False
+    git_dir = Path(text.partition(":")[2].strip())
+    if not git_dir.is_absolute():
+        git_dir = marker.parent / git_dir
+    try:
+        resolved = git_dir.resolve(strict=True)
+    except OSError:
+        return False
+    return resolved.is_dir() and (resolved / "HEAD").is_file()
+
+
+def _resolved_target(value: object, *, root: Path, field_name: str) -> Path:
+    if type(value) is str:
+        path = Path(value)
+    elif isinstance(value, Path):
+        path = value
+    else:
+        raise ValidationError(f"{field_name} must be a path string.")
+    if str(path).strip() == "":
+        raise ValidationError(f"{field_name} is required.")
+    candidate = path if path.is_absolute() else root / path
+    _reject_symlink_components(candidate, field_name)
+    try:
+        return candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ValidationError(f"{field_name} must resolve canonically.") from exc
+
+
+def _canonical_target(root: Path, relpath: Path) -> Path:
+    candidate = root / relpath
+    _reject_symlink_components(candidate, "canonical executor target")
+    try:
+        return candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ValidationError("canonical executor target must resolve.") from exc
+
+
+def _reject_symlink_components(path: Path, field_name: str) -> None:
+    current = Path(path.anchor) if path.anchor else Path()
+    for part in path.parts[1:] if path.anchor else path.parts:
+        current /= part
+        if current.is_symlink():
+            raise ValidationError(f"{field_name} must not traverse a symlink.")
+
+
+def _validate_executor_target(
+    config: AutonomySupervisorConfig,
+    plan: Mapping[str, object],
+) -> Path:
+    """Recheck config, plan, action, command, cwd, and target before partition."""
+
+    root = _executing_repository_root()
+    expected_lanes_root = _canonical_target(root, CANONICAL_LANES_ROOT_RELPATH)
+    expected_packet = _canonical_target(root, CANONICAL_READINESS_PACKET_RELPATH)
+
+    for value, field_name in (
+        (config.lanes_root, "config lanes_root"),
+        (plan.get("lanes_root"), "plan lanes_root"),
+    ):
+        if _resolved_target(value, root=root, field_name=field_name) != expected_lanes_root:
+            raise ValidationError(f"{field_name} must be the canonical runs path.")
+
+    if plan.get("run_id") != config.run_id or plan.get("as_of") != config.as_of:
+        raise ValidationError("plan run_id/as_of must match the executor config.")
+
+    override = config.lane_artifact_overrides.get(_READINESS_LANE_ID)
+    if override is not None and (
+        _resolved_target(
+            override,
+            root=root,
+            field_name="crypto readiness lane override",
+        )
+        != expected_packet
+    ):
+        raise ValidationError(
+            "crypto readiness lane override must equal the canonical packet."
+        )
+
+    readiness_actions = [
+        action
+        for action in _plan_actions(plan)
+        if action.get("lane_id") == _READINESS_LANE_ID
+    ]
+    if len(readiness_actions) != 1:
+        raise ValidationError("plan must contain exactly one crypto readiness action.")
+    readiness = readiness_actions[0]
+    if (
+        _resolved_target(
+            readiness.get("artifact_path"),
+            root=root,
+            field_name="crypto readiness artifact_path",
+        )
+        != expected_packet
+    ):
+        raise ValidationError(
+            "crypto readiness artifact_path must equal the canonical packet."
+        )
+
+    state = _text(readiness.get("normalized_state"))
+    readiness_spec = next(
+        lane for lane in AUTONOMY_SUPERVISOR_LANES if lane.lane_id == _READINESS_LANE_ID
+    )
+    if state not in readiness_spec.next_actions:
+        raise ValidationError("crypto readiness normalized_state is not supported.")
+    expected_action = readiness_spec.next_actions[state]
+    if readiness.get("recommended_action") != expected_action:
+        raise ValidationError(
+            "crypto readiness action does not match its normalized state."
+        )
+
+    if expected_action in AUTONOMY_EXECUTOR_ALLOWLIST:
+        if (
+            readiness.get("execution_class") != EXECUTION_AUTO_OFFLINE
+            or readiness.get("offline_runnable") is not True
+            or readiness.get("gate") != ""
+            or readiness.get("command") != _READINESS_REPLAY_COMMAND
+            or AUTONOMY_EXECUTOR_ALLOWLIST[expected_action] != CANONICAL_REPLAY_ARGV
+        ):
+            raise ValidationError("crypto readiness execution binding is not canonical.")
+        if plan.get("next_offline_action_lane") != _READINESS_LANE_ID:
+            raise ValidationError(
+                "canonical crypto readiness action must be selected next."
+            )
+        selected = plan.get("next_offline_action")
+        if not isinstance(selected, Mapping) or dict(selected) != dict(readiness):
+            raise ValidationError(
+                "selected next action must equal the crypto readiness action."
+            )
+    return root
+
+
+def _require_plan_match(
+    supplied_plan: Mapping[str, object],
+    canonical_plan: Mapping[str, object],
+) -> None:
+    if _json_safe(dict(supplied_plan)) != _json_safe(dict(canonical_plan)):
+        raise ValidationError(
+            "supplied plan/report does not match the freshly derived canonical plan."
+        )
+
+
+def _sanitized_child_environment(
+    environ: Mapping[str, str] | None,
+    repo_root: Path,
+) -> dict[str, str]:
+    source = os.environ if environ is None else environ
+    stripped = {key.upper() for key in _STRIPPED_CHILD_ENV_KEYS}
+    child_env = {
+        str(key): str(value)
+        for key, value in source.items()
+        if str(key).upper() not in stripped
+    }
+    child_env["PYTHONPATH"] = str(repo_root / "src")
+    return child_env
+
+
 def _partition_actions(
     plan: Mapping[str, object],
 ) -> tuple[list[_EligibleAction], list[_SkippedAction]]:
@@ -268,7 +462,10 @@ def _partition_actions(
                 )
             )
             continue
-        if recommended not in AUTONOMY_EXECUTOR_ALLOWLIST:
+        if (
+            recommended not in AUTONOMY_EXECUTOR_ALLOWLIST
+            or execution_class != EXECUTION_AUTO_OFFLINE
+        ):
             # Offline-runnable but needs operator input (e.g. the seed), so it is
             # not on the unattended allowlist.
             reason = (
@@ -314,15 +511,8 @@ def _run_subprocess(
     argv: tuple[str, ...],
     environ: Mapping[str, str] | None,
 ) -> dict[str, object]:
-    repo_root = Path(__file__).resolve().parents[3]
-    src_path = str(repo_root / "src")
-    base_env = dict(os.environ if environ is None else environ)
-    child_env = {
-        key: value
-        for key, value in base_env.items()
-        if key not in _STRIPPED_CHILD_ENV_KEYS
-    }
-    child_env["PYTHONPATH"] = src_path
+    repo_root = _executing_repository_root()
+    child_env = dict(environ or {})
     command = [sys.executable, "-m", "algotrader.cli", *argv]
     try:
         completed = subprocess.run(  # noqa: S603 - fixed allowlisted argv only

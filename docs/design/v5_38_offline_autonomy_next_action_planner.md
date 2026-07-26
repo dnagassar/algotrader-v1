@@ -74,9 +74,11 @@ Each lane's recommended action resolves to exactly one execution class:
 
 - `noop` — the lane is nominal or healthily waiting; nothing to run. No gate.
 - `auto_offline` — a fully-defaulted offline command exists (no operator-supplied
-  argument required). `offline_runnable=true`. The remaining gate is
-  `unattended_execution_authority`: the *system* running the command unattended
-  is an authority the offline envelope does not grant.
+  argument required). `offline_runnable=true`, `gate=""`, and no operator input
+  is required. Standing repository authority already permits scoped offline
+  execution; the exact executor allowlist, canonical-target validation,
+  preflight, dry-run default, and explicit `--apply` switch are controls rather
+  than missing-authority gates.
 - `offline_operator_input` — an offline command exists but requires
   operator-supplied inputs (e.g. a daily-chain clock and a local adjusted
   daily-bars CSV). `offline_runnable=true`, gate `operator_supplied_inputs`.
@@ -92,9 +94,11 @@ Each lane's recommended action resolves to exactly one execution class:
   - `operator_authority_required` — no offline-runnable lane, but at least one
     operator-gated lane.
   - `all_nominal_or_waiting` — every lane is `noop`.
-- `next_offline_action` is the highest-severity offline-runnable lane's planned
+- `next_offline_action` first selects the highest-severity `auto_offline`
   action (severity ordered blocked→unknown→attention→stale→waiting→nominal→
-  absent; ties break by registry order), or `null` when none exists.
+  absent; ties break by registry order). It falls back to the highest-severity
+  operator-input offline action only when no canonical auto-offline action
+  exists.
 - Invariant: `plan_class` is `offline_action_available` **if and only if**
   `next_offline_action` is non-null and `next_offline_action_lane` is non-empty.
   The whole-system class and the named action are two views of one fact and can
@@ -112,41 +116,23 @@ Each lane's recommended action resolves to exactly one execution class:
 
 ## Frozen Classification Registry
 
-`AUTONOMY_ACTION_CLASSIFICATION` maps every `recommended_next_action` token the
-frozen supervisor lane registry can emit to an `ActionClass`. Today the only
-offline-runnable lane is the SPY offline daily cycle chain:
+`AUTONOMY_ACTION_CLASSIFICATION` maps exactly the tokens the frozen supervisor
+lane registry can emit, plus the all-lanes-absent aggregate token, to an
+`ActionClass`. The registry is closed in both directions: no producer is
+unclassified and no classification is an unreachable promise.
 
 | supervisor action | class | command |
 | --- | --- | --- |
 | `run_offline_daily_cycle_chain_to_seed_evidence` | `offline_operator_input` | `etf-sma-offline-daily-cycle-run` (needs `--validated-at`, `--daily-bars-csv`) |
-| `rerun_offline_daily_cycle_chain` | `auto_offline` | `etf-sma-offline-daily-cycle-rerun-m446` (fully defaulted; needs the refreshed M446 CSV present) |
+| `run_supervised_readiness_trial_to_seed_r1_evidence` | `auto_offline` | `crypto-readiness-replay` |
+| `rerun_supervised_readiness_trial` | `auto_offline` | `crypto-readiness-replay` (structural binding; real stale remains dormant while `max_age_hours=0`) |
 
-Both underlying modules (`etf_sma_offline_daily_cycle_run`,
-`etf_sma_offline_daily_cycle_rerun_m446`) were verified to import no network,
-broker, credential, or profile surface. Every other supervisor action is either
-`noop` (nominal/waiting) or `operator_gated` — because seeding the market-data
-soak or a crypto lane needs a network market-data fetch, a broker observation, a
-scheduled-task health check, or a human review, none of which the offline
-envelope can perform. `test_every_supervisor_action_is_classified` proves the
-registry covers every action the supervisor can emit; a new lane action cannot
-silently degrade the plan.
-
-## The Deliberate Operator Gate
-
-In a clean checkout every lane reads `absent`, and the plan reports exactly one
-offline-runnable action (`spy_offline_daily_cycle` seed) that still needs
-operator-supplied inputs, plus five operator-gated lanes. **No lane can be
-advanced today without either operator-supplied input or operator authority.**
-That is the honest whole-system finding, and it is the hard gate at which
-autonomous progress stops: this milestone plans the next action but does not,
-and must not, execute it.
-
-Autonomous (unattended) execution of even the offline daily-cycle commands is a
-distinct, higher milestone. It grants the system a new standing authority to run
-commands on its own — a founder-level authority expansion under the Operating
-Charter — and therefore requires explicit operator authorization before it is
-built. This planner is the complete advisory layer up to, but not across, that
-gate.
+The historical M446 reproduction command remains manually runnable, but its
+non-emittable `rerun_offline_daily_cycle_chain` autonomy classification was
+removed. In an all-absent lab the supervisor still reports the fail-closed
+whole-system empty-lab token and an empty aggregate lane, while the planner
+selects the separate, canonical crypto per-lane absent action ahead of the SPY
+operator-input seed. The two levels are complementary rather than conflicting.
 
 ## What This Milestone Does Not Do
 
@@ -163,9 +149,9 @@ gate.
 ## Verification
 
 - Focused suite `tests/unit/test_autonomy_next_plan.py` proves classification
-  coverage and internal consistency, clean-checkout offline-seed availability,
-  all-nominal no-action, operator-authority-required rollup, offline rerun
-  classification, next-offline-action severity selection, deterministic JSON/
+  closure and internal consistency, all-absent aggregate/per-lane agreement,
+  canonical absent readiness selection, structural stale-token binding,
+  operator-input fallback, canonical-root/target refusal, deterministic JSON/
   text rendering, single-record JSONL write, input validation, CLI registration
   and exit codes (0/1/2), and a source-scan proving no forbidden import or call
   (including no `subprocess`, no clock read, no broker/network/credential

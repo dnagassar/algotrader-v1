@@ -14095,6 +14095,14 @@ def _run_crypto_readiness_consume(args: argparse.Namespace) -> int:
 
 
 def _run_crypto_readiness_replay(args: argparse.Namespace) -> int:
+    if _argv_option_was_provided(args, "--profile"):
+        print(
+            "crypto_readiness_replay_validation_error="
+            "explicit_profile_option_not_permitted",
+            file=sys.stderr,
+        )
+        return 2
+
     import json
     from .execution.crypto_readiness_replay import run_crypto_readiness_replay
     from .execution.crypto_supervised_readiness_trial_core import _json_safe, _mapping

@@ -20,9 +20,10 @@ It is a read-only reporting/planning surface with the exact same safety profile
 as the supervisor. It loads no runtime profile, inspects no credential, imports
 no broker SDK, opens no socket, reads no wall clock, spawns no subprocess, and
 performs and exposes no submit/cancel/replace/close/liquidation/paper-mutation/
-capital/live path. It *plans* commands; it never executes them. Autonomous
-(unattended) execution of even an offline command is a distinct authority
-expansion reserved for the operator and is out of scope here.
+capital/live path. It *plans* commands; it never executes them. The readiness
+replay action has standing offline authority, but remains controlled by exact
+allowlisting, canonical-target validation, executor preflight, and the
+executor's explicit ``--apply`` switch.
 """
 
 from __future__ import annotations
@@ -47,6 +48,9 @@ __all__ = [
     "AUTONOMY_ACTION_CLASSIFICATION",
     "ActionClass",
     "AutonomyNextPlanWriteResult",
+    "CANONICAL_LANES_ROOT_RELPATH",
+    "CANONICAL_READINESS_PACKET_RELPATH",
+    "CANONICAL_REPLAY_ARGV",
     "EXECUTION_AUTO_OFFLINE",
     "EXECUTION_NOOP",
     "EXECUTION_OFFLINE_OPERATOR_INPUT",
@@ -67,6 +71,16 @@ _MILESTONE = "V5.38 - Offline autonomy next-action planner"
 _RECORD_TYPE = "autonomy_next_plan"
 _COMMAND = "autonomy-next-plan"
 _PROFIT_CLAIM = "none"
+
+CANONICAL_LANES_ROOT_RELPATH = Path("runs")
+CANONICAL_READINESS_PACKET_RELPATH = Path(
+    "runs/crypto_supervised_readiness_trial/latest/readiness_packet.json"
+)
+CANONICAL_REPLAY_ARGV = ("crypto-readiness-replay",)
+_READINESS_LANE_ID = "crypto_supervised_readiness_trial"
+_READINESS_ABSENT_ACTION = "run_supervised_readiness_trial_to_seed_r1_evidence"
+_READINESS_STALE_ACTION = "rerun_supervised_readiness_trial"
+_READINESS_REPLAY_COMMAND = "python -m algotrader.cli crypto-readiness-replay"
 
 AUTONOMY_NEXT_PLAN_LABELS = (
     "paper_lab_only",
@@ -106,8 +120,8 @@ PLAN_ALL_NOMINAL_OR_WAITING = "all_nominal_or_waiting"
 _STATE_SEVERITY = AUTONOMY_SUPERVISOR_STATES
 
 # Gate vocabulary. A non-empty gate names the single blocker that stops the
-# system from advancing this lane autonomously right now.
-_GATE_UNATTENDED_EXECUTION = "unattended_execution_authority"
+# system from advancing this lane autonomously right now. Auto-offline and noop
+# actions have no gate.
 _GATE_OPERATOR_INPUTS = "operator_supplied_inputs"
 _GATE_NETWORK_MARKET_DATA = "network_market_data_fetch"
 _GATE_BROKER_OBSERVATION = "broker_observation"
@@ -124,8 +138,8 @@ class ActionClass:
     ``command`` is the exact offline command a caller (or the operator) may run
     to advance the lane; it is empty when no offline command exists.
     ``required_operator_inputs`` lists the operator-supplied arguments the
-    command still needs. ``gate`` names the single blocker to autonomous
-    progress and is empty only for :data:`EXECUTION_NOOP`.
+    command still needs. ``gate`` names the single blocker to progress and is
+    empty for :data:`EXECUTION_AUTO_OFFLINE` and :data:`EXECUTION_NOOP`.
     """
 
     execution_class: str
@@ -137,6 +151,10 @@ class ActionClass:
     preconditions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "required_operator_inputs", tuple(self.required_operator_inputs)
+        )
+        object.__setattr__(self, "preconditions", tuple(self.preconditions))
         if self.execution_class not in _EXECUTION_CLASSES:
             raise ValidationError("execution_class must be a supported class.")
         if type(self.offline_runnable) is not bool:
@@ -146,21 +164,36 @@ class ActionClass:
             raise ValidationError(
                 "offline_runnable must match the execution_class contract."
             )
-        if self.execution_class == EXECUTION_NOOP:
+        if self.execution_class in (EXECUTION_AUTO_OFFLINE, EXECUTION_NOOP):
             if self.gate != "":
-                raise ValidationError("noop actions must not declare a gate.")
+                raise ValidationError(
+                    "auto-offline and noop actions must not declare a gate."
+                )
         elif self.gate == "":
-            raise ValidationError("non-noop actions must declare a gate.")
+            raise ValidationError(
+                "operator-input and operator-gated actions must declare a gate."
+            )
         if self.offline_runnable and self.command == "":
             raise ValidationError("offline-runnable actions must carry a command.")
         if not self.offline_runnable and self.command != "":
             raise ValidationError(
                 "only offline-runnable actions may carry a command."
             )
-        object.__setattr__(
-            self, "required_operator_inputs", tuple(self.required_operator_inputs)
-        )
-        object.__setattr__(self, "preconditions", tuple(self.preconditions))
+        if self.execution_class == EXECUTION_AUTO_OFFLINE:
+            if self.required_operator_inputs:
+                raise ValidationError(
+                    "auto-offline actions must not require operator inputs."
+                )
+        if self.execution_class == EXECUTION_OFFLINE_OPERATOR_INPUT:
+            if self.gate != _GATE_OPERATOR_INPUTS:
+                raise ValidationError(
+                    "offline operator-input actions must use the "
+                    "operator_supplied_inputs gate."
+                )
+            if not self.required_operator_inputs:
+                raise ValidationError(
+                    "offline operator-input actions must require operator inputs."
+                )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -192,10 +225,8 @@ def _operator_gated(gate: str, gate_detail: str) -> ActionClass:
     )
 
 
-# Exact offline commands for the only lane that today exposes an offline daily
-# cycle chain. Both underlying modules were verified to import no network,
-# broker, credential, or profile surface; the planner records the command as
-# data and never runs it.
+# Exact offline seed command for the SPY daily-cycle lane. It remains an
+# operator-input action and is not executor-allowlisted.
 _OFFLINE_DAILY_CYCLE_SEED_COMMAND = (
     "python -m algotrader.cli etf-sma-offline-daily-cycle-run"
     " --validated-at <OPERATOR_ISO8601_UTC_DAILY_CHAIN_CLOCK>"
@@ -204,9 +235,6 @@ _OFFLINE_DAILY_CYCLE_SEED_COMMAND = (
     " --validation-output-jsonl runs/paper_lab/m442_offline_daily_cycle_validation.jsonl"
     " --summary-output-jsonl runs/paper_lab/m443_offline_daily_cycle_summary.jsonl"
     " --manifest-output-jsonl runs/paper_lab/m444_offline_daily_cycle_run.jsonl"
-)
-_OFFLINE_DAILY_CYCLE_RERUN_COMMAND = (
-    "python -m algotrader.cli etf-sma-offline-daily-cycle-rerun-m446"
 )
 
 
@@ -252,7 +280,7 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
     "await_v5_25_terminal_winner": _noop(
         "capability production waiting on the V5.25 terminal winner."
     ),
-    # --- Offline-runnable: the SPY offline daily cycle chain. ---
+    # --- Offline-runnable: operator-input SPY seed and auto crypto replay. ---
     "run_offline_daily_cycle_chain_to_seed_evidence": ActionClass(
         execution_class=EXECUTION_OFFLINE_OPERATOR_INPUT,
         offline_runnable=True,
@@ -267,25 +295,37 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
             "--daily-bars-csv: local adjusted SPY daily-bars CSV path",
         ),
     ),
-    "rerun_offline_daily_cycle_chain": ActionClass(
+    _READINESS_ABSENT_ACTION: ActionClass(
         execution_class=EXECUTION_AUTO_OFFLINE,
         offline_runnable=True,
-        gate=_GATE_UNATTENDED_EXECUTION,
+        gate="",
         gate_detail=(
-            "fully-defaulted offline command that reproduces the pinned M446/M447 "
-            "milestone result; only unattended execution authority remains."
+            "standing offline authority applies; execution remains controlled by "
+            "the exact allowlist, canonical-target validation, preflight, and the "
+            "explicit executor --apply switch."
         ),
-        command=_OFFLINE_DAILY_CYCLE_RERUN_COMMAND,
+        command=_READINESS_REPLAY_COMMAND,
+        required_operator_inputs=(),
         preconditions=(
-            "the exact pinned M446 canonical CSV (sha256 408fd46...db69, latest "
-            "bar date 2026-06-08) present at "
-            "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+            "executor credential/profile/network preflight passes",
+            "crypto-readiness-replay import-purity and parser guards pass",
         ),
-        # This command is a milestone reproduction, not a refresh: the module
-        # hard-pins the expected latest bar date to 2026-06-08 and writes the
-        # M447 manifest, never the m444 artifact the daily-cycle lane reads. It
-        # therefore cannot cure daily-cycle staleness; that routes to
-        # ``operator_refresh_offline_daily_cycle_inputs`` instead.
+    ),
+    _READINESS_STALE_ACTION: ActionClass(
+        execution_class=EXECUTION_AUTO_OFFLINE,
+        offline_runnable=True,
+        gate="",
+        gate_detail=(
+            "standing offline authority applies; execution remains controlled by "
+            "the exact allowlist, canonical-target validation, preflight, and the "
+            "explicit executor --apply switch."
+        ),
+        command=_READINESS_REPLAY_COMMAND,
+        required_operator_inputs=(),
+        preconditions=(
+            "executor credential/profile/network preflight passes",
+            "crypto-readiness-replay import-purity and parser guards pass",
+        ),
     ),
     "operator_refresh_offline_daily_cycle_inputs": ActionClass(
         execution_class=EXECUTION_OPERATOR_GATED,
@@ -374,16 +414,6 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
         "operator must review the capability production.",
     ),
     # --- Operator-gated: no offline command exists to seed/rerun the lane. ---
-    "rerun_supervised_readiness_trial": _operator_gated(
-        _GATE_NO_OFFLINE_COMMAND,
-        "no offline command reruns the supervised readiness trial; operator "
-        "must drive it.",
-    ),
-    "run_supervised_readiness_trial_to_seed_r1_evidence": _operator_gated(
-        _GATE_NO_OFFLINE_COMMAND,
-        "no offline command seeds the supervised readiness trial; operator "
-        "must drive it.",
-    ),
     "rerun_forward_shadow_status": _operator_gated(
         _GATE_NO_OFFLINE_COMMAND,
         "no offline command reruns the forward-shadow status; operator must "
@@ -497,6 +527,7 @@ def build_autonomy_next_plan(config: AutonomySupervisorConfig) -> dict[str, obje
 
     if type(config) is not AutonomySupervisorConfig:
         raise ValidationError("config must be an AutonomySupervisorConfig.")
+    _validate_canonical_config(config)
     supervisor_report = build_autonomy_supervisor_report(config)
     return build_autonomy_next_plan_from_report(supervisor_report)
 
@@ -508,6 +539,7 @@ def build_autonomy_next_plan_from_report(
 
     report = _supervisor_report(supervisor_report)
     lane_summaries = _report_lanes(report)
+    _validate_canonical_report(report, lane_summaries)
 
     actions: list[dict[str, object]] = []
     for summary in lane_summaries:
@@ -530,8 +562,13 @@ def build_autonomy_next_plan_from_report(
     ]
 
     next_offline = _highest_priority_action(
-        actions, lambda action: action["offline_runnable"] is True
+        actions,
+        lambda action: action["execution_class"] == EXECUTION_AUTO_OFFLINE,
     )
+    if next_offline is None:
+        next_offline = _highest_priority_action(
+            actions, lambda action: action["offline_runnable"] is True
+        )
     plan_class = _plan_class(offline_lanes, gated_lanes)
 
     operator_gated_actions = [
@@ -598,6 +635,9 @@ def _plan_lane(summary: Mapping[str, object]) -> dict[str, object]:
         "title": _text(summary.get("title")),
         "category": _text(summary.get("category")),
         "normalized_state": normalized_state,
+        "artifact_path": _required_string(
+            summary.get("artifact_path"), "artifact_path"
+        ),
         "recommended_action": recommended_action,
         "execution_class": classified.execution_class,
         "offline_runnable": classified.offline_runnable,
@@ -608,6 +648,174 @@ def _plan_lane(summary: Mapping[str, object]) -> dict[str, object]:
         "gate_detail": classified.gate_detail,
         "blockers": _string_list(summary.get("blockers")),
     }
+
+
+def _executing_repository_root() -> Path:
+    """Return the verified source checkout root for this executing module."""
+
+    root = Path(__file__).resolve().parents[3]
+    if not _valid_git_marker(root):
+        raise ValidationError("executing source root must be a Git checkout/worktree.")
+    if not (root / "src" / "algotrader" / "cli.py").is_file():
+        raise ValidationError("executing source root is missing src/algotrader/cli.py.")
+    try:
+        cwd = Path.cwd().resolve(strict=True)
+    except OSError as exc:
+        raise ValidationError("process cwd must resolve to the repository root.") from exc
+    if cwd != root:
+        raise ValidationError("process cwd must equal the executing repository root.")
+    return root
+
+
+def _valid_git_marker(root: Path) -> bool:
+    marker = root / ".git"
+    if marker.is_dir():
+        return (marker / "HEAD").is_file()
+    if not marker.is_file():
+        return False
+    try:
+        text = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if not text.startswith("gitdir:"):
+        return False
+    git_dir = Path(text.partition(":")[2].strip())
+    if not git_dir.is_absolute():
+        git_dir = marker.parent / git_dir
+    try:
+        resolved = git_dir.resolve(strict=True)
+    except OSError:
+        return False
+    return resolved.is_dir() and (resolved / "HEAD").is_file()
+
+
+def _resolved_target(value: object, *, root: Path, field_name: str) -> Path:
+    if type(value) is str:
+        path = Path(value)
+    elif isinstance(value, Path):
+        path = value
+    else:
+        raise ValidationError(f"{field_name} must be a path string.")
+    if str(path).strip() == "":
+        raise ValidationError(f"{field_name} is required.")
+    candidate = path if path.is_absolute() else root / path
+    _reject_symlink_components(candidate, field_name)
+    try:
+        return candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ValidationError(f"{field_name} must resolve canonically.") from exc
+
+
+def _canonical_target(root: Path, relpath: Path) -> Path:
+    candidate = root / relpath
+    _reject_symlink_components(candidate, "canonical readiness target")
+    try:
+        return candidate.resolve(strict=False)
+    except OSError as exc:
+        raise ValidationError("canonical readiness target must resolve.") from exc
+
+
+def _reject_symlink_components(path: Path, field_name: str) -> None:
+    current = Path(path.anchor) if path.anchor else Path()
+    for part in path.parts[1:] if path.anchor else path.parts:
+        current /= part
+        if current.is_symlink():
+            raise ValidationError(f"{field_name} must not traverse a symlink.")
+
+
+def _readiness_lane_summary(
+    lane_summaries: Iterable[Mapping[str, object]],
+) -> Mapping[str, object]:
+    matches = [
+        summary
+        for summary in lane_summaries
+        if summary.get("lane_id") == _READINESS_LANE_ID
+    ]
+    if len(matches) != 1:
+        raise ValidationError(
+            "supervisor report must contain exactly one crypto readiness lane."
+        )
+    return matches[0]
+
+
+def _validate_canonical_config(config: AutonomySupervisorConfig) -> None:
+    """Fail closed unless config observes the fixed repository readiness target."""
+
+    root = _executing_repository_root()
+    expected_lanes_root = _canonical_target(root, CANONICAL_LANES_ROOT_RELPATH)
+    if (
+        _resolved_target(config.lanes_root, root=root, field_name="lanes_root")
+        != expected_lanes_root
+    ):
+        raise ValidationError("lanes_root must be the canonical repository runs path.")
+    override = config.lane_artifact_overrides.get(_READINESS_LANE_ID)
+    if override is not None:
+        expected_packet = _canonical_target(
+            root, CANONICAL_READINESS_PACKET_RELPATH
+        )
+        if (
+            _resolved_target(
+                override,
+                root=root,
+                field_name="crypto readiness lane override",
+            )
+            != expected_packet
+        ):
+            raise ValidationError(
+                "crypto readiness lane override must equal the canonical packet."
+            )
+
+
+def _validate_canonical_report(
+    report: Mapping[str, object],
+    lane_summaries: Iterable[Mapping[str, object]],
+) -> None:
+    """Validate the report's observed readiness packet before classification."""
+
+    root = _executing_repository_root()
+    expected_lanes_root = _canonical_target(root, CANONICAL_LANES_ROOT_RELPATH)
+    if (
+        _resolved_target(report.get("lanes_root"), root=root, field_name="lanes_root")
+        != expected_lanes_root
+    ):
+        raise ValidationError("report lanes_root is not the canonical runs path.")
+
+    readiness = _readiness_lane_summary(lane_summaries)
+    expected_packet = _canonical_target(root, CANONICAL_READINESS_PACKET_RELPATH)
+    if (
+        _resolved_target(
+            readiness.get("artifact_path"),
+            root=root,
+            field_name="crypto readiness artifact_path",
+        )
+        != expected_packet
+    ):
+        raise ValidationError(
+            "crypto readiness artifact_path is not the canonical packet."
+        )
+
+    state = _required_state(readiness.get("normalized_state"))
+    readiness_spec = next(
+        lane for lane in AUTONOMY_SUPERVISOR_LANES if lane.lane_id == _READINESS_LANE_ID
+    )
+    expected_action = readiness_spec.next_actions[state]
+    action = _required_string(readiness.get("next_action"), "next_action")
+    if action != expected_action:
+        raise ValidationError(
+            "crypto readiness action does not match its normalized state."
+        )
+
+    classified = classify_action(action)
+    if action in (_READINESS_ABSENT_ACTION, _READINESS_STALE_ACTION):
+        if (
+            classified.execution_class != EXECUTION_AUTO_OFFLINE
+            or classified.offline_runnable is not True
+            or classified.gate != ""
+            or classified.command != _READINESS_REPLAY_COMMAND
+        ):
+            raise ValidationError(
+                "crypto readiness replay classification is not canonical."
+            )
 
 
 def _required_state(value: object) -> str:

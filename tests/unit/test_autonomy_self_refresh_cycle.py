@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 import algotrader.cli as cli_module
+import algotrader.execution.autonomy_next_plan as plan_module
+import algotrader.execution.autonomy_offline_executor as executor_module
 from algotrader.errors import ValidationError
 from algotrader.execution.autonomy_supervisor import (
     AUTONOMY_SUPERVISOR_SYSTEM_STATUSES,
@@ -30,8 +32,9 @@ from algotrader.execution.autonomy_self_refresh_cycle import (
 )
 
 
-MODULE_PATH = Path("src/algotrader/execution/autonomy_self_refresh_cycle.py")
-SCRIPT_PATH = Path("scripts/run_autonomy_self_refresh_cycle.ps1")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+MODULE_PATH = REPO_ROOT / "src/algotrader/execution/autonomy_self_refresh_cycle.py"
+SCRIPT_PATH = REPO_ROOT / "scripts/run_autonomy_self_refresh_cycle.ps1"
 AS_OF = "2026-07-24T00:00:00Z"
 STALE_AT = "2026-07-20T00:00:00Z"
 
@@ -72,15 +75,65 @@ _SAFETY_FALSE_KEYS = (
 
 
 def _config(tmp_path: Path, **overrides) -> AutonomySupervisorConfig:  # noqa: ANN003
-    kwargs = {"run_id": "cycle-test", "as_of": AS_OF, "lanes_root": tmp_path}
+    kwargs = {"run_id": "cycle-test", "as_of": AS_OF, "lanes_root": Path("runs")}
     kwargs.update(overrides)
     return AutonomySupervisorConfig(**kwargs)
 
 
 def _daily_cycle_path(tmp_path: Path) -> Path:
-    path = tmp_path / "paper_lab" / "m444_offline_daily_cycle_run.jsonl"
+    path = Path("runs") / "paper_lab" / "m444_offline_daily_cycle_run.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _readiness_packet_path() -> Path:
+    return (
+        Path("runs")
+        / "crypto_supervised_readiness_trial"
+        / "latest"
+        / "readiness_packet.json"
+    )
+
+
+def _seed_accepted_readiness_packet() -> Path:
+    packet = _readiness_packet_path()
+    packet.parent.mkdir(parents=True, exist_ok=True)
+    packet.write_text(
+        json.dumps(
+            {
+                "trial_classification": "accepted",
+                "submitted": False,
+                "mutated": False,
+                "broker_action_performed": False,
+                "broker_actions_performed": False,
+                "network_access_attempted": False,
+                "credential_access_attempted": False,
+                "live_authorized": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return packet
+
+
+@pytest.fixture(autouse=True)
+def _isolated_canonical_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    root = (tmp_path / "repo").resolve()
+    (root / ".git").mkdir(parents=True)
+    (root / ".git" / "HEAD").write_text(
+        "ref: refs/heads/v5-48-test\n",
+        encoding="utf-8",
+    )
+    cli_path = root / "src" / "algotrader" / "cli.py"
+    cli_path.parent.mkdir(parents=True)
+    cli_path.write_text("# isolated test marker", encoding="utf-8")
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(plan_module, "_executing_repository_root", lambda: root)
+    monkeypatch.setattr(executor_module, "_executing_repository_root", lambda: root)
+    return root
 
 
 def _seed_stale_daily_cycle(tmp_path: Path) -> Path:
@@ -104,72 +157,84 @@ def _assert_safety_false(payload: dict) -> None:
 # Dry run is inert
 # --------------------------------------------------------------------------- #
 def test_dry_run_preview_executes_nothing(tmp_path: Path) -> None:
-    _seed_stale_daily_cycle(tmp_path)
-
     def _forbidden(argv, environ):  # pragma: no cover - must not run
         raise AssertionError("dry run must not execute")
 
     cycle = build_self_refresh_cycle(
         _config(tmp_path), apply=False, environ={}, runner=_forbidden
     )
-    assert cycle["cycle_outcome"] == OUTCOME_DRY_RUN_PREVIEW
+    assert cycle["cycle_outcome"] == OUTCOME_EVIDENCE_REQUIRED
     assert cycle["dry_run"] is True
+    assert cycle["eligible_count"] == 1
     assert cycle["execution_count"] == 0
     # V5.44: zero executions is not a vacuous success claim.
     assert cycle["all_executions_succeeded"] is None
     # Dry run does not change lane evidence, so before == after.
     assert cycle["before_system_status"] == cycle["after_system_status"]
+    assert cycle["plan_summary"]["next_offline_action_lane"] == (
+        "crypto_supervised_readiness_trial"
+    )
+    assert cycle["execution_ledger"]["eligible_actions"] == [
+        {
+            "lane_id": "crypto_supervised_readiness_trial",
+            "recommended_action": (
+                "run_supervised_readiness_trial_to_seed_r1_evidence"
+            ),
+            "argv": ["crypto-readiness-replay"],
+        }
+    ]
+    assert cycle["converged"] is False
     _assert_safety_false(cycle)
 
 
 # --------------------------------------------------------------------------- #
-# The loop closes: stale evidence the loop cannot cure converges to "waiting"
+# The loop closes: absent readiness is executed once, then re-observed nominal.
 # --------------------------------------------------------------------------- #
-def test_stale_daily_cycle_converges_to_operator_wait(tmp_path: Path) -> None:
-    # No allowlisted offline command writes this lane's artifact: the pinned
-    # m446 milestone rerun writes the M447 manifest, not m444. So staleness here
-    # is operator-curable only, and the loop converges by correctly reporting it
-    # has nothing to run rather than spinning on an action that cannot help.
-    _seed_stale_daily_cycle(tmp_path)
+def test_absent_apply_executes_once_reobserves_nominal_and_does_not_repeat(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, ...]] = []
 
-    def _forbidden(argv, environ):  # pragma: no cover - must not run
-        raise AssertionError("no allowlisted action can cure daily-cycle staleness")
+    def _runner(argv, environ):
+        calls.append(argv)
+        _seed_accepted_readiness_packet()
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "timed_out": False}
 
     cycle = build_self_refresh_cycle(
-        _config(tmp_path), apply=True, environ={}, runner=_forbidden
+        _config(tmp_path), apply=True, environ={}, runner=_runner
     )
-
-    # The staleness signal itself is preserved, not suppressed.
-    assert "spy_offline_daily_cycle" in cycle["before_report"]["stale_lanes"]
-    assert "spy_offline_daily_cycle" in cycle["after_report"]["stale_lanes"]
-    assert cycle["plan_summary"]["next_offline_action_lane"] == ""
-    assert "spy_offline_daily_cycle" in cycle["plan_summary"]["operator_gated_lanes"]
-    # Nothing was eligible, nothing ran, and the system waits on the operator.
-    assert cycle["eligible_count"] == 0
-    assert cycle["execution_count"] == 0
-    assert cycle["all_executions_succeeded"] is None
-    assert cycle["before_system_status"] == "waiting"
-    assert cycle["after_system_status"] == "waiting"
-    assert cycle["cycle_outcome"] == OUTCOME_NOOP_NO_ACTION
+    assert calls == [("crypto-readiness-replay",)]
+    assert cycle["before_system_status"] == "no_lane_evidence"
+    assert cycle["eligible_count"] == 1
+    assert cycle["execution_count"] == 1
+    assert cycle["all_executions_succeeded"] is True
+    assert cycle["after_system_status"] == "nominal"
+    assert "crypto_supervised_readiness_trial" in cycle["after_report"]["nominal_lanes"]
+    assert cycle["cycle_outcome"] == OUTCOME_REFRESHED
     assert cycle["converged"] is True
     _assert_safety_false(cycle)
 
+    second = build_self_refresh_cycle(
+        _config(tmp_path), apply=False, environ={}, runner=_runner
+    )
+    assert calls == [("crypto-readiness-replay",)]
+    assert second["eligible_count"] == 0
+    assert second["execution_count"] == 0
+    assert second["cycle_outcome"] == OUTCOME_DRY_RUN_PREVIEW
+    assert second["converged"] is True
 
-def test_stale_apply_cycle_is_inert(tmp_path: Path) -> None:
-    # This concrete stale-lane scenario must not reach the obsolete M446 rerun.
-    # The executor registry test separately proves no current lane action can
-    # reach the allowlist.
-    _seed_stale_daily_cycle(tmp_path)
 
-    def _forbidden(argv, environ):  # pragma: no cover - must not run
-        raise AssertionError("executor must be inert under the current registry")
+def test_child_failure_never_claims_refresh_or_convergence(tmp_path: Path) -> None:
+    def _runner(argv, environ):
+        return {"exit_code": 9, "stdout": "", "stderr": "failed", "timed_out": False}
 
     cycle = build_self_refresh_cycle(
-        _config(tmp_path), apply=True, environ={}, runner=_forbidden
+        _config(tmp_path), apply=True, environ={}, runner=_runner
     )
-    assert cycle["eligible_count"] == 0
-    assert cycle["execution_count"] == 0
-    assert cycle["all_executions_succeeded"] is None
+    assert cycle["execution_count"] == 1
+    assert cycle["all_executions_succeeded"] is False
+    assert cycle["cycle_outcome"] != OUTCOME_REFRESHED
+    assert cycle["converged"] is False
 
 
 def test_no_lane_evidence_fails_closed_by_default(tmp_path: Path) -> None:
@@ -317,6 +382,7 @@ def test_noop_when_nothing_eligible(tmp_path: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+    _seed_accepted_readiness_packet()
 
     def _forbidden(argv, environ):  # pragma: no cover - must not run
         raise AssertionError("nothing should execute")
@@ -332,8 +398,6 @@ def test_noop_when_nothing_eligible(tmp_path: Path) -> None:
 
 
 def test_apply_refuses_execution_under_live_signal(tmp_path: Path) -> None:
-    _seed_stale_daily_cycle(tmp_path)
-
     def _forbidden(argv, environ):  # pragma: no cover - must not run
         raise AssertionError("must not execute when preflight fails")
 
@@ -343,11 +407,39 @@ def test_apply_refuses_execution_under_live_signal(tmp_path: Path) -> None:
         environ={"APP_PROFILE": "live"},
         runner=_forbidden,
     )
-    # Executor refused at preflight; nothing ran and the lane stays stale.
+    # Executor refused at preflight; nothing ran and readiness remains absent.
     assert cycle["execution_count"] == 0
     assert cycle["all_executions_succeeded"] is None
     assert cycle["execution_ledger"]["preflight_ok"] is False
-    assert "spy_offline_daily_cycle" in cycle["after_report"]["stale_lanes"]
+    assert "crypto_supervised_readiness_trial" in cycle["after_report"]["absent_lanes"]
+    assert cycle["cycle_outcome"] != OUTCOME_REFRESHED
+    assert cycle["converged"] is False
+
+
+@pytest.mark.parametrize(
+    "config_overrides",
+    [
+        {"lanes_root": Path("other-runs")},
+        {
+            "lane_artifact_overrides": {
+                "crypto_supervised_readiness_trial": Path("other-packet.json")
+            }
+        },
+    ],
+)
+def test_canonical_target_refusal_occurs_before_runner_or_outcome_claim(
+    tmp_path: Path,
+    config_overrides: dict,
+) -> None:
+    calls = []
+    with pytest.raises(ValidationError):
+        build_self_refresh_cycle(
+            _config(tmp_path, **config_overrides),
+            apply=True,
+            environ={},
+            runner=lambda argv, environ: calls.append(argv),
+        )
+    assert calls == []
 
 
 # --------------------------------------------------------------------------- #
@@ -412,7 +504,6 @@ def test_rejects_non_bool_allow_empty_lab(tmp_path: Path) -> None:
 # CLI
 # --------------------------------------------------------------------------- #
 def test_cli_dry_run(tmp_path: Path) -> None:
-    _seed_stale_daily_cycle(tmp_path)
     buffer = io.StringIO()
     with redirect_stdout(buffer):
         exit_code = cli_module.main(
@@ -423,7 +514,7 @@ def test_cli_dry_run(tmp_path: Path) -> None:
                 "--as-of",
                 AS_OF,
                 "--lanes-root",
-                str(tmp_path),
+                "runs",
                 "--format",
                 "json",
             ]
@@ -433,11 +524,10 @@ def test_cli_dry_run(tmp_path: Path) -> None:
     assert payload["dry_run"] is True
     assert payload["execution_count"] == 0
     assert payload["all_executions_succeeded"] is None
-    # The stale lane is operator-curable only, so the loop has converged on a
-    # correct waiting state: exit 0, with the staleness still reported.
-    assert payload["converged"] is True
-    assert "spy_offline_daily_cycle" in payload["after_report"]["stale_lanes"]
-    assert exit_code == 0
+    assert payload["eligible_count"] == 1
+    assert payload["converged"] is False
+    assert payload["cycle_outcome"] == OUTCOME_EVIDENCE_REQUIRED
+    assert exit_code == 1
     _assert_safety_false(payload)
 
 
@@ -452,7 +542,7 @@ def test_cli_no_lane_evidence_exits_one_by_default(tmp_path: Path) -> None:
                 "--as-of",
                 AS_OF,
                 "--lanes-root",
-                str(tmp_path),
+                "runs",
                 "--format",
                 "json",
             ]
@@ -476,7 +566,7 @@ def test_cli_allows_explicit_empty_lab(tmp_path: Path) -> None:
                 "--as-of",
                 AS_OF,
                 "--lanes-root",
-                str(tmp_path),
+                "runs",
                 "--allow-empty-lab",
                 "--format",
                 "json",
