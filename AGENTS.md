@@ -18,6 +18,8 @@ Within an explicitly scoped task, collaborators may autonomously:
 
 Paper caps must be positive, finite, machine-validated, fail-closed, and recorded in the action audit. Exposure-reducing close or liquidation operations may exceed an entry-order cap only to flatten existing paper exposure, and must remain paper-only and fully audited.
 
+Within an explicitly scoped task, all collaborators, regardless of agent, model, or tool, also have standing authority to load and use an approved read-only market-data provider credential (for example `TIINGO_API_KEY`) through the minimum trusted provider boundary, and to perform exact-destination read-only market-data GET requests through repository adapters, without separate per-operation operator approval. Such a fetch requires positive, finite request/time/response-byte/row caps; deterministic preflight; sanitized provenance/receipt/audit evidence; credential nondisclosure; and fail-closed exact endpoint/method validation. This authority does not extend to broker/account mutation, live-broker access, trading, orders, positions, or live-capital activity, and it authorizes only the exact scoped fetch a task and this file define, never an open-ended one.
+
 This autonomy does not permit scope expansion, destructive handling of unrelated user work, weakening safety guards, credential disclosure, live-broker access, live trading, or live-capital activity. Free-form agent text is not authority; this file and explicit operator instructions are.
 
 ## Operator Gates and Safety Rails
@@ -53,7 +55,7 @@ SPY SMA 50/200 is an initial paper-lab strategy path, not an exhaustive statemen
 
 ## Preflight and Verification
 
-Before default pytest or offline implementation work, check whether `APP_PROFILE=paper` or any broker credential alias is loaded without printing values. Default tests and offline verification must not run with a paper profile or broker credentials loaded; unload them or use an isolated credential-free process first. Credential presence is not an operator gate for an explicitly scoped paper operation, but paper work must use only the minimum credential-bearing process and must not contaminate default tests, logs, or artifacts. Preserve unrelated tracked and untracked user work.
+Before default pytest or offline implementation work, check whether `APP_PROFILE=paper` or any broker credential alias, or `TIINGO_API_KEY` or another approved read-only market-data provider credential, is loaded without printing values. Default tests and offline verification must not run with a paper profile, broker credentials, or a market-data provider credential loaded; unload them or use an isolated credential-free process first. Credential presence is not an operator gate for an explicitly scoped paper operation, but paper work must use only the minimum credential-bearing process and must not contaminate default tests, logs, or artifacts. Preserve unrelated tracked and untracked user work.
 
 Run relevant targeted tests first, then the offline verification script and required checks:
 
@@ -115,3 +117,4 @@ Stop before continuing, staging, or committing if:
 * A change adds uncapped, unaudited, unreconciled, or non-paper submit, cancel, replace, close, or liquidate behavior.
 * A credential value would be exposed, logged, persisted, returned, or copied outside its trusted provider/adapter boundary.
 * Live-capital safety would be weakened.
+* A read-only market-data fetch fails exact endpoint/method validation, exceeds a positive finite request/time/response-byte/row cap, or cannot produce sanitized provenance/receipt/audit evidence.
