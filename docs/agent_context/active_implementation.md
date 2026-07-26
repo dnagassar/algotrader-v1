@@ -12,6 +12,9 @@
   not bind the executable `execution/__init__.py` package initializer.
 - The repaired V5.47 implementation was independently reviewed and accepted
   at `b4ca92594063a706bbcd13a9d18232d54c829ff2` with no P0-P2 findings.
+- V5.47 was then promoted by verified fast-forward to `origin/main` at
+  `98b50ba33c3408d9d63ea724e91477a6a48edd74`; the accepted implementation
+  commit within that promoted history is `b4ca92594063a706bbcd13a9d18232d54c829ff2`.
 - Capability now evidenced: a central offline `crypto-readiness-replay`
   command whose replay closure is broker-, credential-, profile-, and
   network-free; an exact-signature supervised-trial facade/core dependency
@@ -42,8 +45,10 @@
   facade/adapter/CLI, normalization leaf, replay command; the seven focused
   V5.47 test modules; and this handoff.
 - No unrelated staged, unstaged, or untracked work was present at takeover.
-  No reset, clean, stash, rebase, restore, branch switch, force push, merge,
-  or promotion occurred.
+  No reset, clean, stash, rebase, restore, branch switch, force push, or
+  non-fast-forward merge occurred. After acceptance, the orchestrator
+  promoted V5.47 to `origin/main` by verified fast-forward at
+  `98b50ba33c3408d9d63ea724e91477a6a48edd74`.
 
 ## Capability And Contract Summary
 
@@ -116,6 +121,9 @@
 - Feature-branch remote equality: verified after re-fetch; local `HEAD`,
   remote-tracking `HEAD`, and `FETCH_HEAD` all equal
   `b4ca92594063a706bbcd13a9d18232d54c829ff2`.
+- Promotion: verified fast-forward of `origin/main` to
+  `98b50ba33c3408d9d63ea724e91477a6a48edd74`, containing accepted
+  implementation commit `b4ca92594063a706bbcd13a9d18232d54c829ff2`.
 - The five skips are repository-declared paper integration skips, not V5.47
   failures.
 - `git diff --check`: clean.
@@ -153,21 +161,15 @@
   conceivable runtime code-generation mechanism.
 - Autonomous absent/stale readiness reachability is deliberately not wired in
   this slice.
-- Promotion is separately operator-authorized but has not yet been performed.
-  Integration conflict handling and protected-branch controls remain the
-  orchestrator's responsibility.
 
 ## Next Highest-Leverage Safe Action
 
-Promote the accepted V5.47 feature branch through the repository's normal
-protected integration path; this promotion is separately operator-authorized
-and is now the next orchestrator action.
-
-After promotion, freeze and independently review a separate V5.48 reachability
-contract for absent or stale crypto-readiness evidence before implementation.
-That contract must cover action classification; the exact executor allowlist
-argv `("crypto-readiness-replay",)`; supervisor emission and end-to-end
+Freeze and independently review a separate V5.48 reachability contract for
+absent or stale crypto-readiness evidence before implementation. That contract
+must cover action classification; the exact executor allowlist argv
+`("crypto-readiness-replay",)`; supervisor emission and end-to-end
 reachability; fail-closed exclusion of broker and receipt flags; manual
 dry-run and apply-plan evidence; and explicit proof that no paper or live
-operation occurs. Do not implement V5.48 or mix its classification,
-allowlist, lane, or reachability changes into V5.47.
+operation occurs. Do not implement V5.48 until that contract is frozen and
+accepted, and do not mix its classification, allowlist, lane, or reachability
+changes into V5.47.
