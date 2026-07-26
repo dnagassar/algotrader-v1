@@ -106,6 +106,43 @@ removing `readiness_freshness` from a V5.49 packet yields a payload
 byte-identical to the corresponding V5.48-era packet core for the same
 inputs.
 
+### Mandatory bundle_id exclusion
+
+`_compute_bundle_id` in `crypto_supervised_readiness_trial_core.py` hashes
+the **entire packet** minus exactly `artifact_paths`, `artifact_integrity`,
+and `bundle_id`. `readiness_freshness` **must** be added to that exclusion
+list. This is not optional and is not scope creep — it is the established
+pattern for packet keys that are not part of content identity.
+
+Omitting it is a P0 defect, because `bundle_id` is used as a **directory
+name** (`generation_dir = generations_dir / bundle_id`). Today the replay is
+content-addressed and idempotent: re-running reuses the same generation
+directory. A time-varying `bundle_id` combined with the 24-hour auto-refresh
+below would create a new generation directory on every run, forever.
+
+A test must prove that two replay runs at different instants produce the
+**same** `bundle_id` and reuse the **same** generation directory.
+
+### What this field does and does not attest
+
+The replay is a pure function of fixed constants (`DEFAULT_DECISION_START`,
+`DEFAULT_CYCLE_COUNT`, all broker/paper flags false). It has **no
+time-varying input**. Two runs a year apart produce byte-identical evidence;
+only the attested timestamp differs.
+
+`readiness_freshness` therefore attests **when the deterministic computation
+was last re-executed** — a regression canary proving the code still runs and
+still classifies `accepted`. It does **not** attest that readiness was
+recently confirmed against current market, broker, or account conditions,
+because nothing in the replay observes those.
+
+Every implementation report, CLI output line, and status field must use
+language consistent with the weaker claim. Wording such as "readiness
+confirmed fresh" or "recently verified readiness" is prohibited;
+"readiness replay last re-executed at ..." is the required framing. An
+implementation that ships the stronger reading is a rejection under the same
+false-green standard as V5.37a/V5.38a/V5.42a.
+
 ## Clock Injection Contract
 
 ### The core stays deterministic
@@ -169,11 +206,17 @@ executor.
 The readiness `LaneSpec` (`autonomy_supervisor.py:338-360`) is amended:
 
 - `as_of_fields` gains the attested path so the supervisor reads
-  `readiness_freshness.generated_at`. If the existing `as_of_fields`
-  mechanism cannot express a nested path, V5.49 must extend it explicitly
-  and test that extension, not flatten the timestamp to a top-level key.
-  Flattening `generated_at` to the packet root is **prohibited**: it would
-  reintroduce an unattested field that looks authoritative.
+  `readiness_freshness.generated_at`. The existing resolver in `_staleness`
+  uses a **flat top-level lookup** (`if field_name in record`) and
+  definitively cannot express a nested path, so extending it is
+  **mandatory**, not conditional. Flattening `generated_at` to the packet
+  root is **prohibited**: it would reintroduce an unattested field that
+  looks authoritative.
+- That resolver is **shared by every lane**. The extension must be
+  backward-compatible for flat field names, and the implementation must
+  prove by regression test that each existing lane's staleness behaviour is
+  unchanged — not merely that the crypto lane works. This shared blast
+  radius is the main implementation risk in V5.49.
 - `max_age_hours` changes from `0` to **`24`**.
 - `stale_requires_operator_action` remains **`False`** for this lane, so the
   stale token stays `EXECUTION_AUTO_OFFLINE` and auto-refreshable, matching
@@ -214,6 +257,19 @@ Age is computed against the supervisor's existing injected `config.as_of`.
 V5.49 introduces no new reference clock and must not read wall time in the
 supervisor.
 
+`--as-of` is `required=True` on all four autonomy commands, so there is no
+hidden default and no silent fallback. But this also means **staleness is
+only as truthful as the caller's `--as-of`**: a driver that passes a fixed
+or stale timestamp makes the lane permanently fresh and leaves V5.49 as
+dormant as V5.48.
+
+The implementation report must therefore state explicitly which driver
+supplies `--as-of` in unattended operation and demonstrate that it passes a
+real wall-clock instant. If no such driver exists yet, the report must say
+so plainly and classify V5.49's stale reachability as **proven on demand but
+not yet exercised autonomously** — it must not claim autonomous staleness
+that nothing actually triggers.
+
 ## Convergence Contract
 
 With the above in place, the stale path becomes genuinely reachable and
@@ -237,16 +293,27 @@ Step 6 is the point of the milestone. Step 7 is the anti-thrash guarantee.
 
 ## Determinism Preservation Contract
 
+The complete set of packet-level identity values that must remain stable
+across instants is: `receipt_chain.final_receipt_hash`,
+`receipt_chain.deterministic_replay_chain_hash`, **and `bundle_id`**. Any
+implementation that treats the first two as the whole set is incorrect —
+see "Mandatory bundle_id exclusion" above.
+
 V5.49 must prove, by test, that:
 
 - two replay runs at **different** injected instants produce **equal**
-  `receipt_chain.final_receipt_hash` and equal
-  `receipt_chain.deterministic_replay_chain_hash`;
+  `receipt_chain.final_receipt_hash`, equal
+  `receipt_chain.deterministic_replay_chain_hash`, and equal `bundle_id`;
+- those two runs reuse the **same** generation directory (idempotency
+  preserved; no per-run directory growth);
 - those same two runs produce **different** `readiness_freshness.generated_at`
   and **different** `readiness_freshness.attestation_sha256`;
 - `trial_classification` is `accepted` in both;
 - a V5.49 packet with `readiness_freshness` removed is byte-identical to the
-  V5.48-era core for the same inputs.
+  V5.48-era core for the same inputs;
+- the packet self-verification path (`manifest_bundle_id_mismatch`,
+  `bundle_id_mismatch`, `packet_manifest_mismatch`) reports no errors for a
+  freshly written V5.49 packet.
 
 Any existing test that asserts whole-packet byte equality across runs must be
 retargeted at the deterministic core, and the retarget must be visible in the
@@ -390,9 +457,12 @@ collection; no generated `runs/` artifact is committed.
 Stop and report rather than proceeding if:
 
 - the nested as-of resolution cannot be implemented without flattening the
-  timestamp to the packet root;
-- preserving `final_receipt_hash` equality across instants proves
-  impossible without excluding more than the `readiness_freshness` block;
+  timestamp to the packet root, or cannot be made backward-compatible for
+  the existing flat-field lanes;
+- preserving identity-hash equality across instants requires excluding any
+  packet key **other than** `readiness_freshness` from `_compute_bundle_id`.
+  Adding `readiness_freshness` itself to that exclusion list is **required
+  and expected** — it is not a stop condition;
 - any change appears necessary in `autonomy_next_plan.py` or
   `autonomy_offline_executor.py`;
 - the exact-launcher purity proof regresses;
@@ -409,19 +479,63 @@ Stop and report rather than proceeding if:
   `crypto_supervised_readiness_trial`.
 - Real-capital authorization, which remains a hard operator gate.
 
+## Review Record
+
+### Round 1 — Claude orchestrator, 2026-07-26: REQUEST CHANGES
+
+Reviewed against the checkout at `600bf72`. The core design was upheld:
+hash-binding the block to `receipt_chain` while excluding it from identity
+hashes, injected clock with no core wall-clock read, frozen
+`CANONICAL_REPLAY_ARGV`, and the three-outcome fail-closed split.
+
+Four defects were found and are now corrected in this document:
+
+1. **P1 — incomplete identity-hash enumeration.** The original text named
+   only `final_receipt_hash` and `deterministic_replay_chain_hash`, missing
+   `_compute_bundle_id`, which hashes the whole packet. Because `bundle_id`
+   names a generation directory, this would have broken content-addressed
+   idempotency and grown a directory per run under daily refresh. Fixed by
+   the mandatory `bundle_id` exclusion section and expanded determinism
+   tests.
+2. **P1 — overclaiming field name.** The replay has no time-varying input,
+   so the field attests re-execution recency, not readiness recency. Fixed
+   by the "What this field does and does not attest" section, with required
+   wording.
+3. **P2 — nested as-of extension understated.** `_staleness` uses a flat
+   lookup shared by all lanes; the extension is mandatory and needs
+   per-lane regression proof. Fixed.
+4. **P3 — no truthful `--as-of` requirement.** Fixed by the reference-clock
+   addition requiring the report to name the driver or classify stale
+   reachability as not yet autonomously exercised.
+
+The original stop condition would have spuriously halted the correct
+`bundle_id` fix; it has been recalibrated.
+
+**Process caveat:** this review was performed by the same agent that
+authored the contract. Self-review is a weak control, and finding 2 in
+particular is a judgement call about honest framing rather than a
+mechanical defect. An independent reviewer should still adjudicate it.
+
 ## Next Action
 
-Independent review of **this contract** before any implementation. The
-review must specifically adjudicate:
+Independent (non-authoring) review of the corrected contract. That review
+must adjudicate:
 
-1. whether excluding `readiness_freshness` from the determinism hashes is
-   sound, or whether it creates a channel for evidence and freshness to
-   drift apart undetected;
-2. whether the absent-block → `stale` decision (case 1) is right, or whether
-   version skew should also demand operator review;
-3. whether `24` hours is the correct floor;
+1. whether the freshness field is worth building at all, given that it
+   attests only re-execution of a time-invariant computation — the
+   alternative being to leave the stale token dormant and honestly
+   documented as such;
+2. whether the absent-block → `stale` decision is right, or whether version
+   skew should also demand operator review;
+3. whether `24` hours is the correct floor, given that a shorter interval
+   buys nothing when inputs never change;
 4. whether a single CLI-handler clock read is an acceptable widening of the
    import-purity envelope established by V5.47/V5.48.
+
+Question 1 is now the gating question. If the answer is "not worth it," the
+correct outcome is to close V5.49 without implementation and record the
+stale token as permanently dormant by design — which is a legitimate and
+cheaper result than building attestation machinery around a constant.
 
 No implementation is authorized until that review records an explicit
 verdict.

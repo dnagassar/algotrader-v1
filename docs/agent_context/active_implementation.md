@@ -279,5 +279,30 @@ block → `stale` (benign skew, auto-refreshable); invalid or transplanted
 attestation → `attention_required` with zero runner calls; valid block →
 normal age comparison.
 
-No implementation is authorized until review records an explicit verdict on
-the four questions listed at the end of that contract.
+**Round 1 review verdict: REQUEST CHANGES (corrections applied).** The core
+design was upheld, but four defects were found and fixed in the contract:
+
+1. P1 — the identity-hash enumeration missed `_compute_bundle_id`, which
+   hashes the whole packet. Since `bundle_id` names a generation directory,
+   a time-varying value would have broken content-addressed idempotency and
+   created a new directory per run under daily auto-refresh.
+2. P1 — the field name overclaims. The replay is a pure function of fixed
+   constants with no time-varying input, so freshness attests
+   *re-execution recency*, not *readiness recency*. Required wording is now
+   frozen.
+3. P2 — the nested as-of extension is mandatory (the `_staleness` resolver
+   is a flat lookup) and is shared by every lane, needing per-lane
+   regression proof.
+4. P3 — nothing required the autonomy driver to pass a truthful `--as-of`.
+
+The original stop condition would have spuriously halted the correct
+`bundle_id` fix and has been recalibrated.
+
+**Gating question now open:** whether V5.49 is worth building at all, given
+it attests re-execution of a time-invariant computation. Closing V5.49
+unimplemented and documenting the stale token as permanently dormant by
+design is an acceptable, cheaper outcome.
+
+Review was performed by the contract's own author; an independent reviewer
+should still adjudicate that gating question. No implementation is
+authorized until then.
