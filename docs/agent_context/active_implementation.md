@@ -10,6 +10,8 @@
   was rejected during independent review because the production receipt
   validator referenced `UTC` without importing it and source provenance did
   not bind the executable `execution/__init__.py` package initializer.
+- The repaired V5.47 implementation was independently reviewed and accepted
+  at `b4ca92594063a706bbcd13a9d18232d54c829ff2` with no P0-P2 findings.
 - Capability now evidenced: a central offline `crypto-readiness-replay`
   command whose replay closure is broker-, credential-, profile-, and
   network-free; an exact-signature supervised-trial facade/core dependency
@@ -24,6 +26,11 @@
 - Worktree:
   `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v547-import-pure-readiness-replay`.
 - Branch: `claude/v5.47-import-pure-readiness-replay`.
+- Accepted implementation commit:
+  `b4ca92594063a706bbcd13a9d18232d54c829ff2`.
+- The feature branch was pushed, re-fetched, and verified byte-for-byte by
+  commit identity: local `HEAD`, the remote-tracking branch, and `FETCH_HEAD`
+  all resolved to `b4ca92594063a706bbcd13a9d18232d54c829ff2`.
 - Sole repair writer at yield: Codex replacement agent.
 - Repair files relative to `75d8533`:
   `src/algotrader/execution/crypto_supervised_readiness_trial.py`,
@@ -105,6 +112,10 @@
   `104 passed in 116.44s`; the script explicitly skipped the full suite.
 - Full default suite, run separately:
   `10005 passed, 5 skipped in 2676.26s`.
+- Independent implementation review: accepted with no P0-P2 findings.
+- Feature-branch remote equality: verified after re-fetch; local `HEAD`,
+  remote-tracking `HEAD`, and `FETCH_HEAD` all equal
+  `b4ca92594063a706bbcd13a9d18232d54c829ff2`.
 - The five skips are repository-declared paper integration skips, not V5.47
   failures.
 - `git diff --check`: clean.
@@ -142,12 +153,21 @@
   conceivable runtime code-generation mechanism.
 - Autonomous absent/stale readiness reachability is deliberately not wired in
   this slice.
-- Promotion and merge have not been performed.
+- Promotion is separately operator-authorized but has not yet been performed.
+  Integration conflict handling and protected-branch controls remain the
+  orchestrator's responsibility.
 
 ## Next Highest-Leverage Safe Action
 
-Independently review the repaired V5.47 commit and verify the pushed feature
-branch equals local HEAD. If accepted, promotion/integration is a separate
-orchestrator action. A later separately reviewed milestone may add
-classification/allowlist/lane reachability for absent or stale readiness
-evidence; do not add that behavior to V5.47.
+Promote the accepted V5.47 feature branch through the repository's normal
+protected integration path; this promotion is separately operator-authorized
+and is now the next orchestrator action.
+
+After promotion, freeze and independently review a separate V5.48 reachability
+contract for absent or stale crypto-readiness evidence before implementation.
+That contract must cover action classification; the exact executor allowlist
+argv `("crypto-readiness-replay",)`; supervisor emission and end-to-end
+reachability; fail-closed exclusion of broker and receipt flags; manual
+dry-run and apply-plan evidence; and explicit proof that no paper or live
+operation occurs. Do not implement V5.48 or mix its classification,
+allowlist, lane, or reachability changes into V5.47.
