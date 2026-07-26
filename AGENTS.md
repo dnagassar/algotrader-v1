@@ -55,7 +55,7 @@ SPY SMA 50/200 is an initial paper-lab strategy path, not an exhaustive statemen
 
 ## Preflight and Verification
 
-Before default pytest or offline implementation work, check whether `APP_PROFILE=paper` or any broker credential alias, or `TIINGO_API_KEY` or another approved read-only market-data provider credential, is loaded without printing values. Default tests and offline verification must not run with a paper profile, broker credentials, or a market-data provider credential loaded; unload them or use an isolated credential-free process first. Credential presence is not an operator gate for an explicitly scoped paper operation, but paper work must use only the minimum credential-bearing process and must not contaminate default tests, logs, or artifacts. Preserve unrelated tracked and untracked user work.
+Before default pytest or offline implementation work, check whether `APP_PROFILE=paper` or any broker credential alias, or `TIINGO_API_KEY` or another approved read-only market-data provider credential, is loaded without printing values. Default tests and offline verification must not run with a paper profile, broker credentials, or a market-data provider credential loaded; unload them or use an isolated credential-free process first. Credential presence is not a per-operation gate for an explicitly scoped paper operation or an explicitly scoped, authorized read-only market-data operation, but that work must use only the minimum credential-bearing process and must not contaminate default tests, logs, or artifacts. Preserve unrelated tracked and untracked user work.
 
 Run relevant targeted tests first, then the offline verification script and required checks:
 

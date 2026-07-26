@@ -6,14 +6,16 @@
   reachability contract`.
 - Frozen contract:
   `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`.
-- Review status: **round-1 REQUEST CHANGES, corrections applied, pending
-  independent round-2 review.** Round-1 findings (1 P0, 4 P1, 3 P2) and their
-  corrections are recorded in the contract's own "Round-1 Independent
+- Review status: **round-2 REQUEST CHANGES, corrections applied, pending
+  independent round-3 review. No implementation is authorized.** Round-1
+  findings (1 P0, 4 P1, 3 P2) remain recorded in the contract's "Round-1
+  Independent Review" section. Round-2 findings (1 P0, 3 P1, 3 P2) and their
+  corrections are recorded in the contract's new "Round-2 Independent
   Review: Findings And Corrections" section, per orchestrator adjudication
   that every finding is required.
 - Implementation status: **still contract-only. No `src/` or `tests/` file
-  was changed. No implementation is authorized until round-2 review
-  accepts.** On acceptance, the contract now authorizes exactly one
+  was changed. No implementation is authorized until an independent review
+  round accepts.** On acceptance, the contract authorizes exactly one
   implementation milestone/PR with two ordered, jointly reviewed commits
   (adapter caps + safety preflight, then executor/planner/scheduled-task
   reachability) — no second contract is required for that pair.
@@ -26,146 +28,152 @@
   reachability` (evidence commit `38399df`, implementation `6d4838b`). See
   "History: V5.32-V5.50" below for the retained prior record.
 
+## Round-2 Findings Corrected This Round
+
+| # | Severity | Finding | Correction |
+| --- | --- | --- | --- |
+| 1 | P0 | Import-purity test banned `AlpacaPaperConfig`/`require_paper_profile` outright, but the mandatory `evaluate_live_capital_interlock` preflight transitively requires both; the contract's claim that the interlock "never reads a credential secret" was also false. | "Read-Only Market-Data Is Not Live Trading" now permits `AlpacaPaperConfig`/`require_paper_profile` only as members of `live_capital_interlock`'s own closure, never a direct seam import; "Mandatory Live-Capital Interlock Preflight" now states truthfully that the interlock loads repr-hidden Alpaca credential strings into memory but never logs/serializes/discloses/forwards/uses them for Tiingo or broker access, and the seam's own code never touches a secret field directly. |
+| 2 | P1 | `load_tiingo_api_key_from_dotenv` was specified to run once for the presence check and again via `token_lookup` — two dotenv reads per apply. | "Freeze One Credential Source" now freezes one private, cached credential-provider object that reads the dotenv file exactly once per apply invocation and serves both the presence check and `token_lookup` from that cached value; the executor process itself never holds the token as a plain string outside that object. |
+| 3 | P1 | The Task Scheduler `<Actions><Exec>` command embedded `<UTC timestamp resolved at trigger time>` — non-executable prose — with no wrapper/fallback mechanism, while wrapper/fallback mechanisms are otherwise banned. | "Windows Scheduled Task Update" freezes a new reviewed wrapper, `scripts/run_spy_read_only_network_executor.ps1`, that captures `[DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o', [CultureInfo]::InvariantCulture)` exactly once and invokes the Python module with that literal value; the XML now invokes this exact wrapper, no placeholder anywhere executable. "In-process" is clarified to mean the Python module spawns no adapter/network child; Task Scheduler launching the PS-to-Python host wrapper is unaffected by that guarantee. |
+| 4 | P1 | The four-attempt session ledger budget was read-then-append with no concurrency control — two racing invocations could both read the same prior count. | New "Concurrency And Ledger Locking" section freezes an exclusive OS advisory lock (`runs/autonomy_network_executor/ledger.lock`, stdlib `msvcrt.locking`/`fcntl.flock` wrapper, 5s timeout, `ledger_lock_unavailable` on timeout) held from ledger validation through provider load, reservation write (flush+fsync), the HTTP call, and completion write (flush+fsync), released in `finally`. Budget now counts unique reservation ids (pending or completed), so a crash between reservation and completion still fail-closed consumes budget. |
+| 5 | P2 | Ambiguous whether dry-run writes a ledger record ("no artifact write beyond one dry-run ledger record" contradicted "fully side-effect-free"). | Dry-run is now specified as fully side-effect-free: zero ledger/lock/artifact write of any kind, zero credential/HTTP access. Every "beyond one dry-run ledger record" phrase removed. |
+| 6 | P2 | Unspecified whether a failing live-capital interlock verdict should hard-refuse dry-run the way it hard-refuses apply. | Dry-run always evaluates the interlock for informational `apply_eligible` reporting but never hard-refuses on a failing/unset verdict; only apply mode hard-refuses (`live_capital_interlock_blocked`, exit `2`). |
+| 7 | P2 | No exit-code scheme distinguished success, already-qualified no-op, pending dry-run, and an apply that reached the network but ended in an audited blocked outcome. | New "Exit Codes" section: `0` accepted apply or already-qualified/no-action; `1` pending valid dry-run, or apply after an actual HTTP attempt ending in a fully audited blocked outcome; `2` any pre-HTTP refusal (parser/root/path/as-of/lock/ledger/interlock/credential/attempt-cap). |
+
 ## Authority And Safety Boundaries
 
-- `AGENTS.md` was updated this round (narrow, canonical edit) to state
-  standing, provider-generic authority explicitly: every collaborator,
-  regardless of agent/model/tool, may within an explicitly scoped task load
-  and use an approved read-only market-data provider credential through the
-  minimum trusted provider boundary and perform exact-destination read-only
-  market-data GETs through repository adapters, bounded by positive finite
-  request/time/response-byte/row caps, deterministic preflight, sanitized
-  provenance/receipt/audit, credential nondisclosure, and fail-closed exact
-  endpoint/method validation. This does not authorize broker/account
-  mutation, live-broker access, trading, orders, positions, or live capital.
-  `TIINGO_API_KEY`/approved-provider-credential presence was added to the
-  credential-free default-test preflight, and a stop condition was added for
-  endpoint/method/cap/audit/provenance failure.
+- `AGENTS.md` was given one further narrow edit this round: the
+  credential-preflight sentence now states that credential presence is not
+  a *per-operation* gate for an explicitly scoped paper operation **or** an
+  explicitly scoped, authorized read-only market-data operation (previously
+  named only the paper case), while unchanged elsewhere — no live
+  prohibition weakened, no endpoint/method scope broadened.
 - This milestone performed **zero** network access, credential load,
-  broker access, or paper/live mutation. It is doc-only, same as the
-  original freeze.
-- The corrected contract binds the future implementation to a materially
-  more precise safety envelope than the original freeze: an in-process
-  (no child process) module with a three-flag CLI
-  (`--as-of`/`--apply`/`--format`), a mandatory
-  `evaluate_live_capital_interlock` preflight in both dry-run and apply
-  mode, a single canonical `.env`-sourced credential path (process-env
-  `TIINGO_API_KEY` explicitly ignored), a session-scoped four-attempt ledger
-  budget (one initial plus three retries, matching the scheduled task's own
-  `RestartOnFailure` policy) replacing the original's conflicting
-  one-per-UTC-day cap, a 20:10 America/New_York provider-publication cutoff
-  for expected-session resolution, exact numeric caps (8,388,608 response
-  bytes; 20,000 provider rows), and a new, truthful planner execution class
-  (`EXECUTION_AUTHORIZED_NETWORK_READ_ONLY`) replacing the stale
-  `EXECUTION_OPERATOR_GATED` label for the one action that now has a real,
-  seam-exercisable path. No live-broker or live-capital access is
-  authorized. Live capital remains operator-gated until burn-in completes.
+  broker access, or paper/live mutation. It is doc-only, same as prior
+  rounds.
+- The round-2-corrected contract closes a real safety-claim defect (the
+  interlock's dependency closure does read Alpaca credential strings into
+  memory, even though it never discloses them) rather than merely adding
+  precision; the import-purity test is now satisfiable and enforces
+  reachability (only through `live_capital_interlock`) rather than a
+  blanket name ban that contradicted the seam's own mandatory dependency.
+  It also adds a real concurrency control (OS advisory lock) that did not
+  exist in the round-1-corrected text, and a complete exit-code contract.
+  No live-broker or live-capital access is authorized. Live capital remains
+  operator-gated until burn-in completes.
 
 ## Checkout And Ownership
 
 - Implementation worktree (this session):
   `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v551-readonly-market-data-contract`,
   branch `claude/v5.51-readonly-spy-market-data-contract`.
-- Verified base for this round's remediation: `6797e95` (originally frozen
-  V5.51 contract, itself based on `b79c721`), clean working tree, upstream
-  `origin/claude/v5.51-readonly-spy-market-data-contract` up to date at
-  takeover.
+- Verified base for this round's remediation: `9cfc183` (round-1-corrected
+  V5.51 contract, itself based on `6797e95`/`b79c721`), clean working tree,
+  upstream `origin/claude/v5.51-readonly-spy-market-data-contract` up to
+  date at takeover.
 - Sole implementation writer for this round's contract-remediation-only
   milestone; Codex remains orchestrator/reviewer per operator instruction.
 - Preflight (presence-only, no values): `APP_PROFILE` not set; no
-  Alpaca/APCA credential alias set; no `TIINGO_API_KEY` set; no
-  network-test alias set. Re-checked before commit.
+  Alpaca/APCA credential alias set (`ALPACA_API_KEY`, `ALPACA_API_KEY_ID`,
+  `APCA_API_KEY_ID`, `ALPACA_SECRET_KEY`, `ALPACA_API_SECRET_KEY`,
+  `APCA_API_SECRET_KEY`); no `TIINGO_API_KEY` set. Re-checked before commit.
 
 ## Files Changed This Round
 
-- `AGENTS.md` (narrow edit: standing provider-generic read-only
-  market-data authority paragraph; `TIINGO_API_KEY`/provider-credential
-  added to the credential-free default-test preflight bullet; one new stop
-  condition for market-data fetch endpoint/method/cap/audit/provenance
-  failure).
+- `AGENTS.md` (one-sentence narrow edit: the default-test credential
+  preflight sentence now names both the paper-operation and the
+  read-only-market-data-operation case for the "not a per-operation gate"
+  statement; no other line changed).
 - `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`
-  (substantially rewritten: new "Round-1 Independent Review: Findings And
-  Corrections" section recording all 8 findings and their fixes; new
-  "Implementation Milestone Shape", "Execution Architecture", "Fixed
-  Internal Adapter Configuration", "Mandatory Live-Capital Interlock
-  Preflight", "Freeze One Credential Source", "Session Attempt Budget",
-  "Planner Classification: `authorized_network_read_only`", and "Windows
-  Scheduled Task Update" sections; "Deterministic Expected-Session
-  Semantics", "Finite Caps", "Retry And Idempotency Behavior", "Sanitized
-  Receipt And Provenance", and "Fail-Closed Refusal Conditions" rewritten to
-  remove every "e.g."/"implementation choice" ambiguity round-1 flagged).
+  (substantially corrected: new "Round-2 Independent Review: Findings And
+  Corrections" section recording all 7 findings and their fixes; new
+  "Concurrency And Ledger Locking" and "Exit Codes" sections; "Read-Only
+  Market-Data Is Not Live Trading" rewritten around a satisfiable,
+  reachability-based import-purity rule; "Mandatory Live-Capital Interlock
+  Preflight" corrected to truthfully describe credential-string loading and
+  the dry-run non-hard-refusal rule; "Freeze One Credential Source"
+  rewritten around one cached dotenv read; "Session Attempt Budget",
+  "Retry And Idempotency Behavior", "Fail-Closed Refusal Conditions",
+  "Execution Architecture", "Windows Scheduled Task Update", and the
+  ledger-field list in "Sanitized Receipt And Provenance" updated for
+  locking, reservation/completion semantics, and the new exit-code scheme;
+  "seven canonical paths" corrected to "eight" throughout to include the
+  new lock file).
 - `docs/agent_context/active_implementation.md` (this file, overwritten in
   place; no historical handoff copy created).
 
-No `src/` or `tests/` file was read for any purpose other than grounding the
-contract's corrections precisely in the existing adapter
-(`etf_sma_adjusted_spy_data_refresh.py`: `run_spy_adjusted_data_refresh`,
-`ETFAdjustedDataRefreshConfig`, `load_tiingo_api_key_from_dotenv`,
-`_tiingo_http_get`, `_HTTP_TIMEOUT_SECONDS`,
-`_default_expected_latest_bar_date`), the live-capital interlock
-(`live_capital_interlock.py`: `evaluate_live_capital_interlock`,
-`LiveCapitalInterlockVerdict.to_dict`), the planner/executor registries
-(`autonomy_next_plan.py`, `autonomy_offline_executor.py`:
-`EXECUTION_*` constants, `AUTONOMY_EXECUTOR_ALLOWLIST`,
-`_GATE_NETWORK_MARKET_DATA`), the existing import-purity test pattern
-(`tests/unit/test_dependency_direction.py`'s crypto-readiness-replay launcher
-scan), the Windows Task Scheduler template
-(`docs/design/spy_eod_market_data_refresh_scheduled_task.xml`: confirmed
-`RestartOnFailure Interval=PT15M Count=3`, i.e. one initial run plus three
-retries — the exact basis for the corrected four-attempt session budget),
-and the operator runbook's existing 20:10 America/New_York boundary
-(`docs/OPERATOR_RUNBOOK.md`'s "Authoritative SPY EOD Market-Data Refresh"
-section). None of those files was modified.
+No `src/` or `tests/` file was read for any purpose other than grounding
+this round's corrections precisely in the existing code: confirmed
+`live_capital_interlock.py` imports `AlpacaPaperConfig` and
+`require_paper_profile` from `algotrader.config` and calls
+`AlpacaPaperConfig.from_env(source)` and `require_paper_profile(config)`;
+confirmed `AlpacaPaperConfig.from_env` reads
+`ALPACA_API_KEY`/`ALPACA_API_KEY_ID`/`APCA_API_KEY_ID` and
+`ALPACA_SECRET_KEY`/`ALPACA_API_SECRET_KEY`/`APCA_API_SECRET_KEY`-family
+values into `alpaca_api_key`/`alpaca_secret_key` fields declared
+`field(repr=False)` (hidden from `repr()`/`str()`, but genuinely populated).
+None of those files was modified.
 
 ## Verification Evidence
 
 This is a doc-only change, so no test suite exercises new behavior. Ran the
 checks applicable to doc-only work per `AGENTS.md`:
 
-- `git status --short` → reports exactly the three files listed above before
-  commit.
+- `git status --short` → reports exactly the two files listed above
+  (`AGENTS.md`, the V5.51 contract) before commit; `active_implementation.md`
+  is the third, overwritten as part of this same commit.
 - `git diff --check` → clean (no whitespace-conflict markers).
 - `git diff --name-only HEAD -- src` → empty (no `src/` change).
 - `git ls-files --others --exclude-standard src tests` → empty (no
   untracked `src`/`tests` files).
-- Presence-only credential/profile preflight (`APP_PROFILE`, Alpaca/APCA
-  aliases, `TIINGO_API_KEY`, network-test aliases) confirmed absent before
-  and after.
+- Presence-only credential/profile preflight (`APP_PROFILE`, all six
+  Alpaca/APCA aliases, `TIINGO_API_KEY`) confirmed absent before commit.
 - No network or broker command was run. `.\scripts\verify_offline.ps1` and
-  the default pytest suite were not required to change and were not
-  re-run for a documentation-only diff with no source impact; this is
-  recorded rather than claimed as evidence, unchanged from the original
-  freeze's practice.
+  the default pytest suite were **not run** this round: this is a
+  documentation-only diff with no source impact, so per `AGENTS.md`'s
+  "Preflight and Verification" section (targeted tests, then
+  `verify_offline.ps1`, apply to implementation work) there is no changed
+  `src/`/`tests/` behavior for them to exercise. This is recorded
+  truthfully as "not run" rather than claimed as passing evidence,
+  consistent with prior rounds' practice.
 
 ## Unresolved Risks
 
-- The corrected contract is now precise enough to implement, but it has not
-  yet been independently re-reviewed. A round-2 reviewer may still find a
-  gap in, for example, the exact ledger-corruption handling
-  (`ledger_state_corrupt`) or the early-close 20:10 ET cutoff reasoning; both
-  are new judgment calls this round introduced to close round-1's gaps and
-  neither was independently checked before this commit.
+- The contract is now precise and its two P0/P1-class safety claims
+  (import-purity satisfiability, credential-secret truthfulness,
+  single-dotenv-read, executable scheduler command, and lock-based
+  concurrency) have been corrected, but it has not yet been independently
+  re-reviewed. A round-3 reviewer may still find a gap in, for example, the
+  exact lock-timeout interaction with the adapter's own 20-second HTTP
+  timeout (the lock is held across the HTTP call, so a slow attempt can make
+  a genuinely legitimate second invocation wait the full 5-second lock
+  timeout and refuse — this is intentional fail-closed serialization per the
+  operator's remediation instructions, but is a new judgment call this round
+  introduced and has not been independently checked).
 - `docs/OPERATOR_RUNBOOK.md`'s V5.38 section (`auto_offline` example
   `etf-sma-offline-daily-cycle-rerun-m446`) still describes a pre-V5.48
   allowlist shape that no longer matches
   `AUTONOMY_EXECUTOR_ALLOWLIST`'s current two-readiness-token contents.
-  Not touched by this milestone (out of scope), unchanged from the original
-  freeze's note.
-- Commit A (adapter caps) and commit B (executor/planner/scheduled-task)
-  are specified precisely but neither has been written; the exact Python
-  implementation of the 20:10 ET cutoff, the ledger corruption check, and
-  the import-purity test's forbidden-symbol list are contract-level
-  specifications, not yet code, and could still surface an unanticipated
-  edge case once written against the real adapter internals.
+  Not touched by this milestone (out of scope), unchanged from prior
+  rounds' note.
+- Commit A (adapter caps) and commit B (executor/planner/scheduled-task,
+  now including the lock mechanism, the cached credential provider, and the
+  new PowerShell wrapper) are specified precisely but neither has been
+  written; the exact Python implementation of the 20:10 ET cutoff, the
+  `msvcrt.locking`/`fcntl.flock` wrapper, the ledger corruption/schema
+  check, and the import-purity test's allowed-path-through-interlock
+  assertion are contract-level specifications, not yet code, and could
+  still surface an unanticipated edge case once written against the real
+  adapter internals.
 
 ## Next Action
 
-Independent **round-2** review of the corrected V5.51 contract
+Independent **round-3** review of the corrected V5.51 contract
 (`docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`).
 No implementation is authorized until that review accepts. On acceptance,
-the contract itself now authorizes exactly one implementation milestone/PR
-with two ordered commits reviewed together — no separate implementation
-contract is needed.
+the contract itself authorizes exactly one implementation milestone/PR with
+two ordered commits reviewed together — no separate implementation contract
+is needed.
 
 Unchanged hard gate: **live capital remains operator-gated until burn-in
 completes.** Nothing in this milestone touches that.
@@ -220,3 +228,8 @@ index, not the authoritative record.
   finding preserved, options/next-action corrected to reflect the
   decision):
   `docs/design/v5_50_offline_autonomy_lane_eligibility_analysis.md`.
+- **V5.51 — read-only SPY market-data network refresh reachability
+  contract.** Frozen (`6797e95`), reviewed round-1 REQUEST CHANGES and
+  corrected (`9cfc183`), reviewed round-2 REQUEST CHANGES and corrected
+  (this commit). Still contract-only; pending independent round-3 review.
+  See "Classification" and "Round-2 Findings Corrected This Round" above.

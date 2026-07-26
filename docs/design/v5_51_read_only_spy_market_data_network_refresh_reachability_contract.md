@@ -2,17 +2,19 @@
 
 ## Status
 
-- Status: **round-1 REQUEST CHANGES corrected in place; pending independent
-  round-2 review.** Round-1 findings and the corrections applied are recorded
-  in "Round-1 Independent Review: Findings And Corrections" below.
+- Status: **round-2 REQUEST CHANGES corrected in place; pending independent
+  round-3 review. No implementation is authorized.** Round-1 findings and
+  their corrections remain recorded in "Round-1 Independent Review: Findings
+  And Corrections" below; round-2 findings and their corrections are recorded
+  in "Round-2 Independent Review: Findings And Corrections" below.
 - Still **no `src/` or `tests/` file has been changed by this contract
-  document.** What changed this round is the contract's own precision: every
-  place round-1 found ambiguous, self-contradictory, or merely illustrative
-  ("e.g.", "an implementation choice") is now frozen to one exact, checkable
-  rule.
-- Base commit for this correction: `6797e95` (the originally frozen V5.51
-  contract). Original base commit: `b79c721` (V5.50 lane eligibility analysis
-  recorded).
+  document.** What changed this round is, again, the contract's own
+  precision: every place round-2 found a false safety claim, a
+  double-read, a non-executable placeholder, a race, or an unresolved
+  ambiguity is now frozen to one exact, checkable rule.
+- Base commit for this correction: `9cfc183` (the round-1-corrected V5.51
+  contract). Prior base commits: `6797e95` (originally frozen contract),
+  `b79c721` (V5.50 lane eligibility analysis recorded).
 - Operator authorization: the operator selected **option 2** from
   `docs/design/v5_50_offline_autonomy_lane_eligibility_analysis.md` —
   authorize the read-only market-data intake path. `AGENTS.md` now states
@@ -95,6 +97,22 @@ The valid V5.50 input-self-containment finding, and the correction recording
 the operator's selected option 2, are both preserved unchanged from the
 original freeze (see "Correction To V5.50" below).
 
+## Round-2 Independent Review: Findings And Corrections
+
+Independent review of `9cfc183` returned **REQUEST CHANGES**. Every finding
+below was treated as required by operator adjudication; each is corrected in
+this document's body, cross-referenced here.
+
+| # | Severity | Finding | Correction (see section) |
+| --- | --- | --- | --- |
+| 1 | P0 | The import-purity test forbade `AlpacaPaperConfig` and `require_paper_profile` outright, but the *mandatory* `evaluate_live_capital_interlock` call transitively imports and calls both (`live_capital_interlock.py` calls `AlpacaPaperConfig.from_env` and `require_paper_profile`). A test banning them would fail against the seam's own required safety dependency. Separately, the contract's claim that the interlock "never reads a credential secret" was false: `AlpacaPaperConfig.from_env` reads `ALPACA_API_KEY`/`ALPACA_SECRET_KEY`-family values into `alpaca_api_key`/`alpaca_secret_key` fields (`repr=False`, so never printed, but genuinely populated and held). | "Read-Only Market-Data Is Not Live Trading" and "Mandatory Live-Capital Interlock Preflight" — the import-purity test now explicitly allows the transitive safety closure (`live_capital_interlock`, `AlpacaPaperConfig`, `require_paper_profile`, and the `algotrader.config` validation dependencies reached only through that module) instead of banning it, and the contract now states truthfully that the interlock loads repr-hidden Alpaca paper credential strings into memory but never logs, serializes, discloses, forwards, or uses them for Tiingo or broker access, and that the seam itself never directly touches a secret field. |
+| 2 | P1 | "Freeze One Credential Source" specified the presence check calling `load_tiingo_api_key_from_dotenv` on the apply path, and separately specified the adapter's own `token_lookup` calling the same function again at fetch time — two dotenv reads per successful apply invocation, not the "exactly once" the section's own heading implied. | "Freeze One Credential Source" — rewritten around a single frozen credential-provider object that calls `load_tiingo_api_key_from_dotenv` exactly once per apply invocation, caches the result privately, and serves both the presence check and the adapter's `token_lookup` from that one cached value. |
+| 3 | P1 | "Windows Scheduled Task Update" specified the `<Actions><Exec>` command as `python -m ... --as-of <UTC timestamp resolved at trigger time> --apply --format json` — `<UTC timestamp resolved at trigger time>` is prose, not an executable argument, and the contract elsewhere bans any wrapper/fallback mechanism that could resolve it. | "Windows Scheduled Task Update" — freezes a new, reviewed wrapper script, `scripts/run_spy_read_only_network_executor.ps1`, that captures `[DateTimeOffset]::UtcNow` exactly once and invokes the Python module with that literal captured value; the XML template's `<Exec>` now invokes that exact wrapper, with no placeholder text anywhere in an executable field. "In-process" is clarified to describe the Python module's own call into the adapter (no adapter/network child process), which is distinct from Task Scheduler launching a PowerShell-to-Python host process. |
+| 4 | P1 | The four-attempt session ledger budget was read-then-append with no concurrency control specified. Two invocations (a manual run racing a scheduler restart, or two overlapping scheduler retries) could both read the same prior count and both proceed, exceeding the four-attempt budget or corrupting the append. | "Concurrency And Ledger Locking" (new section) — freezes an exclusive OS advisory lock (`runs/autonomy_network_executor/ledger.lock`, a repository stdlib wrapper over `msvcrt.locking` on Windows / `fcntl.flock` on POSIX, 5-second fixed timeout, refusal `ledger_lock_unavailable` on timeout) held from ledger validation through provider load, reservation write, the HTTP call, and completion write, released in a `finally` block. Budget counting changes from "records with `network_access_attempted=true`" to "unique reservation ids (pending or completed) for the session," so a crash between reservation and completion still fail-closed consumes budget. |
+| 5 | P2 | It was unclear whether a dry-run invocation writes a ledger record at all — "Non-Negotiable Safety Contract" and "Execution Architecture" both said dry-run performs no artifact write "beyond one dry-run ledger record," implying a write the "fully side-effect-free" framing elsewhere contradicted. | "Retry And Idempotency Behavior" and "Concurrency And Ledger Locking" — dry-run is now specified as fully side-effect-free: **zero** ledger writes, zero lock acquisition, zero credential/HTTP access of any kind. Every "beyond one dry-run ledger record" phrase is removed. |
+| 6 | P2 | It was unspecified whether a failing or unset live-capital interlock verdict should hard-refuse a dry-run invocation (as it does for apply) or merely be reported. | "Mandatory Live-Capital Interlock Preflight" and "Exit Codes" — dry-run always evaluates the interlock for sanitized informational readiness (`apply_eligible`) but never hard-refuses on a failing verdict; only apply mode hard-refuses (`live_capital_interlock_blocked`, exit `2`). |
+| 7 | P2 | No exit-code scheme distinguished a successful apply from an already-qualified no-op, a pending dry-run, or an apply that reached the network but ended in an audited blocked outcome; "Fail-Closed Refusal Conditions" only defined exit `2` for pre-HTTP refusals and left every other path unstated. | "Exit Codes" (new section) — freezes the full scheme: `0` for an accepted apply or an already-qualified/no-action outcome (dry-run or apply); `1` for a pending valid dry-run, or an apply that made the actual HTTP attempt but ended in a fully audited blocked provider/normalization outcome; `2` for any pre-HTTP refusal (parser, root/path, `--as-of`, lock, ledger, interlock, credential, attempt-cap). |
+
 ## Non-Negotiable Safety Contract
 
 - The new execution seam is a **distinct module**,
@@ -138,9 +156,10 @@ original freeze (see "Correction To V5.50" below).
   manual/diagnostic entry point (see "Windows Scheduled Task Update"); it is
   not the unattended scheduled path after commit B.
 - It is **dry-run by default**, matching `autonomy-apply-plan`'s shape.
-  Without the explicit `--apply` switch it resolves what *would* run and
-  performs no HTTP request, no credential lookup, and no runtime artifact
-  write beyond one dry-run ledger record.
+  Without the explicit `--apply` switch it resolves what *would* run and is
+  **fully side-effect-free**: no HTTP request, no credential lookup, no
+  ledger read or write, no lock acquisition, and no runtime artifact write of
+  any kind (corrects round-2 finding #5).
 - Before any HTTP call it runs preflight in the fixed order defined in
   "Fail-Closed Refusal Conditions" below, which now explicitly includes: a
   canonical-target check, session resolution under the 20:10 ET
@@ -156,19 +175,32 @@ original freeze (see "Correction To V5.50" below).
   symbol, path, or provider argument at all (see "Execution Architecture"),
   so `symbol_scope_violation` is a defence-in-depth internal assertion
   against a code defect, not a normally reachable refusal path.
-- Alpaca/broker **credential secret values** are not read, forwarded, or
-  required by this seam — the adapter never looks them up. That is
-  unchanged. What round-1 correctly flagged as contradictory is now fixed:
-  the live-capital interlock (`evaluate_live_capital_interlock`), which
-  inspects environment **shape** (profile string, endpoint classification,
-  live-enable flags, live-host markers) rather than any credential secret,
-  is a **mandatory** preflight step, not an excluded one (see "Mandatory
-  Live-Capital Interlock Preflight"). Because the seam runs in-process
-  (Execution Architecture), there is no child process/child-environment to
-  isolate; the applicable defence-in-depth guarantee instead is a **static
-  import-closure** test proving the seam module's transitive imports contain
-  no broker SDK/client/order/position-mutation surface (see "Read-Only
-  Market-Data Is Not Live Trading").
+- The seam itself is not, and never becomes, a place that reads, forwards, or
+  requires an Alpaca/broker credential secret value — the adapter never
+  looks one up, and the seam's own code never accesses an
+  `alpaca_api_key`/`alpaca_secret_key`-shaped field directly. What round-1
+  correctly flagged as contradictory is fixed: the live-capital interlock
+  (`evaluate_live_capital_interlock`), which is a **mandatory** preflight
+  step in both dry-run and apply mode (see "Mandatory Live-Capital Interlock
+  Preflight"), inspects environment **shape** (profile string, endpoint
+  classification, live-enable flags, live-host markers). Round-2 corrects a
+  further inaccuracy: that mandatory call transitively constructs
+  `AlpacaPaperConfig.from_env`, which **does** read the raw
+  `ALPACA_API_KEY`/`ALPACA_SECRET_KEY`-family values from the environment
+  into `repr=False` fields, and calls `require_paper_profile`, which
+  validates those fields' presence/shape. This is truthfully described as:
+  the interlock's own dependency closure loads repr-hidden credential
+  strings into memory, but neither the interlock nor the seam ever logs,
+  prints, serializes, discloses, forwards, or uses those values for a
+  Tiingo or broker network call — the seam's own code path never reaches
+  into `AlpacaPaperConfig`'s fields directly, only through the interlock's
+  already-reviewed, secret-nondisclosing verdict object. Because the seam
+  runs in-process (Execution Architecture), there is no child
+  process/child-environment to isolate; the applicable defence-in-depth
+  guarantee is a **static import-closure** test proving the seam module's
+  transitive imports contain no broker SDK/client/order/position-mutation
+  surface *outside* the interlock's own required safety closure (see
+  "Read-Only Market-Data Is Not Live Trading").
 - The seam performs and exposes no submit/cancel/replace/close/liquidation/
   paper-mutation/capital/live action. Every ledger record fixes
   `broker_access_attempted`, `broker_mutation_performed`,
@@ -204,10 +236,14 @@ contract):
   `EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` planner classification for
   `run_authorized_read_only_market_data_refresh_to_seed_soak`, the two-way
   closure/disjointness/no-false-auto-offline/reverse-reachability tests (see
-  "Planner Classification"), the static import-closure purity test, and the
-  Windows Task Scheduler template update (see "Windows Scheduled Task
-  Update"). This commit depends on commit A's caps and must not land ahead
-  of it.
+  "Planner Classification"), the static import-closure purity test
+  (see "Read-Only Market-Data Is Not Live Trading"), the exclusive
+  ledger-lock mechanism and reservation/completion ledger writer (see
+  "Concurrency And Ledger Locking"), the single-cached-read credential
+  provider object (see "Freeze One Credential Source"), the new
+  `scripts/run_spy_read_only_network_executor.ps1` wrapper, and the Windows
+  Task Scheduler template update (see "Windows Scheduled Task Update"). This
+  commit depends on commit A's caps and must not land ahead of it.
 
 Both commits land in the same PR and are reviewed together against this
 contract in one pass. `spy_offline_daily_cycle` consumption of the refreshed
@@ -243,13 +279,20 @@ choice:
   client, order, position, or mutation-surface module — the same
   import-purity discipline `test_dependency_direction.py` already applies to
   the crypto-readiness-replay launcher, applied here as a new test.
-- **Dry-run vs. apply.** Without `--apply`, the module performs **zero**
-  credential lookup, **zero** HTTP request, and **zero** runtime artifact
-  write beyond one dry-run ledger record; it may still evaluate and report
-  the sanitized live-capital interlock verdict and the session/attempt-budget
-  state, because both are pure environment/local-file reads with no
-  credential or network involvement. With `--apply`, it additionally
-  performs the credential-presence check and, if every preflight passes, the
+- **Dry-run vs. apply (round-2 corrects finding #5).** Without `--apply`,
+  the module is **fully side-effect-free**: **zero** credential lookup,
+  **zero** HTTP request, **zero** ledger lock acquisition, and **zero**
+  ledger or runtime artifact write of any kind (no `"pending"`,
+  `"completed"`, or `"refused"` ledger record is ever written in dry-run
+  mode). It still evaluates and reports the sanitized live-capital interlock
+  verdict, purely in-memory, as an informational `apply_eligible` signal
+  (round-2 corrects finding #6: a failing verdict never hard-refuses a dry
+  run — see "Mandatory Live-Capital Interlock Preflight"), and it reads the
+  adapter's existing soak report (not the seam's own ledger) to determine
+  the session-already-qualified short-circuit; both are read-only and
+  involve no credential or network access. With `--apply`, it additionally
+  acquires the ledger lock, performs the ledger validation/attempt-budget
+  check, the credential-presence check, and, if every preflight passes, the
   single authorized HTTP GET.
 - **Deterministic IDs, not caller-supplied ones.** The module accepts no
   `--run-id`, `--session-id`, or path override. It derives, deterministically
@@ -257,32 +300,44 @@ choice:
   - `session_id`: the resolved NYSE session date (`YYYY-MM-DD`) that
     `--as-of` maps to under the 20:10 ET provider-publication cutoff (see
     "Deterministic Expected-Session Semantics").
-  - `attempt_number`: one plus the count of prior ledger records for that
-    exact `session_id` whose `network_access_attempted` field is `true`
-    (i.e., prior records where the seam actually reached the point of
-    issuing, or attempting to issue, the HTTP GET). Refusals and
-    short-circuits do not increment it.
-  - `run_id`: the fixed string `f"network-{session_id}-{attempt_number}"`.
+  - `attempt_number`: one plus the count of prior unique `reservation_id`s
+    recorded for that exact `session_id` with `ledger_status` in
+    `{"pending", "completed"}` (round-2 correction — previously counted only
+    `network_access_attempted=true` records, undercounting a crash-pending
+    attempt; see "Concurrency And Ledger Locking"). Refusals
+    (`ledger_status="refused"`) and short-circuits do not increment it. This
+    count is read only on the apply path, under the ledger lock; dry-run
+    never computes a ledger-derived `attempt_number`.
+  - `run_id`: the fixed string `f"network-{session_id}-{attempt_number}"`,
+    also used as `reservation_id`.
   No caller input can substitute any of these three values.
 - **One canonical, append-only ledger path**, frozen exactly:
-  `runs/autonomy_network_executor/ledger.jsonl`. Unlike the offline
+  `runs/autonomy_network_executor/ledger.jsonl`, with one canonical sidecar
+  lock file, frozen exactly: `runs/autonomy_network_executor/ledger.lock`
+  (new in round-2, see "Concurrency And Ledger Locking"). Unlike the offline
   executor's single-record-replace ledger, this ledger is **append-only**
   (new JSONL lines are added, never truncated or rewritten), because the
   session attempt-budget check requires reading the full prior history for a
-  `session_id` across invocations. If the file exists but contains any
-  malformed line, or a required read fails for a reason other than the file
-  cleanly not existing, the seam refuses closed with
-  `ledger_state_corrupt` rather than assuming zero prior attempts — a
-  missing file is not itself corruption (it is the legitimate state before
-  the first-ever invocation), but an unreadable or partially-parseable file
-  is treated as an untrustworthy attempt count and must never be silently
-  treated as empty.
+  `session_id` across invocations. Every line is validated against the
+  ledger's own fixed schema (see "Sanitized Receipt And Provenance") as it
+  is read; if the file exists but contains any malformed line, any line
+  failing schema validation, or a required read fails for a reason other
+  than the file cleanly not existing, the seam refuses closed with
+  `ledger_corrupt` (renamed from round-1's `ledger_state_corrupt` for
+  consistency with the sibling `ledger_lock_unavailable` category) rather
+  than assuming zero prior attempts — a missing file is not itself
+  corruption (it is the legitimate state before the first-ever invocation),
+  but an unreadable, partially-parseable, or schema-invalid file is treated
+  as an untrustworthy attempt count and must never be silently treated as
+  empty.
 - Root/cwd validation for this module mirrors
   `autonomy_next_plan.py`'s/`autonomy_offline_executor.py`'s canonical-root
   binding: the module refuses (`noncanonical_target`) unless the resolved
-  executing root, cwd, and every one of the seven canonical paths (the six
-  adapter destination paths below plus the ledger path above) resolve
-  exactly as fixed here, with no symlink escape.
+  executing root, cwd, and every one of the eight canonical paths (the six
+  adapter destination paths below, the ledger path, and the ledger lock path
+  above) resolve exactly as fixed here, with no symlink escape. (Round-2
+  corrects this from "seven" to "eight" canonical paths to include the new
+  lock file.)
 
 ## Fixed Internal Adapter Configuration
 
@@ -314,10 +369,14 @@ before the call; a mismatch anywhere is a refusal
 | `expected_latest_bar_date` | the deterministic `session_id` resolved from `--as-of` (see "Deterministic Expected-Session Semantics") |
 | `run_id` | the seam's own deterministic `run_id` (`network-<session_id>-<attempt_number>`), passed through so the adapter's own manifest records the same identifier as the seam's ledger |
 
-`token_lookup` is `lambda name: load_tiingo_api_key_from_dotenv(<resolved
-canonical .env path>, token_env_var=name)` (see "Freeze One Credential
-Source"). `http_get` is the adapter's existing internal Tiingo HTTP GET
-function, passed through unchanged — the seam does not reimplement it.
+`token_lookup` is `lambda name: <cached value from the seam's single
+credential-provider object>` — the provider object calls
+`load_tiingo_api_key_from_dotenv(<resolved canonical .env path>,
+token_env_var=name)` exactly once per apply invocation and serves both the
+presence check and this `token_lookup` from that one cached result (see
+"Freeze One Credential Source"; corrects round-2 finding #2). `http_get` is
+the adapter's existing internal Tiingo HTTP GET function, passed through
+unchanged — the seam does not reimplement it.
 
 The six destination paths above are unchanged from the original freeze; only
 their framing changed, from PowerShell/CLI argv to in-process config fields,
@@ -382,7 +441,7 @@ recover once the provider actually publishes.
 | Response byte size | **no — commit A gap** | fixed at exactly **8,388,608 bytes (8 MiB)**; `response.read()` must be capped to this ceiling and fail closed with sanitized category `provider_response_too_large`, not an unbounded read |
 | Accepted provider row count | **no — commit A gap** | fixed at exactly **20,000 rows** (comfortably above a full 1993-to-date SPY daily history, on the order of 8,000 rows); a parsed response exceeding this must be rejected with sanitized category `provider_row_count_exceeded` |
 | Revision lookback window | yes (`RevisionLookbackDays`, 1-31, default 10) | unchanged, adapter-enforced, fixed at **10 days** by the seam's config |
-| Authorized GET attempts per resolved NYSE session | new, seam-level, corrects round-1 finding #3 | at most **4** authorized attempts (one initial plus three retries) per `session_id`, enforced fail-closed by the seam's own canonical append-only ledger (`runs/autonomy_network_executor/ledger.jsonl`) **before** credential access or HTTP on every apply invocation. This exactly matches the existing Windows Task Scheduler template's `RestartOnFailure` policy (`Interval=PT15M`, `Count=3` — one initial run plus three restarts). The seam itself performs **no internal retry, loop, or sleep**; the four-attempt budget is spent across *separate invocations* (typically the scheduler's own restarts), never within one process's execution. |
+| Authorized GET attempts per resolved NYSE session | new, seam-level, corrects round-1 finding #3 | at most **4** authorized attempts (one initial plus three retries) per `session_id`, counted as unique reservation ids (pending or completed) and enforced fail-closed, under an exclusive ledger lock (round-2, see "Concurrency And Ledger Locking"), by the seam's own canonical append-only ledger (`runs/autonomy_network_executor/ledger.jsonl`) **before** credential access or HTTP on every apply invocation. This exactly matches the existing Windows Task Scheduler template's `RestartOnFailure` policy (`Interval=PT15M`, `Count=3` — one initial run plus three restarts). The seam itself performs **no internal retry, loop, or sleep**; the four-attempt budget is spent across *separate invocations* (typically the scheduler's own restarts), never within one process's execution, and the lock guarantees those separate invocations cannot race each other. |
 
 Commit A must add the two gap rows to `etf_sma_adjusted_spy_data_refresh.py`
 as part of the single implementation milestone this contract authorizes on
@@ -393,25 +452,96 @@ required.
 
 On every `--apply` invocation, after resolving `session_id` (and after the
 session-already-qualified short-circuit — see "Retry And Idempotency
-Behavior" — has been checked and found not to apply), the seam reads
-`runs/autonomy_network_executor/ledger.jsonl` and counts prior records for
-that exact `session_id` with `network_access_attempted=true`.
+Behavior" — has been checked and found not to apply), the seam acquires the
+ledger lock (see "Concurrency And Ledger Locking") and, while holding it,
+reads `runs/autonomy_network_executor/ledger.jsonl` and counts **unique
+reservation ids** recorded for that exact `session_id`, whether `pending` or
+`completed` (round-2 correction, finding #4 — previously counted only
+records with `network_access_attempted=true`, which undercounted a
+crash-interrupted attempt as if it had never happened).
 
 - If that count is `>= 4`, the seam refuses closed with
-  `session_attempt_budget_exhausted`, writes one ledger record with
-  `network_access_attempted=false`, and exits `2`. It performs no credential
-  lookup and no HTTP call.
-- If that count is `< 4`, the seam proceeds to the live-capital interlock and
-  (if that passes) the credential-presence check and the single HTTP GET,
-  recording `attempt_number = count + 1` and `network_access_attempted=true`
-  in the resulting ledger record regardless of whether the HTTP GET itself
-  ultimately succeeds — reaching the network is what the budget counts, not
-  provider success.
+  `session_attempt_budget_exhausted`, releases the lock, and exits `2`. It
+  performs no credential lookup and no HTTP call, and writes no reservation
+  (it may write one sanitized non-reservation refusal event, matching the
+  interlock-refusal pattern in "Mandatory Live-Capital Interlock Preflight").
+- If that count is `< 4`, the seam proceeds, still holding the lock, to the
+  live-capital interlock and (if that passes) the credential-presence check,
+  then writes the reservation record (`attempt_number = count + 1`,
+  `reservation_id = run_id`, `ledger_status = "pending"`), flushes and
+  `fsync`s it, and only then performs the single HTTP GET. On completion
+  (success or a fully audited blocked outcome) it appends a completion
+  record referencing the same `reservation_id` (`ledger_status =
+  "completed"`), flushes and `fsync`s it, and releases the lock in a
+  `finally` block. `network_access_attempted=true` is recorded in the
+  reservation the moment it is written, regardless of whether the HTTP GET
+  itself ultimately succeeds — reaching the network is what the budget
+  counts, not provider success.
+- **Crash-pending reservations consume budget, fail-closed.** If the process
+  is killed after the reservation record is written (and fsynced) but before
+  the completion record is written, that reservation's `ledger_status`
+  remains `"pending"` on disk. A later invocation reading the ledger counts
+  it toward the same session's four-attempt budget exactly as it would count
+  a completed one; the budget is never silently refunded by a crash. A later
+  read of that reservation always reports the same `"pending"` state
+  deterministically until (if ever) a subsequent invocation's completion
+  record is appended for that same `reservation_id`.
 - Once a session's soak evidence shows `latest_session_qualified=true`, later
-  invocations for that same session no-op **before** the attempt-budget read
-  and before credential access, via the session-already-qualified
-  short-circuit (unchanged mechanism from the original freeze, now
-  explicitly ordered ahead of the attempt-budget check).
+  invocations for that same session no-op **before** the attempt-budget read,
+  before lock acquisition, and before credential access, via the
+  session-already-qualified short-circuit (unchanged mechanism from the
+  original freeze, now explicitly ordered ahead of the attempt-budget
+  check).
+
+## Concurrency And Ledger Locking
+
+New in round-2, correcting finding #4 (P1): the four-attempt budget above is
+enforced under a mandatory exclusive lock, so two invocations (a manual run
+racing a scheduler restart, or two overlapping scheduler retries) can never
+both observe the same prior count and both proceed.
+
+- **Lock file**: one canonical sidecar path, frozen exactly:
+  `runs/autonomy_network_executor/ledger.lock` (see "Execution Architecture"
+  — this is now one of the eight canonical paths the module validates before
+  any other step).
+- **Mechanism**: an exclusive OS-level advisory lock obtained through a
+  repository stdlib wrapper — `msvcrt.locking` on Windows, `fcntl.flock` on
+  POSIX — never a third-party locking library and never a purely
+  application-level "check a marker file's existence" convention, which
+  would not be atomic across processes.
+- **Timeout**: a fixed 5-second wait for the lock. If it cannot be acquired
+  within 5 seconds, the seam refuses closed with `ledger_lock_unavailable`,
+  performs no ledger read, no credential lookup, and no HTTP call, and exits
+  `2`.
+- **Scope**: the lock is acquired once the session-already-qualified
+  short-circuit has been checked and found not to apply, and is held
+  continuously across: ledger validation and the attempt-budget read, the
+  live-capital interlock, the credential-provider load (see "Freeze One
+  Credential Source"), the reservation append (flush + `fsync`), the single
+  HTTP GET, and the completion append (flush + `fsync`). It is released in a
+  `finally` block — on success, on any refusal reached while holding it, and
+  on an unhandled exception — so a crash never leaves the OS-level lock held
+  past process exit (the OS releases the underlying file lock when the
+  process dies; only the ledger's own `"pending"` reservation state persists
+  across the crash, which is the fail-closed budget behavior described
+  above, not a stuck lock).
+- **Effect**: a second, genuinely concurrent invocation for the same or a
+  different session blocks for up to 5 seconds and then either proceeds
+  (once the first invocation releases the lock) or refuses closed with
+  `ledger_lock_unavailable` — it can never interleave a read and a write
+  with the first invocation. Direct/manual invocations and Task
+  Scheduler-triggered invocations are both bound by the same lock file, so a
+  manual retry cannot race a scheduled retry, and two scheduled retries
+  (e.g., a slow first attempt still running when a second `RestartOnFailure`
+  trigger fires) cannot race each other.
+- **Ledger validation**: every line read from `ledger.jsonl` is checked
+  against the ledger's own fixed schema (see "Sanitized Receipt And
+  Provenance"). Any malformed line, any line failing schema validation, or
+  any read failure other than the file cleanly not existing yet, refuses
+  closed with `ledger_corrupt` rather than silently treating the ledger as
+  empty (renamed in round-2 from `ledger_state_corrupt` for naming
+  consistency with `ledger_lock_unavailable`; no behavior change from
+  round-1's intent).
 
 ## Retry And Idempotency Behavior
 
@@ -431,9 +561,10 @@ that exact `session_id` with `network_access_attempted=true`.
 - The seam's own narrower idempotency check, purely to bound *network*
   usage: if the soak report already shows `latest_session_qualified=true`
   for the session `--as-of` resolves to, the seam short-circuits to a no-op
-  (`skipped_session_already_qualified`) **before** the attempt-budget check
-  and **before** the live-capital interlock or credential check, performing
-  zero HTTP requests. This is a network budget guard, not a correctness
+  (`skipped_session_already_qualified`) **before** ledger lock acquisition,
+  the attempt-budget check, the live-capital interlock, or the credential
+  check, performing zero HTTP requests and zero ledger writes, in both
+  dry-run and apply mode. This is a network budget guard, not a correctness
   requirement — the soak layer would already record a same-session retry
   safely even without it.
 
@@ -443,36 +574,61 @@ Corrects round-1 finding #1 (P0). The seam calls
 `evaluate_live_capital_interlock(os.environ)`
 (`algotrader.execution.live_capital_interlock`) as a **mandatory** preflight
 step, in both dry-run and apply modes, before any credential access or HTTP
-call. This is a pure environment-shape safety check — it reads `APP_PROFILE`,
+call. This is an environment-shape safety check — it reads `APP_PROFILE`,
 the configured Alpaca base URL, and a fixed set of live-enable/live-host
-environment variable *names*, and returns a sanitized verdict; it never reads
-a credential secret and performs no order, mutation, or network action of its
-own. It is not a forbidden broker surface, and the original contract's
-framing that implied Alpaca/broker considerations were entirely out of scope
-here was the defect; that framing is removed.
+environment variable *names*, and returns a sanitized verdict; it performs no
+order, mutation, or network action of its own. It is not a forbidden broker
+surface, and the original contract's framing that implied Alpaca/broker
+considerations were entirely out of scope here was the defect; that framing
+is removed.
+
+**Round-2 correction (finding #1, P0):** the claim that this check "never
+reads a credential secret" was itself false and is now removed.
+`evaluate_live_capital_interlock` constructs `AlpacaPaperConfig.from_env`,
+which reads the raw `ALPACA_API_KEY`/`ALPACA_API_KEY_ID`/`APCA_API_KEY_ID`
+and `ALPACA_SECRET_KEY`/`ALPACA_API_SECRET_KEY`/`APCA_API_SECRET_KEY`-family
+values into `alpaca_api_key`/`alpaca_secret_key` dataclass fields
+(`field(repr=False)` — excluded from `repr()`/`str()`, but genuinely
+populated and held in memory for the duration of the call), and calls
+`require_paper_profile`, which validates those fields' presence/shape. The
+truthful, corrected claim is narrower and still true: the interlock and its
+dependency closure never **log, print, serialize, return, disclose, forward,
+or use** an Alpaca credential value for any Tiingo or broker network
+operation — `LiveCapitalInterlockVerdict.to_dict()` and every field the seam
+persists contain only booleans and blocker/variable **names**, never a
+credential or URL value — and the seam's own code never directly accesses an
+`AlpacaPaperConfig` field. See "Read-Only Market-Data Is Not Live Trading"
+for the corresponding import-purity test correction.
 
 - The seam requires `verdict.paper_boundary_ok is True`: `APP_PROFILE` equal
   to the paper profile, the resolved Alpaca base URL classified as a paper
   endpoint, and no detected live-enable flag or live-host marker.
-- If `paper_boundary_ok` is `False`, the seam refuses
-  (`live_capital_interlock_blocked`) in both dry-run and apply mode, and
-  records the verdict's own sanitized `to_dict()` output — booleans and
-  blocker/variable **names** only, exactly as
-  `LiveCapitalInterlockVerdict.to_dict()` already produces, never a
-  credential or URL value — in the ledger record.
-- On a passing verdict, dry-run mode may report the sanitized verdict as
-  informational "interlock readiness" but still performs no credential
-  lookup. Apply mode proceeds to the credential-presence check only after
-  the verdict passes.
+- **Apply mode**: if `paper_boundary_ok` is `False`, the seam hard-refuses
+  (`live_capital_interlock_blocked`), performs no credential lookup and no
+  HTTP call, exits `2` (see "Exit Codes"), and — because this refusal occurs
+  before any ledger reservation is written (see "Concurrency And Ledger
+  Locking") — may write one sanitized, non-reservation refusal ledger event
+  recording the verdict's own sanitized `to_dict()` output (booleans and
+  blocker/variable names only, never a credential or URL value); that event
+  does not consume session attempt budget.
+- **Dry-run mode (round-2 correction, finding #6, P2):** the interlock is
+  always evaluated for sanitized informational readiness, but a failing or
+  unset `paper_boundary_ok` verdict **does not hard-refuse a dry run**. The
+  dry-run output sets `apply_eligible=false` and includes the sanitized
+  verdict so an operator can see why an eventual `--apply` would be refused,
+  but the dry-run invocation itself still completes with exit `0` or `1` per
+  "Exit Codes," never `2` on interlock grounds alone. Only apply mode
+  hard-refuses.
 - This check subsumes and replaces the original contract's narrower
   `APP_PROFILE=live present -> refuse` bullet, which is now a strict subset
   of what `paper_boundary_ok` already requires.
 
 ## Freeze One Credential Source
 
-Corrects round-1 finding #2 (P1). Exactly one credential source is frozen:
-the canonical repository-root `.env` file, read through the adapter's
-existing, unchanged `load_tiingo_api_key_from_dotenv` function.
+Corrects round-1 finding #2 (P1) and round-2 finding #2 (P1). Exactly one
+credential source is frozen, and it is read from that source **exactly once
+per apply invocation**: the canonical repository-root `.env` file, via the
+adapter's existing, unchanged `load_tiingo_api_key_from_dotenv` function.
 
 - The canonical `.env` path is resolved once, from the same validated
   canonical repository root used for every other path check in this
@@ -481,26 +637,50 @@ existing, unchanged `load_tiingo_api_key_from_dotenv` function.
   escape; a mismatch is a refusal (`credential_path_noncanonical`), distinct
   from the six adapter-destination-path `noncanonical_target` refusal, so a
   reviewer can tell the two apart in a ledger record.
-- **Presence** is determined by calling
+- **Round-2 correction: a single frozen credential-provider object, not two
+  calls.** After every noncredential preflight step has passed (root/path,
+  `--as-of`/session, already-qualified short-circuit, attempt-budget check —
+  see "Fail-Closed Refusal Conditions") and while the seam still holds the
+  ledger lock (see "Concurrency And Ledger Locking"), the seam constructs
+  exactly one private, module-internal credential-provider object that calls
   `load_tiingo_api_key_from_dotenv(<resolved canonical .env path>,
-  token_env_var="TIINGO_API_KEY")` on the apply path only (never on dry-run,
-  per "Execution Architecture") and checking whether the result is `None`.
-  If it is `None` (file absent, or present without a `TIINGO_API_KEY` entry),
-  the seam refuses (`token_not_available`) and records only that boolean —
-  never the file's contents or any other variable it might contain.
+  token_env_var="TIINGO_API_KEY")` **exactly once**. That single call's
+  result is cached inside the provider object, which:
+  - never appears in a `repr()`, log line, ledger record, argv, stdout,
+    stderr, artifact, or handoff document;
+  - exposes to the rest of the seam (including whatever emits the executor's
+    own audit/report output) only a derived `available: bool` — `True` if
+    the cached value is not `None`, `False` otherwise — never the cached
+    string itself;
+  - supplies `token_lookup=lambda name: <cached value>` to the adapter's
+    `run_spy_adjusted_data_refresh` call (see "Fixed Internal Adapter
+    Configuration"), returning the already-cached value without calling
+    `load_tiingo_api_key_from_dotenv` again.
+  This means the executor process itself never receives or holds the token
+  as a plain string outside that one provider object's private field; it
+  only ever observes the `available` boolean.
+- **Presence** is this cached `available` boolean. If it is `False` (file
+  absent, or present without a `TIINGO_API_KEY` entry), the seam refuses
+  (`token_not_available`), performs no HTTP call, and records only the
+  boolean — never the file's contents or any other variable it might
+  contain. This check, and the one dotenv read backing it, occur only on the
+  apply path (never on dry-run, per "Execution Architecture" and the
+  fully side-effect-free dry-run contract in "Non-Negotiable Safety
+  Contract").
 - **Process-environment `TIINGO_API_KEY` values are ignored by this command
   entirely.** The seam never reads `os.environ["TIINGO_API_KEY"]` for any
   purpose, preflight or otherwise. This removes the process-environment
   presence check round-1 flagged as contradicting the dotenv-sourced fetch.
-- On a successful apply, the adapter reads the credential value exactly once,
-  after every other preflight (root/path/action/interlock/attempt-cap) has
-  passed, via the same `load_tiingo_api_key_from_dotenv` call passed through
-  as `token_lookup`, and passes it only to the adapter's existing exact
-  Tiingo `Authorization: Token <value>` header boundary (`_tiingo_http_get`'s
-  existing header-scope validation). The seam's own ledger, argv, stdout,
-  stderr, artifacts, and any handoff document receive only the boolean
-  presence/outcome, never the raw value — unchanged from the original
-  freeze, now grounded in one unambiguous source.
+- On a successful apply, the adapter obtains the credential value from the
+  provider object's cached `token_lookup`, after every other preflight
+  (root/path/action/interlock/attempt-cap/credential-presence) has passed,
+  and passes it only to the adapter's existing exact Tiingo `Authorization:
+  Token <value>` header boundary (`_tiingo_http_get`'s existing header-scope
+  validation). The seam's own ledger, argv, stdout, stderr, artifacts, and
+  any handoff document receive only the boolean presence/outcome, never the
+  raw value. A targeted test must assert `load_tiingo_api_key_from_dotenv`
+  (or the file I/O it performs) is invoked exactly once per apply
+  invocation, and that no seam-emitted output contains the token value.
 
 ## Sanitized Receipt And Provenance
 
@@ -529,6 +709,17 @@ them to implementation judgment. Each record contains exactly:
 - `action_token`: fixed constant
   `"run_authorized_read_only_market_data_refresh_to_seed_soak"`.
 - `run_id`, `session_id`, `attempt_number` (see "Execution Architecture").
+- `reservation_id`: fixed equal to `run_id` (round-2 addition, see
+  "Concurrency And Ledger Locking"); the join key between a reservation
+  record and its later completion record for the same attempt.
+- `ledger_status`: one of `"pending"` (written at reservation time, before
+  the HTTP call), `"completed"` (written after the HTTP call resolves,
+  referencing the same `reservation_id`), or `"refused"` (a non-reservation
+  event that does not consume attempt budget — lock timeout, ledger
+  corruption, interlock block, credential absence, or attempt-cap
+  exhaustion). Round-2 addition; the attempt-budget count in "Session
+  Attempt Budget" counts unique `reservation_id`s with `ledger_status` in
+  `{"pending", "completed"}`.
 - `as_of`: the caller-supplied `--as-of` echoed back verbatim.
 - `apply`: boolean, whether `--apply` was passed.
 - `network_access_attempted`: boolean, truthful per "Non-Negotiable Safety
@@ -543,7 +734,7 @@ them to implementation judgment. Each record contains exactly:
   invocation that reached the credential check; never a value).
 - `refusal_category`: one of the named sanitized categories in "Fail-Closed
   Refusal Conditions", or `null` on success.
-- `exit_code`: integer.
+- `exit_code`: integer, per "Exit Codes".
 - `adapter_refresh_state`: the adapter's own `refresh_state` string, when the
   adapter was invoked.
 - `broker_access_attempted`, `broker_mutation_performed`,
@@ -552,42 +743,83 @@ them to implementation judgment. Each record contains exactly:
 - `profit_claim`: fixed `"none"`.
 
 Never included: the token value, any raw response body, any row-level
-market-data, or any Alpaca/broker credential value.
+market-data, or any Alpaca/broker credential value. No ledger record of any
+kind (`"pending"`, `"completed"`, or `"refused"`) is ever written on a
+dry-run invocation (see "Non-Negotiable Safety Contract" and "Concurrency
+And Ledger Locking" — dry-run is fully side-effect-free).
 
 ## Fail-Closed Refusal Conditions
 
 Checks run in this fixed order; the first failing check determines the
-refusal category and terminates the invocation before any later check runs:
+refusal category and terminates the invocation before any later check runs.
+Steps marked **(apply only, under lock)** occur after the ledger lock (see
+"Concurrency And Ledger Locking") has been acquired; steps marked **(dry-run
+and apply)** run in both modes without ever acquiring the lock or touching
+the ledger in dry-run mode.
 
 1. Argument parsing: any argument other than `--as-of`, `--apply`, `--format`
    is a parser-level refusal, exit `2`.
-2. Canonical root/cwd/path validation across all seven canonical paths (six
-   adapter destination paths plus the ledger path) → `noncanonical_target`.
+2. Canonical root/cwd/path validation across all eight canonical paths (six
+   adapter destination paths, the ledger path, and the ledger lock path —
+   round-2 corrects this from seven to eight to include the lock file) →
+   `noncanonical_target`, exit `2`.
 3. Canonical `.env` path resolution (see "Freeze One Credential Source") →
-   `credential_path_noncanonical`.
+   `credential_path_noncanonical`, exit `2`.
 4. `--as-of` missing, not UTC, or not resolvable to a valid NYSE session
-   under the 20:10 ET cutoff rule → `as_of_invalid`.
-5. Session-already-qualified short-circuit (not itself an error; exits `0`
-   with `network_access_attempted=false` if the resolved session already
-   qualifies).
-6. Session attempt-budget check (apply only; see "Session Attempt Budget") →
-   `session_attempt_budget_exhausted`.
-7. Live-capital interlock (dry-run and apply; see "Mandatory Live-Capital
-   Interlock Preflight") → `live_capital_interlock_blocked`.
-8. Credential presence via the canonical `.env` (apply only; see "Freeze One
-   Credential Source") → `token_not_available`.
-9. The adapter's own internal preflight and fetch/normalize path, unchanged
-   (`_live_market_data_fetch_preflight_blockers`, response-byte cap, row
-   cap, revision-lookback enforcement, etc.).
+   under the 20:10 ET cutoff rule → `as_of_invalid`, exit `2`.
+5. Session-already-qualified short-circuit (dry-run and apply; reads only
+   the adapter's existing soak report, never the seam's own ledger; not
+   itself an error) → exits `0` with `network_access_attempted=false` and,
+   in apply mode, no ledger write at all (the short-circuit itself writes
+   nothing; only a refused/attempted apply writes a ledger record).
+6. **(apply only)** Ledger lock acquisition (round-2 addition; see
+   "Concurrency And Ledger Locking") → `ledger_lock_unavailable` on a
+   5-second timeout, exit `2`. Not evaluated in dry-run mode.
+7. **(apply only, under lock)** Ledger validation and session attempt-budget
+   check (see "Session Attempt Budget" and "Concurrency And Ledger
+   Locking") → `ledger_corrupt` (malformed/schema-invalid/unreadable
+   ledger) or `session_attempt_budget_exhausted` (valid ledger, budget
+   spent), exit `2` for either. Not evaluated in dry-run mode.
+8. Live-capital interlock (dry-run and apply; see "Mandatory Live-Capital
+   Interlock Preflight") — **apply mode**: a failing verdict is a hard
+   refusal, `live_capital_interlock_blocked`, exit `2`. **Dry-run mode**: a
+   failing verdict never refuses; it only sets the dry-run report's
+   `apply_eligible=false` (round-2 correction, finding #6).
+9. **(apply only, under lock)** Credential presence via the canonical `.env`
+   (see "Freeze One Credential Source") → `token_not_available`, exit `2`.
+   Not evaluated in dry-run mode (dry-run never reads `.env`).
+10. **(apply only, under lock)** The adapter's own internal preflight and
+    fetch/normalize path, unchanged (`_live_market_data_fetch_preflight_blockers`,
+    response-byte cap, row cap, revision-lookback enforcement, etc.). This is
+    the step that actually issues the HTTP GET; its outcome determines exit
+    `0` (accepted) or exit `1` (a fully audited blocked outcome), never exit
+    `2` — by the time this step runs, every pre-HTTP refusal has already
+    passed (see "Exit Codes").
 
-Any refusal from steps 1-8 is exit code `2` (input/precondition refusal,
-consistent with the existing planner/executor/replay exit-code convention),
-records zero network access, and never performs a partial or best-effort
-fetch. `symbol_scope_violation` and an explicit-`--profile`-style override
-are no longer separately reachable refusal paths, because the frozen CLI (see
-"Execution Architecture") has no symbol or profile argument to violate or
-override in the first place; both remain as defence-in-depth internal
-assertions.
+Any refusal from steps 1-4 or 6-9 is exit code `2` (pre-HTTP,
+input/precondition refusal), records zero network access, and never
+performs a partial or best-effort fetch. `symbol_scope_violation` and an
+explicit-`--profile`-style override are no longer separately reachable
+refusal paths, because the frozen CLI (see "Execution Architecture") has no
+symbol or profile argument to violate or override in the first place; both
+remain as defence-in-depth internal assertions.
+
+## Exit Codes
+
+New in round-2, correcting finding #7 (P2) — the full exit-code scheme,
+covering every path through the seam, dry-run and apply:
+
+| Exit code | Meaning | Reached from |
+| --- | --- | --- |
+| `0` | Accepted apply (the HTTP GET was attempted and the adapter's own outcome is `refresh_state="accepted"`, i.e., success), **or** an already-qualified/no-action outcome. | Step 5's session-already-qualified short-circuit (dry-run or apply); or step 10's adapter outcome being a success in apply mode. |
+| `1` | A pending valid dry-run (the invocation is well-formed, the session is not yet qualified, and an eventual `--apply` would attempt the network — regardless of the informational `apply_eligible` value), **or** an apply invocation that made the actual HTTP attempt (step 10) but the adapter's own outcome is a fully audited blocked state (`provider_response_too_large`, `provider_row_count_exceeded`, an `expected_latest_bar_date` mismatch, a malformed/non-JSON response, or any other existing `blocked_*` `refresh_state`). | Dry-run mode, after step 8, when step 5 did not short-circuit; or apply mode, step 10, on any blocked adapter outcome. |
+| `2` | Any pre-HTTP refusal: parser (step 1), root/path (step 2), credential-path (step 3), `--as-of` (step 4), ledger lock (step 6), ledger corruption or attempt-budget exhaustion (step 7), live-capital interlock in apply mode (step 8), or credential absence (step 9). | Steps 1-4 and 6-9, apply or (for steps 1-5, 8) dry-run as applicable. |
+
+Dry-run mode can only ever exit `0` (already-qualified) or `1` (pending) —
+it never reaches step 6 onward, so it can never exit `2` on lock, ledger,
+credential, or attempt-cap grounds, and (per finding #6) never exits `2` on
+interlock grounds either. Only a malformed invocation (steps 1-4) makes
+dry-run exit `2`.
 
 ## Planner Classification: `authorized_network_read_only`
 
@@ -663,14 +895,58 @@ new seam instead of `scripts/refresh_spy_adjusted_data.ps1` directly, so that
 the template's own `RestartOnFailure` retries (`Interval=PT15M`, `Count=3`)
 are subject to the seam's four-attempt-per-session ledger cap rather than
 bypassing it by re-running the adapter script with no shared attempt memory
-between retries. The `<Actions><Exec>` command becomes an invocation of
-`python -m algotrader.execution.autonomy_read_only_network_executor --as-of
-<UTC timestamp resolved at trigger time> --apply --format json`, keeping the
-same `WorkingDirectory` (the canonical repository root) and the same
-`RestartOnFailure`/trigger/idle/battery settings unchanged.
+between retries.
+
+**Round-2 correction (finding #3, P1):** the prior text put
+`<UTC timestamp resolved at trigger time>` directly in the `<Actions><Exec>`
+command — prose, not an executable argument, and no mechanism was frozen to
+resolve it. Commit B instead freezes a new, reviewed wrapper script,
+`scripts/run_spy_read_only_network_executor.ps1`, checked into the
+repository alongside `scripts/refresh_spy_adjusted_data.ps1`, and the
+`<Actions><Exec>` command becomes an invocation of that exact wrapper with
+no placeholder text in any executable field:
+
+- The wrapper validates it is running from the canonical repository root
+  (mirroring the seam's own root/cwd check) and refuses non-zero before
+  invoking Python if it is not.
+- It captures the current UTC instant **exactly once**, as
+  `[DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o',
+  [CultureInfo]::InvariantCulture)`, into a local variable.
+- It then invokes exactly `python -m
+  algotrader.execution.autonomy_read_only_network_executor --as-of
+  <captured value> --apply --format json`, using PowerShell's own
+  call operator against the literal captured string — never
+  `Get-Date`/`datetime.now` called a second time inside the Python process,
+  and never any other timestamp source.
+- It propagates the Python process's exit code as its own exit code
+  unchanged (see "Exit Codes"), and reads and prints no credential value —
+  it passes no credential-bearing argument or environment variable of its
+  own; the Python process resolves the credential itself via the canonical
+  `.env` file per "Freeze One Credential Source".
+- The `<Actions><Exec>` command in
+  `spy_eod_market_data_refresh_scheduled_task.xml` invokes this wrapper by
+  its exact frozen path (e.g. `powershell.exe -File
+  <canonical root>\scripts\run_spy_read_only_network_executor.ps1`),
+  keeping the same `WorkingDirectory` (the canonical repository root) and
+  the same `RestartOnFailure`/trigger/idle/battery settings unchanged.
+- **Clarifying "in-process":** "in-process" (see "Execution Architecture")
+  describes the Python executor module calling the adapter's
+  `run_spy_adjusted_data_refresh` function directly in the same Python
+  process — no adapter/network child process is spawned by the executor
+  itself. It does not mean Task Scheduler is forbidden from launching a
+  host-level process at all: Task Scheduler launching
+  `run_spy_read_only_network_executor.ps1`, which in turn launches the
+  `python -m ...` process, is the normal, permitted way an OS scheduler
+  starts any command; the "no child process" guarantee is scoped to what
+  the executor module itself spawns once running, which remains zero.
+
 `scripts/refresh_spy_adjusted_data.ps1` remains in the repository, unchanged,
 as a manual/diagnostic entry point an operator may still invoke by hand; it
 is simply no longer the unattended scheduled path once commit B lands.
+`scripts/run_spy_read_only_network_executor.ps1` is a new, minimal host
+wrapper — it contains no fetch/normalize/credential logic of its own, only
+canonical-root validation, one timestamp capture, and the Python
+invocation.
 
 ## Naming: `live_market_data_fetch` Is Not A Live-Trading Flag
 
@@ -713,28 +989,77 @@ truthfully rather than by silent behavior change:
 
 Restated because it is the single most important boundary this contract
 protects: **the read-only network seam this contract defines may never
-load, import, or invoke any broker/order/position-mutation surface.** It
-has no path to `alpaca_sdk_client`, `AlpacaPaperConfig`,
-`require_paper_profile`, `require_live_capital_interlock`, or any
-submit/cancel/replace/close/liquidate function, directly or transitively. It
-*does* import `evaluate_live_capital_interlock` — a pure, read-only safety
-check that itself imports no broker SDK and performs no order or mutation —
-which is a permitted, indeed mandatory, exception to the "no broker-adjacent
-import" rule precisely because it is the safety gate, not a capability.
+directly load, import, or invoke any broker/order/position-mutation
+surface, and its own code may never directly touch a broker credential
+field.** It has no path — outside the one named safety exception below — to
+`alpaca_sdk_client`, `require_live_capital_interlock`, or any
+submit/cancel/replace/close/liquidate function, directly or transitively.
 
-A new import-purity test for
-`autonomy_read_only_network_executor.py`, modeled on
-`test_dependency_direction.py`'s existing crypto-readiness-replay launcher
-scan, must prove this by static import-graph inspection, not by inspecting
-default-argument behavior (the same distinction V5.45's audit drew when it
-rejected `crypto-readiness-verify` for the offline executor on import-surface
-grounds, not runtime-behavior grounds). The test must assert the module's
-transitive closure contains none of: `alpaca`, `alpaca_trade_api`, any
-submit/cancel/replace/close/liquidate-named callable, `AlpacaPaperConfig`,
-`require_paper_profile`, or `require_live_capital_interlock` — while
-explicitly allowing `evaluate_live_capital_interlock` and the adapter module
-itself. Live capital remains operator-gated until burn-in completes; nothing
-in this contract touches that gate.
+**Round-2 correction (finding #1, P0):** the prior wording of this section
+banned `AlpacaPaperConfig` and `require_paper_profile` outright from the
+seam's transitive import closure. That is unsatisfiable, because the
+*mandatory* preflight step this same contract requires —
+`evaluate_live_capital_interlock` (see "Mandatory Live-Capital Interlock
+Preflight") — itself imports and calls both: it constructs
+`AlpacaPaperConfig.from_env(source)` and calls `require_paper_profile`
+internally as its own defence-in-depth check. A test that forbade those two
+names anywhere in the transitive closure would fail against the seam's own
+required dependency, not against a defect. The rule is corrected to be about
+**reachability**, not raw name-presence:
+
+- The seam module's own code (`autonomy_read_only_network_executor.py`)
+  never imports `AlpacaPaperConfig` or `require_paper_profile` **directly**,
+  never constructs an `AlpacaPaperConfig`, and never reads an
+  `alpaca_api_key`/`alpaca_secret_key`-shaped field from any object it
+  holds. Its only broker-adjacent import is `evaluate_live_capital_interlock`
+  itself.
+- `AlpacaPaperConfig`, `require_paper_profile`, and the `algotrader.config`
+  validation helpers they depend on (e.g. `ConfigValidationError`,
+  `_clean_optional`) are permitted **only** as part of
+  `evaluate_live_capital_interlock`'s own transitive closure — i.e., reached
+  through `algotrader.execution.live_capital_interlock` and no other path.
+  This is the seam's one named, mandatory safety exception, not a general
+  license to import broker configuration.
+- `require_live_capital_interlock` (the *stricter*, order-adjacent sibling
+  of `evaluate_live_capital_interlock` used by actual paper-broker mutation
+  paths) remains fully forbidden, directly or transitively, exactly as
+  before — the seam uses only the evaluating, non-raising verdict function,
+  never the requiring/raising one.
+- `alpaca`, `alpaca_trade_api`, and any submit/cancel/replace/close/
+  liquidate-named callable remain fully forbidden, directly or transitively,
+  through every path, including through `live_capital_interlock` — that
+  module itself imports no broker SDK either, so this exclusion is not
+  weakened by permitting the safety closure.
+
+A new import-purity test for `autonomy_read_only_network_executor.py`,
+modeled on `test_dependency_direction.py`'s existing crypto-readiness-replay
+launcher scan, must prove this by static import-graph inspection, not by
+inspecting default-argument behavior (the same distinction V5.45's audit
+drew when it rejected `crypto-readiness-verify` for the offline executor on
+import-surface grounds, not runtime-behavior grounds). The test must assert:
+
+1. The module's transitive closure contains none of: `alpaca`,
+   `alpaca_trade_api`, any submit/cancel/replace/close/liquidate-named
+   callable, or `require_live_capital_interlock` — with **no exception**,
+   including through `live_capital_interlock`.
+2. `AlpacaPaperConfig` and `require_paper_profile` appear in the transitive
+   closure **only** as members of `algotrader.execution.live_capital_interlock`'s
+   own closure — i.e., the test walks the import graph and asserts that
+   every module path reaching either name passes through
+   `live_capital_interlock`, never a direct import from the seam module
+   itself or from any other module in its closure.
+3. The seam module's own AST/import statements (not its transitive closure)
+   name only `algotrader.execution.etf_sma_adjusted_spy_data_refresh` (the
+   adapter) and `algotrader.execution.live_capital_interlock` (the safety
+   closure) among the internal execution-layer modules — proving the "only
+   two direct imports" claim in "Execution Architecture" by inspection, not
+   assertion.
+
+Live capital remains operator-gated until burn-in completes; nothing in
+this contract touches that gate, and this correction grants the seam no new
+capability — it only makes the test enforce what the contract actually
+requires instead of a rule the contract's own mandatory dependency
+violates.
 
 ## Explicit Non-Goal: `spy_offline_daily_cycle` Consumption
 
@@ -788,9 +1113,10 @@ without altering the eligibility analysis itself.
 
 ## Next Action
 
-Independent **round-2** review of this corrected contract. If round-2
+Independent **round-3** review of this corrected contract. If round-3
 accepts, it authorizes exactly one implementation milestone/PR with the two
 ordered commits defined in "Implementation Milestone Shape" — no second
-contract is required to land them. If round-2 again requests changes, the
-findings must be corrected and recorded here exactly as round-1's were,
-before a further review round.
+contract is required to land them. If round-3 again requests changes, the
+findings must be corrected and recorded here exactly as round-1's and
+round-2's were, before a further review round. No implementation is
+authorized until an independent round accepts this contract.
