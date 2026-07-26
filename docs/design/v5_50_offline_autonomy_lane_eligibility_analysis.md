@@ -2,8 +2,21 @@
 
 ## Status
 
-- Status: **analysis complete. Requested milestone is BLOCKED — not by an
-  operator gate, but because no eligible lane exists.**
+- Status: **analysis complete. No second lane is eligible for
+  `EXECUTION_AUTO_OFFLINE`.** This finding is unchanged and still correct.
+- **Resolved, 2026-07-26**: the operator selected **option 2** below
+  (authorize the read-only market-data intake path). That selection is
+  frozen as `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`.
+  The "Options"/"Next Action" language further down this document
+  describing option 2 as crossing an operator/network *gate* pending a
+  three-way decision is now historical: the decision has been made, and
+  under current `AGENTS.md` the resulting read-only network work is
+  standing-authorized collaborator authority, not a fresh per-milestone
+  operator gate. Do not re-litigate the three-option choice; read V5.51
+  instead. The lane-by-lane input-self-containment analysis below is
+  unaffected by this update and remains the correct reasoning for why no
+  *offline* lane is auto-eligible — V5.51 adds a distinct *network* seam,
+  not a new offline-auto entry.
 - Base commit: `8406aef` (V5.48 promoted, V5.49 closed).
 - Requested work: broaden offline autonomy to a second lane, i.e. bring a
   second lane's next-action under `EXECUTION_AUTO_OFFLINE` so the offline
@@ -127,9 +140,12 @@ therefore not independent: **broadening offline autonomy is gated on the
 market-data/paper track**, not parallel to it. That is the substantive
 correction this analysis produces.
 
-## Options
+## Options (historical — resolved 2026-07-26, see "Status")
 
-Each is a different milestone shape and needs an explicit operator decision.
+These three options were presented as a pending decision at the time this
+analysis was written. The operator has since selected option 2; the text
+below is preserved unedited as the historical record of what was offered
+and why, not as an open choice.
 
 1. **Accept the ceiling and stop here.** Record that offline autonomy is
    complete at one action and that further breadth requires external input.
@@ -139,7 +155,8 @@ Each is a different milestone shape and needs an explicit operator decision.
    without an operator in the loop each cycle, then revisit
    `spy_offline_daily_cycle`. This is the only route that broadens autonomy
    over *existing* lanes. It crosses the network gate and needs its own
-   frozen contract and undivided review.
+   frozen contract and undivided review. — **Selected.** Frozen as
+   `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`.
 3. **Add a new self-contained lane.** Rather than automating an existing
    lane, add one whose producer is genuinely self-contained *and* whose
    output varies with something real — for example an offline
@@ -151,11 +168,16 @@ Each is a different milestone shape and needs an explicit operator decision.
    than trading capability. It also invents new scope and should not be
    started without an explicit decision.
 
-Recommendation: **option 1 or option 3**, depending on whether
-self-observation is worth a milestone right now. Option 2 is the only path
-that advances trading capability, but it is the market-data track under
-another name and should be started deliberately as that, not as an autonomy
-milestone.
+This analysis's original recommendation (option 1 or 3) predates the
+operator's decision and no longer reflects live guidance; it is retained
+below only as part of the historical record of the reasoning offered at
+the time:
+
+> Recommendation: option 1 or option 3, depending on whether
+> self-observation is worth a milestone right now. Option 2 is the only
+> path that advances trading capability, but it is the market-data track
+> under another name and should be started deliberately as that, not as
+> an autonomy milestone.
 
 ## Enforcement
 
@@ -167,7 +189,12 @@ producer/classification/allowlist closure. Any future attempt to add an
 auto-offline action must change those pinned sets deliberately, at which
 point criterion 1 above should be demanded as evidence.
 
-## Next Action
+## Next Action (historical — resolved 2026-07-26)
 
-Operator decision between options 1, 2, and 3. No implementation is
-authorized by this document.
+This section originally asked for an operator decision between options 1,
+2, and 3, and stated that no implementation was authorized by this
+document. Both remain true of *this* document: it still authorizes no
+implementation. The decision itself is no longer open — the operator
+selected option 2, and the next action now lives in
+`docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`
+("Next Action": independent review of that frozen contract).
