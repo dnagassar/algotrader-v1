@@ -111,6 +111,54 @@ _OFFLINE_RUNNABLE_CLASSES = frozenset(
     {EXECUTION_AUTO_OFFLINE, EXECUTION_OFFLINE_OPERATOR_INPUT}
 )
 
+# Plan rollup buckets. Every execution class maps to exactly one of these, and
+# the mapping is checked against the class vocabulary at import time.
+#
+# Round-6 correction (finding F3). The V5.51a repair guarded the fourth
+# recurrence of this defect class with a test that sampled three report
+# fixtures, so a future class used only in a lane state no fixture exercises
+# could still fall out of every bucket. Deriving the buckets from one total
+# mapping — rather than from four independent comprehensions — makes that
+# structurally impossible: a class added without a bucket fails at import,
+# regardless of which lane states any test happens to construct.
+BUCKET_OFFLINE_RUNNABLE = "offline_runnable_lanes"
+BUCKET_AUTHORIZED_NETWORK = "authorized_network_lanes"
+BUCKET_OPERATOR_GATED = "operator_gated_lanes"
+BUCKET_NOOP = "noop_lanes"
+
+PLAN_BUCKET_BY_EXECUTION_CLASS: dict[str, str] = {
+    EXECUTION_AUTO_OFFLINE: BUCKET_OFFLINE_RUNNABLE,
+    EXECUTION_OFFLINE_OPERATOR_INPUT: BUCKET_OFFLINE_RUNNABLE,
+    EXECUTION_AUTHORIZED_NETWORK_READ_ONLY: BUCKET_AUTHORIZED_NETWORK,
+    EXECUTION_OPERATOR_GATED: BUCKET_OPERATOR_GATED,
+    EXECUTION_NOOP: BUCKET_NOOP,
+}
+
+if set(PLAN_BUCKET_BY_EXECUTION_CLASS) != set(_EXECUTION_CLASSES):
+    raise ValidationError(
+        "every execution class must map to exactly one plan bucket."
+    )
+
+
+def _bucket_lanes(actions: list[dict[str, object]]) -> dict[str, list[str]]:
+    """Partition lanes across the plan buckets, total by construction."""
+
+    buckets: dict[str, list[str]] = {
+        BUCKET_OFFLINE_RUNNABLE: [],
+        BUCKET_AUTHORIZED_NETWORK: [],
+        BUCKET_OPERATOR_GATED: [],
+        BUCKET_NOOP: [],
+    }
+    for action in actions:
+        execution_class = str(action["execution_class"])
+        # ActionClass already rejects any class outside the vocabulary, and the
+        # import-time check above proves the vocabulary is fully mapped, so this
+        # lookup cannot miss.
+        buckets[PLAN_BUCKET_BY_EXECUTION_CLASS[execution_class]].append(
+            str(action["lane_id"])
+        )
+    return buckets
+
 # Whole-system plan classifications, ordered here from most to least autonomous
 # progress. ``PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE`` exists because
 # :data:`EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` is neither offline-runnable nor
@@ -570,26 +618,11 @@ def build_autonomy_next_plan_from_report(
     for summary in lane_summaries:
         actions.append(_plan_lane(summary))
 
-    offline_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["offline_runnable"] is True
-    ]
-    authorized_network_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["execution_class"] == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
-    ]
-    gated_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["execution_class"] == EXECUTION_OPERATOR_GATED
-    ]
-    noop_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["execution_class"] == EXECUTION_NOOP
-    ]
+    buckets = _bucket_lanes(actions)
+    offline_lanes = buckets[BUCKET_OFFLINE_RUNNABLE]
+    authorized_network_lanes = buckets[BUCKET_AUTHORIZED_NETWORK]
+    gated_lanes = buckets[BUCKET_OPERATOR_GATED]
+    noop_lanes = buckets[BUCKET_NOOP]
 
     next_offline = _highest_priority_action(
         actions,

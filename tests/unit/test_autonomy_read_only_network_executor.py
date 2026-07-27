@@ -297,6 +297,9 @@ def test_as_of_validation_strict_utc_refusals() -> None:
 
 
 def test_cli_main_handles_missing_or_invalid_args_cleanly(capsys: pytest.CaptureFixture[str]) -> None:
+    # Round-6 finding F2 regression guard lives in
+    # test_ledger_enforces_session_attempt_run_id_relationship below.
+
     # Missing --as-of
     exit1 = main([])
     assert exit1 == 2
@@ -310,6 +313,74 @@ def test_cli_main_handles_missing_or_invalid_args_cleanly(capsys: pytest.Capture
     captured2 = capsys.readouterr()
     data2 = json.loads(captured2.out)
     assert data2["refusal_category"] == "as_of_invalid"
+
+
+def test_ledger_enforces_session_attempt_run_id_relationship(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Round-6 finding F2. A ledger holding one pending reservation numbered 2
+    # previously validated as count 1, so the next attempt regenerated run_id
+    # network-<session>-2 and appended a DUPLICATE reservation before the
+    # network was reached. These shapes must fail closed with zero writes.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+
+    ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    session = "2026-07-24"
+
+    def _pending(attempt: int, run_id: str) -> dict[str, Any]:
+        return executor._build_base_ledger_event(
+            session_id=session,
+            as_of="2026-07-25T00:15:00+00:00",
+            attempt_number=attempt,
+            run_id=run_id,
+            reservation_id=run_id,
+            ledger_status="pending",
+            exit_code=None,
+            adapter_refresh_state=None,
+            network_access_attempted=False,
+            interlock_verdict={"paper_boundary_ok": True},
+            credential_present=True,
+            refusal_category=None,
+        )
+
+    # Case 1: a lone reservation numbered 2 -- the gap that caused the collision.
+    ledger_path.write_text(
+        json.dumps(_pending(2, f"network-{session}-2")) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(ValidationError, match="ledger_corrupt"):
+        executor._read_and_validate_ledger(ledger_path, session)
+
+    # Case 2: run_id inconsistent with its own session_id/attempt_number.
+    ledger_path.write_text(
+        json.dumps(_pending(1, "network-2026-07-23-1")) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(ValidationError, match="ledger_corrupt"):
+        executor._read_and_validate_ledger(ledger_path, session)
+
+    # Contrast: a contiguous 1..2 sequence stays valid and counts correctly.
+    ledger_path.write_text(
+        json.dumps(_pending(1, f"network-{session}-1")) + "\n"
+        + json.dumps(_pending(2, f"network-{session}-2")) + "\n",
+        encoding="utf-8",
+    )
+    count, records = executor._read_and_validate_ledger(ledger_path, session)
+    assert count == 2
+    assert len(records) == 2
+
+    # The apply path refuses the bad ledger with zero additional writes.
+    ledger_path.write_text(
+        json.dumps(_pending(2, f"network-{session}-2")) + "\n", encoding="utf-8"
+    )
+    before = ledger_path.read_text(encoding="utf-8")
+    result = run_autonomy_read_only_network_executor(
+        as_of="2026-07-25T00:15:00Z", apply=True
+    )
+    assert result["exit_code"] == 2
+    assert result["refusal_category"] == "ledger_corrupt"
+    assert ledger_path.read_text(encoding="utf-8") == before
 
 
 def test_seam_freezes_the_read_only_tiingo_refresh_configuration(

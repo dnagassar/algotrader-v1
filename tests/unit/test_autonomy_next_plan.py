@@ -888,9 +888,43 @@ def test_lone_authorized_network_action_is_not_reported_as_all_nominal(
     _assert_safety_booleans_false(payload)
 
 
+def test_every_execution_class_maps_to_exactly_one_plan_bucket() -> None:
+    # Round-6 finding F3: the sampled test below only exercises whatever lane
+    # states its fixtures happen to produce, so a class used solely in an
+    # unrepresented state could still fall out of every bucket. This is the
+    # total invariant -- it reads the class vocabulary itself, so no choice of
+    # fixture can hide a gap.
+    from algotrader.execution.autonomy_next_plan import (
+        _EXECUTION_CLASSES,
+        PLAN_BUCKET_BY_EXECUTION_CLASS,
+        BUCKET_OFFLINE_RUNNABLE,
+        BUCKET_AUTHORIZED_NETWORK,
+        BUCKET_OPERATOR_GATED,
+        BUCKET_NOOP,
+    )
+
+    known_buckets = {
+        BUCKET_OFFLINE_RUNNABLE,
+        BUCKET_AUTHORIZED_NETWORK,
+        BUCKET_OPERATOR_GATED,
+        BUCKET_NOOP,
+    }
+    assert set(PLAN_BUCKET_BY_EXECUTION_CLASS) == set(_EXECUTION_CLASSES), (
+        "every execution class must map to exactly one plan bucket"
+    )
+    for execution_class, bucket in PLAN_BUCKET_BY_EXECUTION_CLASS.items():
+        assert bucket in known_buckets, execution_class
+
+    # The classification table may not name a class outside that vocabulary.
+    for token, classified in AUTONOMY_ACTION_CLASSIFICATION.items():
+        assert classified.execution_class in PLAN_BUCKET_BY_EXECUTION_CLASS, token
+
+
 def test_every_lane_lands_in_exactly_one_plan_bucket(tmp_path: Path) -> None:
     # The four bucket lists must partition the lanes: a lane in none of them is
-    # invisible to every aggregate the operator reads.
+    # invisible to every aggregate the operator reads. Sampled companion to the
+    # total invariant above -- this proves the builder actually uses the
+    # mapping, which the invariant alone cannot show.
     for lane_records in (
         {},
         _all_other_lanes_nominal_or_waiting(),

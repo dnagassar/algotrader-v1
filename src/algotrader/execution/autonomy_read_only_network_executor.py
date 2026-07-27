@@ -250,6 +250,10 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
     pending_reservations: dict[str, dict[str, Any]] = {}
     completed_reservations: set[str] = set()
     session_reservations: set[str] = set()
+    # Round-6 correction (finding F2): the attempt numbers of the reservations
+    # held per session, so the frozen session_id/attempt_number/run_id
+    # relationship is enforced rather than assumed.
+    reservation_attempts: dict[str, set[int]] = {}
 
     try:
         content = ledger_path.read_text(encoding="utf-8")
@@ -300,6 +304,13 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
             ):
                 raise ValidationError("ledger_corrupt")
 
+            # Round-6 correction (finding F2): run_id is not free-form. It is
+            # derived as network-<session_id>-<attempt_number>, and a record
+            # whose three fields disagree cannot be trusted to describe which
+            # attempt it belongs to.
+            if rec_run_id != f"network-{rec_session}-{rec_attempt}":
+                raise ValidationError("ledger_corrupt")
+
             res_id = record["reservation_id"]
             exit_code = record["exit_code"]
             adapter_state = record["adapter_refresh_state"]
@@ -325,6 +336,7 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
                     raise ValidationError("ledger_corrupt")
 
                 pending_reservations[res_id] = record
+                reservation_attempts.setdefault(rec_session, set()).add(rec_attempt)
                 if rec_session == session_id:
                     session_reservations.add(res_id)
 
@@ -391,6 +403,15 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
                         raise ValidationError("ledger_corrupt")
 
             records.append(record)
+
+        # Round-6 correction (finding F2): a session's reservations must number
+        # exactly 1..N with no gaps or repeats. Without this, a ledger holding a
+        # single pending reservation numbered 2 validated as count 1, so the
+        # next attempt regenerated run_id network-<session>-2 and appended a
+        # duplicate reservation before the network was ever reached.
+        for sess, attempts in reservation_attempts.items():
+            if attempts != set(range(1, len(attempts) + 1)):
+                raise ValidationError("ledger_corrupt")
 
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise ValidationError("ledger_corrupt") from exc
