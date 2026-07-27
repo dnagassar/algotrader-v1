@@ -65,9 +65,9 @@ and safe recovery are required before any autonomous-failover claim.
 
 ## Operator action required
 
-`operator_action_required: true` — see **OP-1** below. Raised 2026-07-27: the paper-mutation
-authority recorded in this task's scope conflicts with the operator's later envelope expansion,
-and `crypto_paper_account_cleanup.py` cannot be exercised until that is reconciled.
+`operator_action_required: false` — **OP-1 was raised and resolved on 2026-07-27.** Paper
+account-flattening is authorized **operator-invoked only**; see the OP-1 entry below for the
+decision and the contract it imposes.
 
 ## Exact next action
 
@@ -112,11 +112,39 @@ lives in `.agent_relay/active_task.json` under `routing`.
 
 ### Operator
 
-- **OP-1 (P1, blocks the cleanup module).** This task's scope records
-  `paper_mutations_authorized: false` and `no_submit: true` (2026-07-22). The operator later
-  authorized UNATTENDED-BOUNDED paper order submission (interlock first).
-  `crypto_paper_account_cleanup.py` calls `close_all_positions(cancel_orders=True)`, which
-  **submits** closing orders. Until reconciled, that module is archive-only.
+- **OP-1 — RESOLVED 2026-07-27. Paper account-flattening is authorized OPERATOR-INVOKED ONLY.**
+
+  The conflict was between this task's `no_submit: true` / `paper_mutations_authorized: false`
+  (2026-07-22) and the operator's 2026-07-24 authorization of *bounded* paper submission.
+  `crypto_paper_account_cleanup.py` cancels **all** orders and closes **all** positions, which
+  submits closing orders and is unbounded by design — a different category from "small hard
+  caps on notional/size/frequency", even though it only ever reduces exposure.
+
+  Note the interlock precondition in the 2026-07-24 sequencing was **already satisfied**: the
+  V5.40 live-capital interlock is built and merged, and this module's broker calls pass through
+  it — the trading client cannot be constructed unless `require_live_capital_interlock` passes,
+  and it is pinned `paper=True` with the paper URL override. Reaching for `raw_trading_client`
+  does not bypass it.
+
+  **Decision rationale:** an authorization does not expire when the testing phase does. The
+  realistic failure is not lost money (paper is simulated, and Stage 6 live capital remains a
+  hard gate) but a loop flattening the account mid-run and destroying in-progress burn-in
+  evidence. Operator-invoked keeps the capability and removes agent discretion; it can be
+  widened later once burn-in establishes what normal looks like.
+
+  **Contract this imposes** (canonical form in `.agent_relay/active_task.json` →
+  `routing.cleanup_module_contract`):
+  - MUST be an explicit operator CLI subcommand, dry-run by default, mutating only under an
+    explicit `--apply` switch, keeping the expected-account-id validation and the atomic audit
+    receipt on every exit path.
+  - MUST NOT be added to `AUTONOMY_EXECUTOR_ALLOWLIST`, `AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST`,
+    or any autonomous decision path; no planner/executor action token may resolve to it.
+  - MUST NOT be widened to the live account.
+  - **Blocking defect to fix before first use:** `has_pending_close_order` matches
+    `side == sell` **or** `type == market`, so a market **buy** trips it and suppresses cleanup
+    entirely. Fails closed, so the direction is safe, but it does not mean what it reads as.
+  - Intended use is baseline-setting at experiment start — clearing the legacy SPY paper
+    position recorded in `phase0_audit.legacy_paper_exposure` — not a mid-flight decision.
 
 ### Codex / GPT (independent governance)
 
