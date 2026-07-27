@@ -99,6 +99,17 @@ lives in `.agent_relay/active_task.json` under `routing`.
   authored `3495dd8` against V5.34 and implemented V5.51 through `db2b646`; it may not perform
   the governance review of `8d2cbcc` nor the V5.51 acceptance review.
 
+### Claude Code
+
+- **CL-0 (P0) — DONE.** Pushed `claude/v5.34r-truthful-burnin-repair` (`50cb567`) to origin for
+  preservation. This closes a gap in the first publication of this routing, which covered
+  Antigravity's at-risk WIP but not Claude Code's own competing V5.34 repair — recorded here as
+  `pushed: false` and carrying identical single-disk exposure. Archival only: no merge request,
+  no repair cycle, and it remains superseded in intent by `8d2cbcc` exactly as `3495dd8` is.
+  Both competing V5.34 repairs now have remote copies.
+- **CL-1 (constraint, permanent).** Claude Code may not accept `8d2cbcc` (it authored it) nor
+  V5.51 `824f265` (it authored the round-5 correction).
+
 ### Operator
 
 - **OP-1 (P1, blocks the cleanup module).** This task's scope records
@@ -112,6 +123,8 @@ lives in `.agent_relay/active_task.json` under `routing`.
 - **GPT-1 (P0)** — governance review of `8d2cbcc`/`9a0adfc`. Wait for AG-1's mapping first; it
   names what `8d2cbcc` may have dropped.
 - **GPT-2 (P1)** — acceptance review of `claude/v5.51-readonly-spy-market-data-contract@824f265`
+  (that lane's own handoff named parent `26c4fb3` until 2026-07-27; corrected to the tip, which
+  is the commit carrying the recorded evidence)
   (full pytest 10071 passed / 5 skipped / exit 0; `verify_offline.ps1` PASS; credential
   preflight all-false). Antigravity implemented through `db2b646`, Claude Code authored the
   round-5 correction — neither may accept.
