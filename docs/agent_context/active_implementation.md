@@ -65,7 +65,9 @@ and safe recovery are required before any autonomous-failover claim.
 
 ## Operator action required
 
-`operator_action_required: false`
+`operator_action_required: true` — see **OP-1** below. Raised 2026-07-27: the paper-mutation
+authority recorded in this task's scope conflicts with the operator's later envelope expansion,
+and `crypto_paper_account_cleanup.py` cannot be exercised until that is reconciled.
 
 ## Exact next action
 
@@ -73,3 +75,50 @@ Submit `8d2cbcc` for independent governance review. On `accepted`: merge per rep
 and begin Phase 5 consolidation inventory. On `needs-repair` for the same material weakness:
 truthful consolidation to `9d40560` (no second routine repair cycle). While awaiting review:
 implement the relay lease deterministic test battery as the next capability-coupled work item.
+
+## Routing (published 2026-07-27 by claude-code, orchestrator)
+
+Lease had expired `2026-07-22T14:00:59Z` and was taken over to publish this. Canonical form
+lives in `.agent_relay/active_task.json` under `routing`.
+
+### Antigravity
+
+- **AG-0 (P0, no gate) — preserve, do not advance.** Commit the staged WIP in
+  `antigravity-current` on its own branch, marked `SUPERSEDED-PENDING-EVALUATION`, and push
+  `antigravity/v5.34-unattended-paper-observed-oos-burnin` to origin. This is an **archival**
+  push: not a repair cycle, not a merge request, no acceptance claim. Rationale: `3495dd8` plus
+  the staged `crypto_paper_account_cleanup.py` exist on exactly one disk with no remote copy.
+  Phase 0's `PRESERVE IN PLACE` barred *other* agents from committing on Antigravity's behalf;
+  it does not bar Antigravity from preserving its own work. **Do not build on it** — it is
+  superseded in intent by `8d2cbcc`.
+- **AG-1 (P1, no gate) — the deferred Phase 2 subsumption evaluation.** For each repair in
+  `3495dd8` and each behaviour in the staged cleanup module, state where `8d2cbcc` covers it or
+  that it does not, and deliver an explicit not-covered list. Report gaps; **do not repair
+  them** — `further_routine_repair_prohibited: true`.
+- **AG-2 (constraint, permanent) — no acceptance authority on this milestone.** Antigravity
+  authored `3495dd8` against V5.34 and implemented V5.51 through `db2b646`; it may not perform
+  the governance review of `8d2cbcc` nor the V5.51 acceptance review.
+
+### Operator
+
+- **OP-1 (P1, blocks the cleanup module).** This task's scope records
+  `paper_mutations_authorized: false` and `no_submit: true` (2026-07-22). The operator later
+  authorized UNATTENDED-BOUNDED paper order submission (interlock first).
+  `crypto_paper_account_cleanup.py` calls `close_all_positions(cancel_orders=True)`, which
+  **submits** closing orders. Until reconciled, that module is archive-only.
+
+### Codex / GPT (independent governance)
+
+- **GPT-1 (P0)** — governance review of `8d2cbcc`/`9a0adfc`. Wait for AG-1's mapping first; it
+  names what `8d2cbcc` may have dropped.
+- **GPT-2 (P1)** — acceptance review of `claude/v5.51-readonly-spy-market-data-contract@824f265`
+  (full pytest 10071 passed / 5 skipped / exit 0; `verify_offline.ps1` PASS; credential
+  preflight all-false). Antigravity implemented through `db2b646`, Claude Code authored the
+  round-5 correction — neither may accept.
+
+### Finding recorded, not repaired
+
+`crypto_paper_account_cleanup.py`'s `has_pending_close_order` predicate (`sell` **or** `market`)
+also matches a market **buy**, which would suppress cleanup entirely. It fails closed (skips
+mutating), so the direction is safe, but it likely does not mean what it reads as. Not to be
+fixed while the module is archive-only.
