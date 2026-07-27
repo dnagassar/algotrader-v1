@@ -122,13 +122,14 @@ Corrected in `0acc5df` and `c0d1176`.
 - Targeted unit tests: 145/145 passed across 4 files (`test_spy_adjusted_data_refresh.py` [43], `test_autonomy_read_only_network_executor.py` [19], `test_autonomy_next_plan.py` [40], `test_dependency_direction.py` [43]). **This targeted set was not sufficient — it omitted the file that actually failed.**
 - Full default pytest: **NOT PASS** — `1 failed, 10062 passed, 5 skipped in 1790.46s (0:29:50)`, exit 1. Failure: `tests/unit/test_spy_eod_market_data_refresh_schedule.py::test_spy_eod_refresh_schedule_is_isolated_tiingo_only` (round-5 finding 2).
 
-### At `c0d1176` (round-5 correction, current)
+### At `26c4fb3` (round-5 correction, current)
 
-- Full default pytest, credential-free from a clean tree: **PASS** — `10071 passed, 5 skipped in 1614.41s (0:26:54)`, exit 0, 10076 collected.
+- Full default pytest, credential-free from a clean tree: **PASS** — `10071 passed, 5 skipped in 1649.55s (0:27:29)`, exit 0, 10076 collected. (Same result at `c0d1176`, before the finding-4 call-operator fix: `10071 passed, 5 skipped in 1614.41s (0:26:54)`, exit 0.)
 - Offline verification script `verify_offline.ps1`: **PASS** (108/108 offline safety guard tests).
 - Preflight credential/profile check: clean — `APP_PROFILE_is_paper: False`, `ALPACA_API_KEY_loaded: False`, `ALPACA_API_SECRET_KEY_loaded: False`, `ALPACA_SECRET_KEY_loaded: False`, `APCA_API_KEY_ID_loaded: False`, `APCA_API_SECRET_KEY_loaded: False`, `RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled: False`. No `.env` in the working tree; no `TIINGO_API_KEY` in the environment.
 - Targeted: 151 passed across the original 4 files (was 145); 201 passed across all autonomy-keyed tests; 25 passed across the two schedule/seam files.
-- Correction commits: `a0ce62d`, `9471e87` (round 4); `0acc5df`, `c0d1176` (round 5).
+- Correction commits: `a0ce62d`, `9471e87` (round 4); `0acc5df`, `c0d1176`, `26c4fb3` (round 5).
+- Wrapper invocation verified out-of-band: PowerShell parse errors 0; call operator yields argv `["--as-of", "<captured UTC>", "--apply", "--format", "json"]`.
 - `git diff --check`: clean (zero whitespace errors).
 - `git status --short`: clean.
 - `git diff --name-only HEAD~4 -- src`: exact expected modified/created source files.
@@ -136,4 +137,4 @@ Corrected in `0acc5df` and `c0d1176`.
 
 ## Next Action
 
-independent acceptance review of `c0d1176` (Claude Code authored the round-5 correction and must not self-accept); on ACCEPT, promote V5.51 and fast-forward `main`
+independent acceptance review of `26c4fb3` (Claude Code authored the round-5 correction and must not self-accept); on ACCEPT, promote V5.51 and fast-forward `main`
