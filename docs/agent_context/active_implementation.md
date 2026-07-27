@@ -135,12 +135,55 @@ Corrected in `0acc5df` and `c0d1176`.
 - `git diff --name-only HEAD~4 -- src`: exact expected modified/created source files.
 - `git ls-files --others --exclude-standard src tests`: clean (no untracked junk).
 
+## Round-6 Independent Acceptance Review — REQUEST-CHANGES (2026-07-27)
+
+Independent reviewer: Codex/GPT. **Do not promote. Do not fast-forward `main`.**
+All three findings independently reproduced by claude-code before acceptance.
+
+1. **F1 (contract violation) — the seam imports a module the frozen contract
+   forbids, and the test was widened to admit it.** The contract permits only
+   `etf_sma_adjusted_spy_data_refresh` (adapter) and `live_capital_interlock`
+   (safety closure) among internal `algotrader.execution` imports, but the seam
+   also imports `algotrader.execution.exchange_session`, and
+   `test_dependency_direction.py`'s `allowed_internal_modules` lists it.
+   *Confirmed:* contract rule at ~line 1264 vs the test allowlist. Introduced in
+   `af1b377`; the round-5 review checked for defects but never diffed the seam's
+   imports against the contract's permitted list. A test broadened to accommodate
+   a deviation is worse than the deviation — it converts a violation into a
+   passing suite.
+2. **F2 (ledger) — `session_id` / `attempt_number` / `run_id` are not held in the
+   frozen relationship, so a duplicate reservation can be written.** A ledger
+   holding one pending record numbered `2` validates as count `1`; the next
+   generated `run_id` collides with the existing `network-<session>-2` and the
+   duplicate reservation is appended *before* the network is reached. Should be
+   `ledger_corrupt`, zero writes.
+   *Reproduced exactly:* `prior_count=1`, `next run_id=network-2026-07-24-2`,
+   `COLLIDES=True`.
+3. **F3 (guard strength) — the fourth-recurrence fix is sampled, not total.**
+   `test_every_lane_lands_in_exactly_one_plan_bucket` iterates three report
+   fixtures rather than asserting an invariant over the execution-class table. A
+   future class used only in an unrepresented lane state can still fall out of
+   every bucket, so it does not reliably prevent a fifth recurrence.
+   *Confirmed by inspection.* This is a correct critique of the round-5 fix: it
+   is stronger than the point fixes that preceded it, but weaker than the total
+   invariant it was described as.
+
+Confirmed strengths (reviewer, independently verified): `ledger_corrupt` and
+`ledger_lock_unavailable` write zero events; the seam is broker/mutation-disjoint
+with finite bounds (1 GET per invocation, 4 reservations per session, 5s lock
+timeout, 8 MiB response cap, 20,000-row cap); the stale schedule protections were
+genuinely re-anchored to the seam configuration and wrapper; 156 targeted passed;
+108/108 offline guards; full suite 10,076 collected, 10,071 passed, 5 skipped,
+exit 0; preflight all-false, no `.env`, no network or broker operation.
+
 ## Next Action
 
-independent acceptance review of branch `claude/v5.51-readonly-spy-market-data-contract` **through its current tip**. The substantive change ends at **`824f265`** (code plus the recorded green full-suite evidence); anything after it is handoff/pointer editing only. Do not review `26c4fb3` in isolation — it is `824f265`'s parent and lacks that evidence record.
+implement the round-6 corrections for F1, F2 and F3 above, then return to Codex/GPT for re-review. **V5.51 is NOT accepted and must not be promoted.**
 
-(Phrased against the branch rather than a pinned SHA on purpose: a handoff that names "the tip" stops being true the moment the handoff itself is committed.)
+Correction scope:
+- **F1** — either remove the `exchange_session` import from the seam (resolving the session-date logic within the permitted closure), or obtain an explicit operator amendment to the frozen contract. Do **not** resolve it by leaving the test allowlist broadened. Whichever path is taken, `test_dependency_direction.py`'s `allowed_internal_modules` must once again mirror the contract exactly rather than the implementation.
+- **F2** — enforce the frozen `session_id` / `attempt_number` / `run_id` relationship inside `_read_and_validate_ledger`, failing closed as `ledger_corrupt` with zero writes when a record's `attempt_number` or `run_id` is inconsistent with its position in the session's reservation sequence.
+- **F3** — replace the sampled bucket test with a total invariant derived from the execution-class table itself: every member of `_EXECUTION_CLASSES` must map into exactly one plan bucket, so a class added without a bucket fails regardless of which lane states any fixture happens to exercise.
 
-Reviewer must be **Codex/GPT**: Claude Code authored the round-5 correction and Antigravity implemented through `db2b646`, so neither may accept. Tracked as **GPT-2** in the relay lane's routing (`relay/v5.34-readiness-recovery`, `.agent_relay/active_task.json` → `routing.codex_gpt`).
-
-On ACCEPT: promote V5.51 and fast-forward `main`.
+Claude Code authored the round-5 correction and Antigravity implemented through
+`db2b646`, so neither may accept the result; re-review returns to Codex/GPT.
