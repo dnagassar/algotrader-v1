@@ -2588,3 +2588,91 @@ def test_central_replay_launcher_scanner_detects_synthetic_evasions() -> None:
             "<synthetic-launcher>",
             imports=tuple(imports),
         ), source
+
+
+def test_v551_read_only_network_executor_seven_file_closure_import_purity() -> None:
+    closure_paths = (
+        Path("src/algotrader/execution/autonomy_read_only_network_executor.py"),
+        Path("src/algotrader/execution/etf_sma_adjusted_spy_data_refresh.py"),
+        Path("src/algotrader/execution/etf_sma_market_data_soak.py"),
+        Path("src/algotrader/execution/exchange_session.py"),
+        Path("src/algotrader/errors.py"),
+        Path("src/algotrader/execution/live_capital_interlock.py"),
+        Path("src/algotrader/config.py"),
+    )
+    for p in closure_paths:
+        assert p.exists(), f"Closure file missing: {p}"
+
+    seam_file = closure_paths[0]
+    seam_tree = ast.parse(seam_file.read_text(encoding="utf-8"), filename=str(seam_file))
+
+    # Assertion 1: Direct-import scope of seam file
+    allowed_internal_modules = {
+        "algotrader.execution.etf_sma_adjusted_spy_data_refresh",
+        "algotrader.execution.live_capital_interlock",
+        "algotrader.execution.exchange_session",
+        "algotrader.errors",
+    }
+    for node in ast.walk(seam_tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("algotrader") or alias.name.startswith("alpaca"):
+                    assert alias.name in allowed_internal_modules, f"Forbidden import: {alias.name}"
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if mod.startswith("algotrader") or mod.startswith("alpaca"):
+                assert mod in allowed_internal_modules, f"Forbidden import from: {mod}"
+
+    # Assertion 2: No direct config or secret identifiers in seam file AST
+    forbidden_seam_names = {"AlpacaPaperConfig", "require_paper_profile", "alpaca_api_key", "alpaca_secret_key"}
+    for node in ast.walk(seam_tree):
+        if isinstance(node, ast.Name):
+            assert node.id not in forbidden_seam_names, f"Forbidden name in seam: {node.id}"
+        elif isinstance(node, ast.Attribute):
+            assert node.attr not in forbidden_seam_names, f"Forbidden attribute in seam: {node.attr}"
+
+    # Assertion 3: Adapter & soak report have no config or broker import
+    adapter_paths = (closure_paths[1], closure_paths[2])
+    forbidden_adapter_prefixes = ("algotrader.config", "alpaca", "alpaca_trade_api", "algotrader.execution.broker_base")
+    for p in adapter_paths:
+        tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert not alias.name.startswith(forbidden_adapter_prefixes), f"Forbidden adapter import: {alias.name}"
+            elif isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                assert not mod.startswith(forbidden_adapter_prefixes), f"Forbidden adapter import: {mod}"
+
+    # Assertion 4: live_capital_interlock.py is sole importer of AlpacaPaperConfig/require_paper_profile from algotrader.config
+    interlock_file = closure_paths[5]
+    for p in closure_paths:
+        tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+        imports_found = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "algotrader.config":
+                for alias in node.names:
+                    if alias.name in {"AlpacaPaperConfig", "require_paper_profile"}:
+                        imports_found.add(alias.name)
+        if p == interlock_file:
+            assert imports_found == {"AlpacaPaperConfig", "require_paper_profile"}
+        else:
+            assert not imports_found, f"Found config imports in non-interlock file {p}: {imports_found}"
+
+    # Assertion 5: SDK client/order/mutation exclusion across all seven files
+    forbidden_sdk_prefixes = ("alpaca", "alpaca_trade_api", "require_live_capital_interlock")
+    forbidden_callables = {"submit_order", "cancel_order", "replace_order", "close_position", "liquidate_position"}
+    for p in closure_paths:
+        tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert not alias.name.startswith(forbidden_sdk_prefixes), f"Forbidden SDK import in {p}: {alias.name}"
+            elif isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                assert not mod.startswith(forbidden_sdk_prefixes), f"Forbidden SDK import in {p}: {mod}"
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    assert node.func.id not in forbidden_callables, f"Forbidden call in {p}: {node.func.id}"
+                elif isinstance(node.func, ast.Attribute):
+                    assert node.func.attr not in forbidden_callables, f"Forbidden call in {p}: {node.func.attr}"

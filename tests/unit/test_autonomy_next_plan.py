@@ -23,6 +23,7 @@ from algotrader.execution.autonomy_next_plan import (
     AUTONOMY_ACTION_CLASSIFICATION,
     AUTONOMY_NEXT_PLAN_LABELS,
     EXECUTION_AUTO_OFFLINE,
+    EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
     EXECUTION_NOOP,
     EXECUTION_OFFLINE_OPERATOR_INPUT,
     EXECUTION_OPERATOR_GATED,
@@ -264,6 +265,8 @@ def test_classification_registry_is_internally_consistent() -> None:
                 EXECUTION_OFFLINE_OPERATOR_INPUT,
             ), token
             assert classified.command != "", token
+        elif classified.execution_class == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY:
+            assert classified.command != "", token
         else:
             assert classified.command == "", token
         if classified.execution_class in (EXECUTION_AUTO_OFFLINE, EXECUTION_NOOP):
@@ -353,11 +356,11 @@ def test_all_absent_preserves_aggregate_and_selects_crypto_replay(
         / "readiness_packet.json"
     ).resolve()
     assert payload["next_offline_action"] == readiness
-    # The market-data soak seed requires a network fetch: operator-gated.
+    # The market-data soak seed requires an authorized read-only network fetch.
     soak = _action(payload, "spy_market_data_soak")
-    assert soak["execution_class"] == EXECUTION_OPERATOR_GATED
+    assert soak["execution_class"] == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
     assert soak["gate"] == "network_market_data_fetch"
-    assert soak["command"] == ""
+    assert "autonomy_read_only_network_executor" in soak["command"]
     _assert_safety_booleans_false(payload)
 
 
@@ -740,3 +743,97 @@ def _assert_call_allowed(func: ast.expr) -> None:
         assert func.id not in FORBIDDEN_CALL_NAMES, func.id
     elif isinstance(func, ast.Attribute):
         assert func.attr not in FORBIDDEN_CALL_NAMES, func.attr
+
+
+def test_v551_acceptance_criteria_1_two_way_closure() -> None:
+    from algotrader.execution.autonomy_next_plan import (
+        AUTONOMY_ACTION_CLASSIFICATION,
+        EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
+    )
+    from algotrader.execution.autonomy_read_only_network_executor import (
+        AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST,
+    )
+
+    classified = {
+        token
+        for token, ac in AUTONOMY_ACTION_CLASSIFICATION.items()
+        if ac.execution_class == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+    }
+    allowlisted = set(AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST.keys())
+    assert classified == allowlisted
+
+
+def test_v551_acceptance_criteria_2_disjointness() -> None:
+    from algotrader.execution.autonomy_offline_executor import (
+        AUTONOMY_EXECUTOR_ALLOWLIST,
+    )
+    from algotrader.execution.autonomy_read_only_network_executor import (
+        AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST,
+    )
+
+    set1 = set(AUTONOMY_EXECUTOR_ALLOWLIST.keys())
+    set2 = set(AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST.keys())
+    assert set1.isdisjoint(set2)
+
+
+def test_v551_acceptance_criteria_3_no_false_auto_offline() -> None:
+    from algotrader.execution.autonomy_next_plan import (
+        _OFFLINE_RUNNABLE_CLASSES,
+        AUTONOMY_ACTION_CLASSIFICATION,
+        EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
+    )
+
+    assert EXECUTION_AUTHORIZED_NETWORK_READ_ONLY not in _OFFLINE_RUNNABLE_CLASSES
+
+    for token, ac in AUTONOMY_ACTION_CLASSIFICATION.items():
+        if ac.execution_class == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY:
+            assert ac.offline_runnable is False
+
+
+def test_v551_acceptance_criteria_4_reverse_reachability() -> None:
+    from algotrader.execution.autonomy_next_plan import classify_action
+    from algotrader.execution.autonomy_read_only_network_executor import (
+        AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST,
+    )
+
+    ac = classify_action("run_authorized_read_only_market_data_refresh_to_seed_soak")
+    assert ac.execution_class == "authorized_network_read_only"
+    assert "run_authorized_read_only_market_data_refresh_to_seed_soak" in AUTONOMY_NETWORK_EXECUTOR_ALLOWLIST
+
+
+def test_v551_acceptance_criteria_5_command_carve_out_is_narrow() -> None:
+    from algotrader.execution.autonomy_next_plan import (
+        ActionClass,
+        EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
+        EXECUTION_NOOP,
+        EXECUTION_OPERATOR_GATED,
+    )
+
+    with pytest.raises(ValidationError, match="only offline-runnable actions may carry a command"):
+        ActionClass(
+            execution_class=EXECUTION_OPERATOR_GATED,
+            offline_runnable=False,
+            gate="operator_review",
+            gate_detail="test",
+            command="python -m invalid",
+        )
+
+    with pytest.raises(ValidationError, match="only offline-runnable actions may carry a command"):
+        ActionClass(
+            execution_class=EXECUTION_NOOP,
+            offline_runnable=False,
+            gate="",
+            gate_detail="test",
+            command="python -m invalid",
+        )
+
+    valid = ActionClass(
+        execution_class=EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
+        offline_runnable=False,
+        gate="network_market_data_fetch",
+        gate_detail="test",
+        command="python -m algotrader.execution.autonomy_read_only_network_executor --as-of <ISO8601_UTC> [--apply] --format json",
+        required_operator_inputs=(),
+    )
+    assert valid.execution_class == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+    assert valid.command != ""

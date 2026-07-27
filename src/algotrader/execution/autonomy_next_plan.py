@@ -52,6 +52,7 @@ __all__ = [
     "CANONICAL_READINESS_PACKET_RELPATH",
     "CANONICAL_REPLAY_ARGV",
     "EXECUTION_AUTO_OFFLINE",
+    "EXECUTION_AUTHORIZED_NETWORK_READ_ONLY",
     "EXECUTION_NOOP",
     "EXECUTION_OFFLINE_OPERATOR_INPUT",
     "EXECUTION_OPERATOR_GATED",
@@ -93,6 +94,7 @@ EXECUTION_AUTO_OFFLINE = "auto_offline"
 EXECUTION_OFFLINE_OPERATOR_INPUT = "offline_operator_input"
 EXECUTION_OPERATOR_GATED = "operator_gated"
 EXECUTION_NOOP = "noop"
+EXECUTION_AUTHORIZED_NETWORK_READ_ONLY = "authorized_network_read_only"
 
 _EXECUTION_CLASSES = frozenset(
     {
@@ -100,6 +102,7 @@ _EXECUTION_CLASSES = frozenset(
         EXECUTION_OFFLINE_OPERATOR_INPUT,
         EXECUTION_OPERATOR_GATED,
         EXECUTION_NOOP,
+        EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
     }
 )
 
@@ -135,8 +138,10 @@ _GATE_UNCLASSIFIED = "unclassified_action_operator_review"
 class ActionClass:
     """Frozen classification of one supervisor ``recommended_next_action`` token.
 
-    ``command`` is the exact offline command a caller (or the operator) may run
-    to advance the lane; it is empty when no offline command exists.
+    ``command`` is the exact command a caller (or the operator) may run to
+    advance the lane; it is empty when no command exists (only offline-runnable
+    actions and :data:`EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` may carry a
+    non-empty command).
     ``required_operator_inputs`` lists the operator-supplied arguments the
     command still needs. ``gate`` names the single blocker to progress and is
     empty for :data:`EXECUTION_AUTO_OFFLINE` and :data:`EXECUTION_NOOP`.
@@ -175,7 +180,11 @@ class ActionClass:
             )
         if self.offline_runnable and self.command == "":
             raise ValidationError("offline-runnable actions must carry a command.")
-        if not self.offline_runnable and self.command != "":
+        if (
+            not self.offline_runnable
+            and self.command != ""
+            and self.execution_class != EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+        ):
             raise ValidationError(
                 "only offline-runnable actions may carry a command."
             )
@@ -343,11 +352,20 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
             "--daily-bars-csv: refreshed local adjusted SPY daily-bars CSV path",
         ),
     ),
-    # --- Operator-gated: market-data fetch (network). ---
-    "run_authorized_read_only_market_data_refresh_to_seed_soak": _operator_gated(
-        _GATE_NETWORK_MARKET_DATA,
-        "seeding the soak needs an authorized read-only market-data fetch "
-        "(network); outside the offline envelope.",
+    # --- Authorized network read-only: market-data refresh. ---
+    "run_authorized_read_only_market_data_refresh_to_seed_soak": ActionClass(
+        execution_class=EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
+        offline_runnable=False,
+        gate=_GATE_NETWORK_MARKET_DATA,
+        gate_detail=(
+            "Standing authority granted for read-only market-data refresh; "
+            "runnable via autonomy_read_only_network_executor."
+        ),
+        command=(
+            "python -m algotrader.execution.autonomy_read_only_network_executor"
+            " --as-of <ISO8601_UTC> [--apply] --format json"
+        ),
+        required_operator_inputs=(),
     ),
     "authorized_read_only_market_data_fetch_for_shadow_window": _operator_gated(
         _GATE_NETWORK_MARKET_DATA,
