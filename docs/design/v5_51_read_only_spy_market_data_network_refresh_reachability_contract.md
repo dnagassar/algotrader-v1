@@ -308,8 +308,11 @@ choice:
   import-closure** test (see "Read-Only Market-Data Is Not Live Trading"),
   not a spawned-process environment sanitization test.
 - **Allowed imports.** The module may import
-  `algotrader.execution.etf_sma_adjusted_spy_data_refresh` (the adapter) and
-  `algotrader.execution.live_capital_interlock` (the safety interlock). Its
+  `algotrader.execution.etf_sma_adjusted_spy_data_refresh` (the adapter),
+  `algotrader.execution.live_capital_interlock` (the safety interlock), and
+  `algotrader.execution.exchange_session` (the NYSE session calendar the seam
+  needs to resolve the session its own ledger is keyed by — **round-6
+  amendment**, rationale under "Direct-import scope"). Its
   static import closure — an explicit, hand-curated, seven-file list, not a
   generic whole-repository transitive-graph claim (round-3 correction,
   finding #4) — must contain no broker SDK, broker client, order, position,
@@ -1263,14 +1266,47 @@ behavior:
 
 1. **Direct-import scope** (flat scan of the seam module's own file only):
    the seam module's `ast.Import`/`ast.ImportFrom` statements name only
-   `algotrader.execution.etf_sma_adjusted_spy_data_refresh` (the adapter)
-   and `algotrader.execution.live_capital_interlock` (the safety closure)
-   among internal `algotrader.execution`/`algotrader.config`/broker-prefixed
-   modules — proving the "only two direct imports" claim in "Execution
+   `algotrader.execution.etf_sma_adjusted_spy_data_refresh` (the adapter),
+   `algotrader.execution.live_capital_interlock` (the safety closure), and
+   `algotrader.execution.exchange_session` (the NYSE session calendar —
+   **round-6 amendment**, see below) among internal
+   `algotrader.execution`/`algotrader.config`/broker-prefixed
+   modules — proving the "three direct imports" claim in "Execution
    Architecture" by inspection of one file, using the existing
    `DependencyRule` forbidden-prefix mechanism with every other
    `algotrader.execution.*`, `algotrader.config`, `alpaca`, and
    `alpaca_trade_api` name forbidden.
+
+   **Round-6 amendment (independent review finding F1).** As originally frozen
+   this rule named two modules, and the implementation imported a third,
+   `algotrader.execution.exchange_session`. Independent review found the
+   deviation and, worse, found that `test_dependency_direction.py` had been
+   broadened to admit it — converting a contract violation into a passing
+   suite. The resolution is to amend this rule rather than to reshape the code,
+   for one reason: **the two-module rule was not carrying the safety weight it
+   appeared to.** The stated safety property is that the seam's closure holds
+   no broker SDK, client, order, position, or mutation surface, and that is
+   proved by the closure purity check across all seven files — not by counting
+   the seam's own imports. `exchange_session` was already inside that
+   purity-checked closure and had been since the adapter began importing it in
+   `9ba2925`, long before this milestone; the seam's direct import therefore
+   widens the blast radius by exactly nothing. Resolving the finding the other
+   way would have meant moving this contract's own "Deterministic
+   Expected-Session Semantics" (the 20:10 ET cutoff) into an adapter shared by
+   four unrelated modules, growing a public surface this contract elsewhere
+   requires be "reused unchanged" — paying a real architectural cost to satisfy
+   a proxy for a property the closure check already proves directly.
+
+   This amendment is **narrow and exhaustive**: exactly three named modules, not
+   a category. It does not license any further `algotrader.execution.*` import,
+   and it does not relax rules 2–5 below. Per operator instruction it carries
+   the same independent-review requirement as any implementation change.
+
+   **Binding on the test:** `allowed_internal_modules` in
+   `test_dependency_direction.py` must mirror this list exactly and may never
+   again be widened to match an implementation. Widening the test instead of
+   correcting the code, or amending this rule, is the specific failure that
+   produced F1.
 2. **No direct config or secret identifiers** (flat scan of the seam module's
    own file): the seam module's own AST names neither `AlpacaPaperConfig`
    nor `require_paper_profile` anywhere in its own `ast.ImportFrom`

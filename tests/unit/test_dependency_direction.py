@@ -2606,13 +2606,30 @@ def test_v551_read_only_network_executor_seven_file_closure_import_purity() -> N
     seam_file = closure_paths[0]
     seam_tree = ast.parse(seam_file.read_text(encoding="utf-8"), filename=str(seam_file))
 
-    # Assertion 1: Direct-import scope of seam file
-    allowed_internal_modules = {
-        "algotrader.execution.etf_sma_adjusted_spy_data_refresh",
-        "algotrader.execution.live_capital_interlock",
-        "algotrader.execution.exchange_session",
-        "algotrader.errors",
-    }
+    # Assertion 1: Direct-import scope of seam file.
+    #
+    # This set MIRRORS the V5.51 contract, "Direct-import scope" (round-6
+    # amendment). It may not be widened to match an implementation. Widening it
+    # is exactly what produced independent-review finding F1: the seam imported
+    # a third module, the allowlist was extended to admit it, and a contract
+    # violation became a passing suite. If the seam needs a further import,
+    # amend the contract first -- under independent review -- and mirror the
+    # amendment here. Never the reverse.
+    contract_allowed_execution_imports = frozenset(
+        {
+            "algotrader.execution.etf_sma_adjusted_spy_data_refresh",
+            "algotrader.execution.live_capital_interlock",
+            "algotrader.execution.exchange_session",
+        }
+    )
+    assert len(contract_allowed_execution_imports) == 3, (
+        "the contract names exactly three permitted internal execution imports; "
+        "a change here must correspond to a reviewed contract amendment"
+    )
+    # algotrader.errors falls outside the rule's scope (it is not an
+    # algotrader.execution/algotrader.config/broker-prefixed module), so it is
+    # permitted without being contract-named.
+    allowed_internal_modules = contract_allowed_execution_imports | {"algotrader.errors"}
     for node in ast.walk(seam_tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
