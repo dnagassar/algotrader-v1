@@ -122,7 +122,7 @@ Corrected in `0acc5df` and `c0d1176`.
 - Targeted unit tests: 145/145 passed across 4 files (`test_spy_adjusted_data_refresh.py` [43], `test_autonomy_read_only_network_executor.py` [19], `test_autonomy_next_plan.py` [40], `test_dependency_direction.py` [43]). **This targeted set was not sufficient — it omitted the file that actually failed.**
 - Full default pytest: **NOT PASS** — `1 failed, 10062 passed, 5 skipped in 1790.46s (0:29:50)`, exit 1. Failure: `tests/unit/test_spy_eod_market_data_refresh_schedule.py::test_spy_eod_refresh_schedule_is_isolated_tiingo_only` (round-5 finding 2).
 
-### At `26c4fb3` (round-5 correction, current)
+### At `26c4fb3` (round-5 correction; evidence recorded in child commit `824f265`, the review target)
 
 - Full default pytest, credential-free from a clean tree: **PASS** — `10071 passed, 5 skipped in 1649.55s (0:27:29)`, exit 0, 10076 collected. (Same result at `c0d1176`, before the finding-4 call-operator fix: `10071 passed, 5 skipped in 1614.41s (0:26:54)`, exit 0.)
 - Offline verification script `verify_offline.ps1`: **PASS** (108/108 offline safety guard tests).
@@ -137,4 +137,8 @@ Corrected in `0acc5df` and `c0d1176`.
 
 ## Next Action
 
-independent acceptance review of `26c4fb3` (Claude Code authored the round-5 correction and must not self-accept); on ACCEPT, promote V5.51 and fast-forward `main`
+independent acceptance review of **`824f265`** — the branch tip, which carries the recorded green full-suite evidence. `26c4fb3` is its parent and lacks that record; do not review it in isolation.
+
+Reviewer must be **Codex/GPT**: Claude Code authored the round-5 correction and Antigravity implemented through `db2b646`, so neither may accept. Tracked as **GPT-2** in the relay lane's routing (`relay/v5.34-readiness-recovery`, `.agent_relay/active_task.json` → `routing.codex_gpt`).
+
+On ACCEPT: promote V5.51 and fast-forward `main`.
