@@ -418,3 +418,129 @@ def test_credential_provider_loads_dotenv_token_exactly_once_and_emits_secret_fr
     ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
     ledger_text = ledger_path.read_text(encoding="utf-8")
     assert secret_value not in ledger_text
+
+
+def test_ledger_validation_rejects_duplicate_pending_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+
+    pending_event = executor._build_base_ledger_event(
+        session_id="2026-07-24",
+        as_of="2026-07-25T00:15:00Z",
+        attempt_number=1,
+        run_id="network-2026-07-24-1",
+        reservation_id="network-2026-07-24-1",
+        ledger_status="pending",
+        exit_code=None,
+        adapter_refresh_state=None,
+        network_access_attempted=False,
+        interlock_verdict={"paper_boundary_ok": True},
+        credential_present=True,
+        refusal_category=None,
+    )
+    ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(json.dumps(pending_event) + "\n" + json.dumps(pending_event) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="ledger_corrupt"):
+        executor._read_and_validate_ledger(ledger_path, "2026-07-24")
+
+    res = run_autonomy_read_only_network_executor(as_of="2026-07-25T00:15:00Z", apply=True)
+    assert res["exit_code"] == 2
+    assert res["refusal_category"] == "ledger_corrupt"
+
+
+def test_ledger_validation_rejects_completed_mismatched_with_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+
+    pending_event = executor._build_base_ledger_event(
+        session_id="2026-07-24",
+        as_of="2026-07-25T00:15:00Z",
+        attempt_number=1,
+        run_id="network-2026-07-24-1",
+        reservation_id="network-2026-07-24-1",
+        ledger_status="pending",
+        exit_code=None,
+        adapter_refresh_state=None,
+        network_access_attempted=False,
+        interlock_verdict={"paper_boundary_ok": True},
+        credential_present=True,
+        refusal_category=None,
+    )
+    completed_mismatched = executor._build_base_ledger_event(
+        session_id="2026-07-24",
+        as_of="2026-07-25T00:15:00Z",
+        attempt_number=2,  # Mismatched attempt_number!
+        run_id="network-2026-07-24-1",
+        reservation_id="network-2026-07-24-1",
+        ledger_status="completed",
+        exit_code=0,
+        adapter_refresh_state="accepted",
+        network_access_attempted=True,
+        interlock_verdict={"paper_boundary_ok": True},
+        credential_present=True,
+        refusal_category=None,
+    )
+    ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(json.dumps(pending_event) + "\n" + json.dumps(completed_mismatched) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="ledger_corrupt"):
+        executor._read_and_validate_ledger(ledger_path, "2026-07-24")
+
+
+def test_ledger_validation_rejects_blank_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+
+    pending_event = executor._build_base_ledger_event(
+        session_id="2026-07-24",
+        as_of="2026-07-25T00:15:00Z",
+        attempt_number=1,
+        run_id="network-2026-07-24-1",
+        reservation_id="network-2026-07-24-1",
+        ledger_status="pending",
+        exit_code=None,
+        adapter_refresh_state=None,
+        network_access_attempted=False,
+        interlock_verdict={"paper_boundary_ok": True},
+        credential_present=True,
+        refusal_category=None,
+    )
+    ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(json.dumps(pending_event) + "\n\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="ledger_corrupt"):
+        executor._read_and_validate_ledger(ledger_path, "2026-07-24")
+
+
+def test_acquire_lock_handles_parent_mkdir_or_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+
+    def _failing_mkdir(*args: Any, **kwargs: Any) -> None:
+        raise PermissionError("Access denied")
+
+    monkeypatch.setattr(Path, "mkdir", _failing_mkdir)
+
+    lock_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.lock"
+    lock_obj = executor._acquire_lock(lock_path)
+    assert lock_obj is None
+
+    res = run_autonomy_read_only_network_executor(as_of="2026-07-25T00:15:00Z", apply=True)
+    assert res["exit_code"] == 2
+    assert res["refusal_category"] == "ledger_lock_unavailable"

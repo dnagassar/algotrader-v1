@@ -56,7 +56,7 @@
 
 ## Verification Evidence
 
-- Targeted unit tests: 141/141 passed across 4 files (`test_spy_adjusted_data_refresh.py` [43], `test_autonomy_read_only_network_executor.py` [15], `test_autonomy_next_plan.py` [40], `test_dependency_direction.py` [43]).
+- Targeted unit tests: 145/145 passed across 4 files (`test_spy_adjusted_data_refresh.py` [43], `test_autonomy_read_only_network_executor.py` [19], `test_autonomy_next_plan.py` [40], `test_dependency_direction.py` [43]).
 - Process PID 23256: Terminated safely and recorded as **superseded**.
 - Offline verification script `verify_offline.ps1`: **PASS** (108/108 offline safety tests passed).
 - Preflight credential/profile check: clean (no paper profile or broker credentials loaded).

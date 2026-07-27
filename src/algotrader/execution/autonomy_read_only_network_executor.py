@@ -157,10 +157,13 @@ def _check_soak_report_qualified(soak_report_path: Path, session_id: str) -> boo
 
 
 def _acquire_lock(lock_path: Path, timeout_seconds: float = 5.0) -> Any:
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    if not lock_path.exists():
-        lock_path.write_text("lock\n", encoding="utf-8")
-    elif lock_path.is_dir():
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if not lock_path.exists():
+            lock_path.write_text("lock\n", encoding="utf-8")
+        elif lock_path.is_dir():
+            return None
+    except (OSError, PermissionError):
         return None
 
     deadline = _time.monotonic() + timeout_seconds
@@ -244,17 +247,21 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
         return 0, []
 
     records: list[dict[str, Any]] = []
-    seen_pending_reservations: set[str] = set()
-    seen_completed_reservations: set[str] = set()
+    pending_reservations: dict[str, dict[str, Any]] = {}
+    completed_reservations: set[str] = set()
     session_reservations: set[str] = set()
 
     try:
         content = ledger_path.read_text(encoding="utf-8")
-        for line_no, line in enumerate(content.splitlines(), start=1):
-            line_str = line.strip()
-            if not line_str:
-                continue
-            record = json.loads(line_str)
+        lines = content.splitlines()
+        if not lines and content:
+            raise ValidationError("ledger_corrupt")
+
+        for line in lines:
+            if not line or line != line.strip():
+                raise ValidationError("ledger_corrupt")
+
+            record = json.loads(line)
             if not isinstance(record, dict):
                 raise ValidationError("ledger_corrupt")
 
@@ -313,7 +320,11 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
                     or rec_budget_ex is not False
                 ):
                     raise ValidationError("ledger_corrupt")
-                seen_pending_reservations.add(res_id)
+
+                if res_id in pending_reservations:
+                    raise ValidationError("ledger_corrupt")
+
+                pending_reservations[res_id] = record
                 if rec_session == session_id:
                     session_reservations.add(res_id)
 
@@ -329,11 +340,21 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
                     or rec_budget_ex is not False
                 ):
                     raise ValidationError("ledger_corrupt")
-                if res_id not in seen_pending_reservations:
+
+                if res_id not in pending_reservations or res_id in completed_reservations:
                     raise ValidationError("ledger_corrupt")
-                if res_id in seen_completed_reservations:
+
+                pending_rec = pending_reservations[res_id]
+                if (
+                    pending_rec["session_id"] != rec_session
+                    or pending_rec["as_of"] != rec_as_of
+                    or pending_rec["attempt_number"] != rec_attempt
+                    or pending_rec["interlock_verdict"] != verdict
+                    or pending_rec["credential_present"] != cred_present
+                ):
                     raise ValidationError("ledger_corrupt")
-                seen_completed_reservations.add(res_id)
+
+                completed_reservations.add(res_id)
                 if rec_session == session_id:
                     session_reservations.add(res_id)
 
