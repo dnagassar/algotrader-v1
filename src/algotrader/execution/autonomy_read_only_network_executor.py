@@ -735,15 +735,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         args, unknown = parser.parse_known_args(argv)
         if unknown:
             raise ValidationError("parser_invalid_argument")
-        result = run_autonomy_read_only_network_executor(
-            as_of=args.as_of,
-            apply=args.apply,
-            format=args.format,
-        )
-    except ValidationError as exc:
-        msg = str(exc)
-        cat = msg if msg in ("parser_invalid_argument", "as_of_invalid") else "parser_invalid_argument"
-        result = {"action_token": _ACTION_TOKEN, "refusal_category": cat, "exit_code": 2}
+    except ValidationError:
+        result: dict[str, Any] = {
+            "action_token": _ACTION_TOKEN,
+            "refusal_category": "parser_invalid_argument",
+            "exit_code": 2,
+        }
+    else:
+        try:
+            result = run_autonomy_read_only_network_executor(
+                as_of=args.as_of,
+                apply=args.apply,
+                format=args.format,
+            )
+        except ValidationError:
+            # Every refusal the seam knows how to name — including
+            # ``as_of_invalid`` — is returned in the result dict, so a
+            # ValidationError escaping here is an unexpected internal failure.
+            # Reporting it as ``parser_invalid_argument`` would blame the
+            # operator's command line for something that happened deep inside
+            # the adapter or the ledger.
+            result = {
+                "action_token": _ACTION_TOKEN,
+                "refusal_category": "unexpected_validation_error",
+                "exit_code": 2,
+            }
 
     print(json.dumps(result))
     return int(result.get("exit_code", 2))

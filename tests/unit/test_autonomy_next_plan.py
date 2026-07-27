@@ -28,6 +28,7 @@ from algotrader.execution.autonomy_next_plan import (
     EXECUTION_OFFLINE_OPERATOR_INPUT,
     EXECUTION_OPERATOR_GATED,
     PLAN_ALL_NOMINAL_OR_WAITING,
+    PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE,
     PLAN_OFFLINE_ACTION_AVAILABLE,
     PLAN_OPERATOR_AUTHORITY_REQUIRED,
     ActionClass,
@@ -837,3 +838,113 @@ def test_v551_acceptance_criteria_5_command_carve_out_is_narrow() -> None:
     )
     assert valid.execution_class == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
     assert valid.command != ""
+
+
+# --------------------------------------------------------------------------- #
+# V5.51a: the authorized-network class must not vanish from the aggregates
+# --------------------------------------------------------------------------- #
+def _all_other_lanes_nominal_or_waiting() -> dict[str, object]:
+    # Every lane except spy_market_data_soak is nominal/waiting. The soak lane
+    # is omitted entirely, so it reads `absent` and its next action is the
+    # authorized read-only network refresh.
+    return {
+        "spy_offline_daily_cycle": {"daily_chain_state": "accepted_observe_hold_noop"},
+        "crypto_supervised_readiness_trial": {"trial_classification": "accepted"},
+        "crypto_forward_shadow_cycle": {
+            "classification": "waiting_for_tournament_terminal"
+        },
+        "crypto_bounded_paper_probe_review": {
+            "classification": "waiting_for_v5_25_terminal_evidence"
+        },
+        "crypto_capability_production": {
+            "classification": "candidate_deferred_pending_terminal_winner"
+        },
+    }
+
+
+def test_lone_authorized_network_action_is_not_reported_as_all_nominal(
+    tmp_path: Path,
+) -> None:
+    # Regression: EXECUTION_AUTHORIZED_NETWORK_READ_ONLY is neither
+    # offline-runnable nor operator-gated, so before V5.51a a lane carrying it
+    # fell out of every bucket and the plan claimed "no next action is pending"
+    # while a runnable standing-authority command was sitting on that lane.
+    payload = _plan_from_records(tmp_path, _all_other_lanes_nominal_or_waiting())
+
+    soak = _action(payload, "spy_market_data_soak")
+    assert soak["normalized_state"] == "absent"
+    assert soak["execution_class"] == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+    assert soak["command"] != ""
+
+    assert payload["plan_class"] == PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE
+    assert payload["plan_class"] != PLAN_ALL_NOMINAL_OR_WAITING
+    assert payload["authorized_network_lanes"] == ["spy_market_data_soak"]
+    assert payload["next_authorized_network_action_lane"] == "spy_market_data_soak"
+    assert payload["next_authorized_network_action"] == soak
+    assert payload["offline_runnable_lanes"] == []
+    assert payload["operator_gated_lanes"] == []
+    assert "no next action is pending" not in str(payload["operator_summary"])
+    assert soak["command"] in str(payload["operator_summary"])
+    _assert_safety_booleans_false(payload)
+
+
+def test_every_lane_lands_in_exactly_one_plan_bucket(tmp_path: Path) -> None:
+    # The four bucket lists must partition the lanes: a lane in none of them is
+    # invisible to every aggregate the operator reads.
+    for lane_records in (
+        {},
+        _all_other_lanes_nominal_or_waiting(),
+        {"spy_offline_daily_cycle": {"daily_chain_state": "review_only"}},
+    ):
+        payload = _plan_from_records(tmp_path, lane_records)
+        buckets = (
+            list(payload["offline_runnable_lanes"])
+            + list(payload["authorized_network_lanes"])
+            + list(payload["operator_gated_lanes"])
+            + list(payload["noop_lanes"])
+        )
+        assert sorted(buckets) == sorted(
+            str(action["lane_id"]) for action in payload["actions"]
+        ), payload["plan_class"]
+        assert len(buckets) == payload["lane_count"]
+
+
+def test_authorized_network_plan_class_agrees_with_its_action(tmp_path: Path) -> None:
+    for lane_records in (
+        {},
+        _all_other_lanes_nominal_or_waiting(),
+        {
+            "spy_market_data_soak": {
+                "evidence_state": "accepted_unattended_market_data_soak",
+                "latest_attempted_session_date": AS_OF,
+            },
+            **_all_other_lanes_nominal_or_waiting(),
+        },
+    ):
+        payload = _plan_from_records(tmp_path, lane_records)
+        has_network = payload["next_authorized_network_action"] is not None
+        assert has_network is (payload["authorized_network_lanes"] != [])
+        assert has_network is (payload["next_authorized_network_action_lane"] != "")
+        if payload["plan_class"] == PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE:
+            assert has_network
+            assert payload["offline_runnable_lanes"] == []
+
+
+def test_offline_action_outranks_authorized_network_action(tmp_path: Path) -> None:
+    # An offline command needs no network at all, so it still wins the plan
+    # class even when an authorized network action is also available.
+    payload = _plan_from_records(tmp_path)
+
+    assert payload["authorized_network_lanes"] == ["spy_market_data_soak"]
+    assert payload["next_authorized_network_action_lane"] == "spy_market_data_soak"
+    assert payload["plan_class"] == PLAN_OFFLINE_ACTION_AVAILABLE
+
+
+def test_render_text_reports_the_authorized_network_lane(tmp_path: Path) -> None:
+    payload = _plan_from_records(tmp_path, _all_other_lanes_nominal_or_waiting())
+    text = render_autonomy_next_plan_text(payload)
+
+    assert "plan_class: authorized_network_action_available" in text
+    assert (
+        "next_authorized_network_action_lane: spy_market_data_soak" in text
+    )

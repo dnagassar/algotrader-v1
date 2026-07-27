@@ -57,6 +57,7 @@ __all__ = [
     "EXECUTION_OFFLINE_OPERATOR_INPUT",
     "EXECUTION_OPERATOR_GATED",
     "PLAN_ALL_NOMINAL_OR_WAITING",
+    "PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE",
     "PLAN_OFFLINE_ACTION_AVAILABLE",
     "PLAN_OPERATOR_AUTHORITY_REQUIRED",
     "build_autonomy_next_plan",
@@ -110,8 +111,14 @@ _OFFLINE_RUNNABLE_CLASSES = frozenset(
     {EXECUTION_AUTO_OFFLINE, EXECUTION_OFFLINE_OPERATOR_INPUT}
 )
 
-# Whole-system plan classifications.
+# Whole-system plan classifications, ordered here from most to least autonomous
+# progress. ``PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE`` exists because
+# :data:`EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` is neither offline-runnable nor
+# an operator blocker: without its own plan class such a lane would fall through
+# every bucket and the plan would report ``all_nominal_or_waiting`` while a
+# runnable, standing-authority action was pending.
 PLAN_OFFLINE_ACTION_AVAILABLE = "offline_action_available"
+PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE = "authorized_network_action_available"
 PLAN_OPERATOR_AUTHORITY_REQUIRED = "operator_authority_required"
 PLAN_ALL_NOMINAL_OR_WAITING = "all_nominal_or_waiting"
 
@@ -568,6 +575,11 @@ def build_autonomy_next_plan_from_report(
         for action in actions
         if action["offline_runnable"] is True
     ]
+    authorized_network_lanes = [
+        str(action["lane_id"])
+        for action in actions
+        if action["execution_class"] == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+    ]
     gated_lanes = [
         str(action["lane_id"])
         for action in actions
@@ -587,7 +599,13 @@ def build_autonomy_next_plan_from_report(
         next_offline = _highest_priority_action(
             actions, lambda action: action["offline_runnable"] is True
         )
-    plan_class = _plan_class(offline_lanes, gated_lanes)
+    next_authorized_network = _highest_priority_action(
+        actions,
+        lambda action: (
+            action["execution_class"] == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+        ),
+    )
+    plan_class = _plan_class(offline_lanes, authorized_network_lanes, gated_lanes)
 
     operator_gated_actions = [
         {
@@ -623,12 +641,19 @@ def build_autonomy_next_plan_from_report(
             str(next_offline["lane_id"]) if next_offline else ""
         ),
         "next_offline_action": next_offline,
+        "next_authorized_network_action_lane": (
+            str(next_authorized_network["lane_id"])
+            if next_authorized_network
+            else ""
+        ),
+        "next_authorized_network_action": next_authorized_network,
         "offline_runnable_lanes": offline_lanes,
+        "authorized_network_lanes": authorized_network_lanes,
         "operator_gated_lanes": gated_lanes,
         "noop_lanes": noop_lanes,
         "operator_gated_actions": operator_gated_actions,
         "operator_summary": _operator_summary(
-            plan_class, next_offline, gated_lanes
+            plan_class, next_offline, next_authorized_network, gated_lanes
         ),
         "submitted": False,
         "mutated": False,
@@ -865,9 +890,23 @@ def _highest_priority_action(
     return None
 
 
-def _plan_class(offline_lanes: list[str], gated_lanes: list[str]) -> str:
+def _plan_class(
+    offline_lanes: list[str],
+    authorized_network_lanes: list[str],
+    gated_lanes: list[str],
+) -> str:
+    """Rank the plan by the most autonomous progress actually available.
+
+    ``authorized_network_lanes`` is ranked below offline (an offline command
+    needs no network at all) but above operator-gated, and — critically —
+    above ``PLAN_ALL_NOMINAL_OR_WAITING``: a lane carrying a standing-authority
+    read-only network command is a pending next action, not a nominal lane.
+    """
+
     if offline_lanes:
         return PLAN_OFFLINE_ACTION_AVAILABLE
+    if authorized_network_lanes:
+        return PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE
     if gated_lanes:
         return PLAN_OPERATOR_AUTHORITY_REQUIRED
     return PLAN_ALL_NOMINAL_OR_WAITING
@@ -876,6 +915,7 @@ def _plan_class(offline_lanes: list[str], gated_lanes: list[str]) -> str:
 def _operator_summary(
     plan_class: str,
     next_offline: dict[str, object] | None,
+    next_authorized_network: dict[str, object] | None,
     gated_lanes: list[str],
 ) -> str:
     if plan_class == PLAN_ALL_NOMINAL_OR_WAITING:
@@ -889,6 +929,18 @@ def _operator_summary(
             f"Next offline action on lane {next_offline['lane_id']}: run "
             f"`{next_offline['command']}` "
             f"(gate: {next_offline['gate']}). "
+            f"{gated} further lane(s) are gated on the operator."
+        )
+    if (
+        plan_class == PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE
+        and next_authorized_network is not None
+    ):
+        gated = len(gated_lanes)
+        return (
+            "No offline action is available; next authorized read-only "
+            f"network action on lane {next_authorized_network['lane_id']}: run "
+            f"`{next_authorized_network['command']}` "
+            f"(gate: {next_authorized_network['gate']}, standing authority). "
             f"{gated} further lane(s) are gated on the operator."
         )
     return (
@@ -914,6 +966,8 @@ def render_autonomy_next_plan_text(payload: Mapping[str, object]) -> str:
         f"supervisor_system_status: {payload.get('supervisor_system_status', '')}",
         f"plan_class: {payload.get('plan_class', '')}",
         f"next_offline_action_lane: {payload.get('next_offline_action_lane', '')}",
+        "next_authorized_network_action_lane: "
+        f"{payload.get('next_authorized_network_action_lane', '')}",
         "actions:",
     ]
     for action in _mapping_list(payload.get("actions")):

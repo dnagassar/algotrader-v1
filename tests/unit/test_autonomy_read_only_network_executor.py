@@ -312,6 +312,29 @@ def test_cli_main_handles_missing_or_invalid_args_cleanly(capsys: pytest.Capture
     assert data2["refusal_category"] == "as_of_invalid"
 
 
+def test_cli_main_does_not_blame_the_command_line_for_internal_failures(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The seam returns every refusal it can name in its result dict, so a
+    # ValidationError escaping the run function is an internal failure. It must
+    # not be reported as `parser_invalid_argument` on a perfectly valid CLI.
+    def _boom(**_kwargs: object) -> dict[str, object]:
+        raise ValidationError("provider_row_count_exceeded")
+
+    monkeypatch.setattr(
+        executor, "run_autonomy_read_only_network_executor", _boom
+    )
+
+    exit_code = main(["--as-of", "2026-07-25T00:15:00Z"])
+
+    assert exit_code == 2
+    data = json.loads(capsys.readouterr().out)
+    assert data["refusal_category"] == "unexpected_validation_error"
+    assert data["action_token"] == (
+        "run_authorized_read_only_market_data_refresh_to_seed_soak"
+    )
+
+
 def test_ledger_validation_comprehensive_corruption_cases(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

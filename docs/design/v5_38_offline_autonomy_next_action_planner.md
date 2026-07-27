@@ -91,9 +91,28 @@ Each lane's recommended action resolves to exactly one execution class:
 
 - `plan_class`:
   - `offline_action_available` — at least one lane is offline-runnable.
-  - `operator_authority_required` — no offline-runnable lane, but at least one
-    operator-gated lane.
+  - `authorized_network_action_available` — **V5.51a correction (P1)**: no
+    offline-runnable lane, but at least one lane classified
+    `authorized_network_read_only`. V5.51 introduced that execution class
+    without giving it a bucket, so such a lane counted toward neither
+    `offline_runnable_lanes`, `operator_gated_lanes`, nor `noop_lanes`, and a
+    plan whose only pending action was the authorized SPY market-data refresh
+    reported `all_nominal_or_waiting` ("no next action is pending") and exited
+    `0`. The lane is genuinely runnable under standing authority, so it ranks
+    below offline (which needs no network at all) and above operator-gated
+    (it is not blocked on the operator).
+  - `operator_authority_required` — no offline-runnable lane and no authorized
+    network lane, but at least one operator-gated lane.
   - `all_nominal_or_waiting` — every lane is `noop`.
+- **V5.51a**: the four bucket lists — `offline_runnable_lanes`,
+  `authorized_network_lanes`, `operator_gated_lanes`, `noop_lanes` — partition
+  the lanes exactly; a lane in none of them is invisible to every aggregate the
+  operator reads.
+- **V5.51a**: `next_authorized_network_action` /
+  `next_authorized_network_action_lane` name the highest-severity authorized
+  network lane, mirroring `next_offline_action`. They are populated whenever
+  such a lane exists, including when `plan_class` is
+  `offline_action_available`.
 - `next_offline_action` first selects the highest-severity `auto_offline`
   action (severity ordered blocked→unknown→attention→stale→waiting→nominal→
   absent; ties break by registry order). It falls back to the highest-severity
@@ -108,8 +127,9 @@ Each lane's recommended action resolves to exactly one execution class:
 - `supervisor_system_status`, `supervisor_recommended_action`, and
   `supervisor_recommended_action_lane` are carried through unchanged.
 - Exit codes: `0` when `plan_class` is `all_nominal_or_waiting` (nothing
-  pending); `1` when any action is pending (`offline_action_available` or
-  `operator_authority_required`); `2` on input-validation error. The exit code
+  pending); `1` when any action is pending (`offline_action_available`,
+  `authorized_network_action_available`, or `operator_authority_required`);
+  `2` on input-validation error. The exit code
   is deliberately a *pending-action* signal, distinct from the supervisor's
   *severity* signal, so a scheduled check can alert precisely on "there is a
   next action to take."
