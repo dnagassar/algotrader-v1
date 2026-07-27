@@ -5,8 +5,8 @@
 - Milestone: `V5.51 — read-only SPY market-data network refresh reachability contract`.
 - Frozen contract:
   `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`.
-- Review status: **Orchestrator review requested changes (3 P1s, 1 P2). Correction fully implemented, verified, committed (`a0ce62d`, `9471e87`), and pushed.**
-- Implementation status: **Operator-paused. Full pytest incomplete (NOT PASS). Ready for fresh full pytest resume.**
+- Review status: **Round-5 orchestrator review of `db2b646` REQUESTED CHANGES (2 P1, 1 P2 — see "Round-5 Orchestrator Review" below). Correction implemented, verified, committed (`0acc5df`, `c0d1176`). NOT self-accepted — awaiting independent acceptance per charter.**
+- Implementation status: **Full default pytest PASS on the corrected tree (`c0d1176`): 10071 passed, 5 skipped, exit 0, 26:54. The prior HEAD `db2b646` did NOT pass (1 failed).**
 
 ## Scope and Implementations Completed
 
@@ -42,6 +42,55 @@
    - Corrected test counts: 145 targeted unit tests across 4 files (43 adapter, 19 executor, 40 planner, 43 dependency direction).
    - Recorded pre-correction PID 23256 as superseded.
 
+## Round-5 Orchestrator Review (`db2b646`) — REQUEST CHANGES
+
+Corrected in `0acc5df` and `c0d1176`.
+
+1. **Finding 1 (P1) — `EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` fell out of every
+   plan aggregate, producing a false green.** The plan rollup buckets lanes into
+   `offline_runnable_lanes`, `operator_gated_lanes`, and `noop_lanes` only; a
+   lane in the new class joined none of them. Reproduced by execution: with the
+   soak lane absent and every other lane nominal/waiting, `plan_class` read
+   `all_nominal_or_waiting`, `operator_summary` read "no next action is
+   pending", bucket coverage was 5 of 6, and `algotrader autonomy-next-plan`
+   exited `0` — while that lane carried a runnable standing-authority refresh
+   command. Before V5.51 the same scenario reported
+   `operator_authority_required`, so this was a regression, and the fourth
+   instance of the V5.37a/V5.38a/V5.42a defect class (a derived aggregate left
+   behind when a new class is added).
+   - Fix: added `PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE` (ranked below offline,
+     which needs no network, and above operator-gated, which is genuinely
+     blocked), the `authorized_network_lanes` bucket, and
+     `next_authorized_network_action{,_lane}` mirroring the offline pair.
+   - Guard against recurrence: `test_every_lane_lands_in_exactly_one_plan_bucket`
+     asserts the four bucket lists partition the lanes, so the next class added
+     without a bucket fails rather than disappearing.
+2. **Finding 2 (P1) — the full suite did not pass at `db2b646`.**
+   `test_spy_eod_refresh_schedule_is_isolated_tiingo_only` failed: commit B
+   repointed the scheduled-task template to
+   `run_spy_read_only_network_executor.ps1` exactly as the frozen contract
+   specifies ("Windows Scheduled Task Update"), but the test still asserted the
+   old `refresh_spy_adjusted_data.ps1` command line. The targeted 4-file run
+   recorded below did not include this file. The stale assertions were the only
+   place any test pinned the unattended refresh to a read-only Tiingo-only shape
+   (`-Provider tiingo`, `-Mode live_market_data_fetch`,
+   `-LiveMarketDataFetchAuthorized`, `-RevisionLookbackDays 10`,
+   `-StartDate auto`, `-SoakRequiredSessions 5`, four canonical paths), and
+   nothing re-asserted them after the move, so they were re-anchored to the
+   seam's `ETFAdjustedDataRefreshConfig` rather than deleted with the test.
+   New coverage also pins the wrapper's single `UtcNow` capture — a second
+   timestamp resolution inside Python could straddle the session cutoff and
+   target a different NYSE session than the wrapper started for.
+3. **Finding 3 (P2) — CLI blamed the command line for internal failures.**
+   `main()` mapped any escaping `ValidationError` to `parser_invalid_argument`,
+   and its `as_of_invalid` arm was unreachable (that refusal is returned in the
+   result dict, never raised). Now reports `unexpected_validation_error`.
+
+Informational, not filed as a defect: the wrapper calls `python -m ...` bare
+where the contract's prose says "using PowerShell's own call operator". The
+invariant that language protects — one timestamp capture, no second source — is
+satisfied.
+
 ## Authority And Safety Boundaries
 
 - Paper-only, read-only market-data fetch path.
@@ -53,15 +102,25 @@
 
 - Working tree: `C:\Users\danie\Desktop\algo_trader\.claude\worktrees\v551-readonly-market-data-contract`.
 - Branch: `claude/v5.51-readonly-spy-market-data-contract`.
-- Sole implementation writer: Antigravity AI collaborator.
+- Implementation writer through `db2b646`: Antigravity AI collaborator.
+- Round-5 correction (`0acc5df`, `c0d1176`): Claude Code, acting as orchestrator
+  and implementing agent under the frozen charter. Because Claude Code authored
+  these commits, it cannot also accept them.
 
 ## Verification Evidence
 
-- Targeted unit tests: 145/145 passed across 4 files (`test_spy_adjusted_data_refresh.py` [43], `test_autonomy_read_only_network_executor.py` [19], `test_autonomy_next_plan.py` [40], `test_dependency_direction.py` [43]).
-- Offline verification script `verify_offline.ps1`: **PASS** (108/108 offline safety tests passed).
-- Full default pytest: Safely terminated per operator instruction (task-616 / PID 5156 cancelled, recorded as operator-paused at approximately 35%, incomplete, NOT PASS).
-- Preflight credential/profile check: clean (no paper profile or broker credentials loaded).
-- Correction commits: `a0ce62d`, `9471e87`.
+### At `db2b646` (pre-round-5-correction)
+
+- Targeted unit tests: 145/145 passed across 4 files (`test_spy_adjusted_data_refresh.py` [43], `test_autonomy_read_only_network_executor.py` [19], `test_autonomy_next_plan.py` [40], `test_dependency_direction.py` [43]). **This targeted set was not sufficient — it omitted the file that actually failed.**
+- Full default pytest: **NOT PASS** — `1 failed, 10062 passed, 5 skipped in 1790.46s (0:29:50)`, exit 1. Failure: `tests/unit/test_spy_eod_market_data_refresh_schedule.py::test_spy_eod_refresh_schedule_is_isolated_tiingo_only` (round-5 finding 2).
+
+### At `c0d1176` (round-5 correction, current)
+
+- Full default pytest, credential-free from a clean tree: **PASS** — `10071 passed, 5 skipped in 1614.41s (0:26:54)`, exit 0, 10076 collected.
+- Offline verification script `verify_offline.ps1`: **PASS** (108/108 offline safety guard tests).
+- Preflight credential/profile check: clean — `APP_PROFILE_is_paper: False`, `ALPACA_API_KEY_loaded: False`, `ALPACA_API_SECRET_KEY_loaded: False`, `ALPACA_SECRET_KEY_loaded: False`, `APCA_API_KEY_ID_loaded: False`, `APCA_API_SECRET_KEY_loaded: False`, `RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled: False`. No `.env` in the working tree; no `TIINGO_API_KEY` in the environment.
+- Targeted: 151 passed across the original 4 files (was 145); 201 passed across all autonomy-keyed tests; 25 passed across the two schedule/seam files.
+- Correction commits: `a0ce62d`, `9471e87` (round 4); `0acc5df`, `c0d1176` (round 5).
 - `git diff --check`: clean (zero whitespace errors).
 - `git status --short`: clean.
 - `git diff --name-only HEAD~4 -- src`: exact expected modified/created source files.
@@ -69,4 +128,4 @@
 
 ## Next Action
 
-resume a fresh credential-free full python -m pytest from clean corrected HEAD; on exit 0 record count/duration, then orchestrator review/promotion
+independent acceptance review of `c0d1176` (Claude Code authored the round-5 correction and must not self-accept); on ACCEPT, promote V5.51 and fast-forward `main`
