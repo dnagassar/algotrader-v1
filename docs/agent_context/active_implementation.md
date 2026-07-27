@@ -122,9 +122,10 @@ lives in `.agent_relay/active_task.json` under `routing`.
 
 - **GPT-1 (P0)** — governance review of `8d2cbcc`/`9a0adfc`. Wait for AG-1's mapping first; it
   names what `8d2cbcc` may have dropped.
-- **GPT-2 (P1)** — acceptance review of `claude/v5.51-readonly-spy-market-data-contract@824f265`
-  (that lane's own handoff named parent `26c4fb3` until 2026-07-27; corrected to the tip, which
-  is the commit carrying the recorded evidence)
+- **GPT-2 (P1)** — acceptance review of branch `claude/v5.51-readonly-spy-market-data-contract`
+  through its current tip. Substantive change ends at `824f265` (code plus recorded evidence);
+  later commits are handoff/pointer edits only. That lane's handoff named parent `26c4fb3` until
+  2026-07-27, which would have meant reviewing the work without its verification record.
   (full pytest 10071 passed / 5 skipped / exit 0; `verify_offline.ps1` PASS; credential
   preflight all-false). Antigravity implemented through `db2b646`, Claude Code authored the
   round-5 correction — neither may accept.
