@@ -176,14 +176,65 @@ genuinely re-anchored to the seam configuration and wrapper; 156 targeted passed
 108/108 offline guards; full suite 10,076 collected, 10,071 passed, 5 skipped,
 exit 0; preflight all-false, no `.env`, no network or broker operation.
 
+## Round-6 Corrections Implemented (`efdcebc`, `c2b8c22`)
+
+- **F2 — `efdcebc`.** `_read_and_validate_ledger` now enforces the frozen
+  identity relationship: every record must carry
+  `run_id == network-<session_id>-<attempt_number>`, and a session's
+  reservations must number exactly 1..N. The reviewer's repro raises
+  `ledger_corrupt` instead of colliding, and the apply path refuses with zero
+  additional writes.
+- **F3 — `efdcebc`.** Buckets derive from one total mapping,
+  `PLAN_BUCKET_BY_EXECUTION_CLASS`, checked against the class vocabulary at
+  import time, replacing four independent comprehensions. A class added without
+  a bucket now fails at import regardless of which lane states any fixture
+  builds. The sampled partition test is kept as its companion: the invariant
+  proves the mapping is total, the sample proves the builder uses it.
+- **F1 — `c2b8c22`, resolved by operator decision as a contract amendment.**
+  The direct-import rule now names three modules. Rationale recorded in the
+  contract: the two-module rule was not carrying the safety weight it appeared
+  to — the stated property is proved by the closure purity check across all
+  seven files, and `exchange_session` has been inside that purity-checked
+  closure since the adapter began importing it in `9ba2925`, long before this
+  milestone, so the seam's direct import widens the blast radius by nothing.
+  Conforming instead would have moved this contract's own 20:10 ET
+  expected-session semantics into an adapter shared by four unrelated modules.
+  The amendment is narrow and exhaustive (three named modules, not a category)
+  and, per operator instruction, carries the same independent-review
+  requirement as any implementation change.
+  `test_dependency_direction.py` now mirrors the contract as a frozen
+  three-entry set with a size guard and a comment recording that it may never
+  again be widened to match an implementation — that drift, not the extra
+  import, was the actual defect F1 identified.
+
+### Verification status — INCOMPLETE, do not read as verified
+
+- Targeted: **154 passed** across the four V5.51 suites, at `c2b8c22`.
+- Full default pytest at `c2b8c22`: **NOT COMPLETED.** The run was interrupted
+  at ~29% with zero failures recorded (it had cleared
+  `test_dependency_direction.py`, the file F1 changed). No complete full-suite
+  run exists for the round-6 tree.
+- Full default pytest at `efdcebc` (F2/F3 only, before the F1 commit):
+  `1 failed, 10072 passed, 5 skipped`, 2366s. The failure was
+  `test_v536_windows_host_canary.py::test_concurrent_execution_allows_one_real_dispatch_and_immutable_duplicates`.
+  Neither changed module is referenced by that test or its subject module, and
+  it passes 3/3 in isolation; that run took 2366s against 1614s/1650s for
+  earlier runs because other commands were executing concurrently. The evidence
+  points to a load-sensitive flake in an 8-worker thread-pool test rather than a
+  regression, but **this is unconfirmed** — a clean full run is what would
+  settle it.
+- **Required before re-review:** one clean, credential-free full
+  `python -m pytest` from `c2b8c22` with nothing else running on the host, plus
+  `verify_offline.ps1`. Targeted-green is not verification — this milestone has
+  already been bitten once by exactly that substitution (round-5 finding 2).
+
 ## Next Action
 
-implement the round-6 corrections for F1, F2 and F3 above, then return to Codex/GPT for re-review. **V5.51 is NOT accepted and must not be promoted.**
+run one clean full `python -m pytest` plus `verify_offline.ps1` from `c2b8c22`, then return to Codex/GPT for round-6 re-review. **V5.51 is NOT accepted and must not be promoted.**
 
-Correction scope:
-- **F1** — either remove the `exchange_session` import from the seam (resolving the session-date logic within the permitted closure), or obtain an explicit operator amendment to the frozen contract. Do **not** resolve it by leaving the test allowlist broadened. Whichever path is taken, `test_dependency_direction.py`'s `allowed_internal_modules` must once again mirror the contract exactly rather than the implementation.
-- **F2** — enforce the frozen `session_id` / `attempt_number` / `run_id` relationship inside `_read_and_validate_ledger`, failing closed as `ledger_corrupt` with zero writes when a record's `attempt_number` or `run_id` is inconsistent with its position in the session's reservation sequence.
-- **F3** — replace the sampled bucket test with a total invariant derived from the execution-class table itself: every member of `_EXECUTION_CLASSES` must map into exactly one plan bucket, so a class added without a bucket fails regardless of which lane states any fixture happens to exercise.
+Re-review scope: the three corrections above **and the contract amendment
+itself**, which the operator directed be reviewed as a change in its own right
+rather than accepted implicitly along with the code.
 
-Claude Code authored the round-5 correction and Antigravity implemented through
-`db2b646`, so neither may accept the result; re-review returns to Codex/GPT.
+Claude Code authored the round-5 and round-6 corrections and Antigravity
+implemented through `db2b646`, so neither may accept the result.
