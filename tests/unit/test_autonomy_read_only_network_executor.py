@@ -312,6 +312,53 @@ def test_cli_main_handles_missing_or_invalid_args_cleanly(capsys: pytest.Capture
     assert data2["refusal_category"] == "as_of_invalid"
 
 
+def test_seam_freezes_the_read_only_tiingo_refresh_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # These invariants used to be asserted against the scheduled task's command
+    # line (test_spy_eod_market_data_refresh_schedule.py). V5.51 moved the
+    # unattended path to this seam, which builds the config itself, so they are
+    # re-anchored here rather than dropped.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("APP_PROFILE", "paper")
+    monkeypatch.setenv("ALPACA_API_KEY", "dummy_key")
+    monkeypatch.setenv("ALPACA_SECRET_KEY", "dummy_secret")
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".env").write_text("TIINGO_API_KEY=test_token_value\n", encoding="utf-8")
+
+    captured: dict[str, Any] = {}
+
+    def _capture(config: Any, token_lookup: Any) -> dict[str, Any]:
+        captured["config"] = config
+        return {"refresh_state": "accepted"}
+
+    monkeypatch.setattr(executor, "run_spy_adjusted_data_refresh", _capture)
+
+    result = run_autonomy_read_only_network_executor(
+        as_of="2026-07-25T00:15:00Z", apply=True
+    )
+    assert result["exit_code"] == 0
+
+    config = captured["config"]
+    assert config.provider == "tiingo"
+    assert config.symbol == "SPY"
+    assert config.mode == "live_market_data_fetch"
+    assert config.live_fetch_authorized is True
+    assert config.revision_lookback_days == 10
+    assert config.start_date == "auto"
+    assert config.soak_required_sessions == 5
+    assert config.token_env_var == "TIINGO_API_KEY"
+    assert Path(config.canonical_csv).name == (
+        "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    assert Path(config.raw_response_path).name == "tiingo_spy_adjusted_raw_latest.json"
+    assert Path(config.soak_ledger).name == (
+        "spy_adjusted_market_data_soak_ledger.jsonl"
+    )
+    assert Path(config.soak_report).name == "spy_adjusted_market_data_soak_report.json"
+
+
 def test_cli_main_does_not_blame_the_command_line_for_internal_failures(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

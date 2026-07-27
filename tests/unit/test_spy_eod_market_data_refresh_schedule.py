@@ -11,6 +11,7 @@ SCHEDULE = (
     / "design"
     / "spy_eod_market_data_refresh_scheduled_task.xml"
 )
+WRAPPER = PROJECT_ROOT / "scripts" / "run_spy_read_only_network_executor.ps1"
 NAMESPACE = {"task": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
@@ -38,23 +39,39 @@ def test_spy_eod_refresh_schedule_runs_after_tiingo_correction_window() -> None:
     assert _text(root, ".//task:ExecutionTimeLimit") == "PT15M"
 
 
-def test_spy_eod_refresh_schedule_is_isolated_tiingo_only() -> None:
+def test_spy_eod_refresh_schedule_is_isolated_and_drives_the_ledgered_seam() -> None:
     root = ET.parse(SCHEDULE).getroot()
     arguments = _text(root, ".//task:Arguments")
 
-    assert "refresh_spy_adjusted_data.ps1" in arguments
-    assert "-Provider tiingo" in arguments
-    assert "-Mode live_market_data_fetch" in arguments
-    assert "-LiveMarketDataFetchAuthorized" in arguments
-    assert "-RevisionLookbackDays 10" in arguments
-    assert "-StartDate auto" in arguments
-    assert "m446_spy_daily_tiingo_adjusted_canonical.csv" in arguments
-    assert "tiingo_spy_adjusted_raw_latest.json" in arguments
-    assert "spy_adjusted_market_data_soak_ledger.jsonl" in arguments
-    assert "spy_adjusted_market_data_soak_report.json" in arguments
-    assert "-SoakRequiredSessions 5" in arguments
+    # V5.51 repointed the unattended path from the bare adapter script to the
+    # seam wrapper, so the template's own RestartOnFailure retries are subject
+    # to the seam's four-attempt-per-session ledger cap instead of bypassing it
+    # with no shared attempt memory. The refresh parameters this test used to
+    # read off the command line now live in the seam's frozen
+    # ETFAdjustedDataRefreshConfig -- see
+    # test_autonomy_read_only_network_executor.py::
+    # test_seam_freezes_the_read_only_tiingo_refresh_configuration.
+    assert "run_spy_read_only_network_executor.ps1" in arguments
+    assert "refresh_spy_adjusted_data.ps1" not in arguments
     assert "run_spy_paper_mutation_supervisor.ps1" not in arguments
     assert "paper-autopilot-supervisor" not in arguments
+
+
+def test_spy_eod_refresh_wrapper_invokes_the_seam_with_one_utc_capture() -> None:
+    wrapper = WRAPPER.read_text(encoding="utf-8")
+
+    assert "algotrader.execution.autonomy_read_only_network_executor" in wrapper
+    assert "--as-of" in wrapper
+    assert "--apply" in wrapper
+    assert "--format json" in wrapper
+    # Exactly one timestamp source, captured once: a second resolution inside
+    # the Python process could straddle the session cutoff and silently target
+    # a different NYSE session than the one the wrapper started for.
+    assert wrapper.count("UtcNow") == 1
+    assert "Get-Date" not in wrapper
+    # The wrapper carries no credential of its own; the seam resolves it.
+    assert "TIINGO_API_KEY" not in wrapper
+    assert "run_spy_paper_mutation_supervisor" not in wrapper
 
 
 def _text(root: ET.Element, path: str) -> str:
