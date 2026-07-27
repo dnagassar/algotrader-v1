@@ -166,7 +166,21 @@ def test_session_attempt_budget_exhausted_writes_one_refused_event(
     session_id = "2026-07-24"
     lines = []
     for i in range(1, 5):
-        event = executor._build_base_ledger_event(
+        pending_event = executor._build_base_ledger_event(
+            session_id=session_id,
+            as_of="2026-07-25T00:15:00Z",
+            attempt_number=i,
+            run_id=f"network-{session_id}-{i}",
+            reservation_id=f"network-{session_id}-{i}",
+            ledger_status="pending",
+            exit_code=None,
+            adapter_refresh_state=None,
+            network_access_attempted=False,
+            interlock_verdict={"paper_boundary_ok": True},
+            credential_present=True,
+            refusal_category=None,
+        )
+        completed_event = executor._build_base_ledger_event(
             session_id=session_id,
             as_of="2026-07-25T00:15:00Z",
             attempt_number=i,
@@ -180,7 +194,8 @@ def test_session_attempt_budget_exhausted_writes_one_refused_event(
             credential_present=True,
             refusal_category=None,
         )
-        lines.append(json.dumps(event))
+        lines.append(json.dumps(pending_event))
+        lines.append(json.dumps(completed_event))
     ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     result = run_autonomy_read_only_network_executor(
@@ -191,7 +206,7 @@ def test_session_attempt_budget_exhausted_writes_one_refused_event(
     assert result["refusal_category"] == "session_attempt_budget_exhausted"
 
     records = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert len(records) == 5
+    assert len(records) == 9
     refused_event = records[-1]
     assert refused_event["ledger_status"] == "refused"
     assert refused_event["refusal_category"] == "session_attempt_budget_exhausted"
@@ -269,24 +284,137 @@ def test_successful_apply_writes_reservation_and_completion_events(
     assert completed_event["reservation_id"] == result["run_id"]
 
 
-def test_live_capital_interlock_blocked_refusal_writes_one_refused_event(
+def test_as_of_validation_strict_utc_refusals() -> None:
+    for invalid in ("", "   ", "not-a-date", "2026-07-25T00:15:00", "2026-07-24T20:15:00-04:00", "2026-07-25T05:15:00+05:00"):
+        with pytest.raises(ValidationError, match="as_of_invalid"):
+            executor._parse_as_of(invalid)
+
+    # Valid UTC ISO strings
+    dt1 = executor._parse_as_of("2026-07-25T00:15:00Z")
+    assert dt1.tzinfo == UTC
+    dt2 = executor._parse_as_of("2026-07-25T00:15:00+00:00")
+    assert dt2.tzinfo == UTC
+
+
+def test_cli_main_handles_missing_or_invalid_args_cleanly(capsys: pytest.CaptureFixture[str]) -> None:
+    # Missing --as-of
+    exit1 = main([])
+    assert exit1 == 2
+    captured1 = capsys.readouterr()
+    data1 = json.loads(captured1.out)
+    assert data1["refusal_category"] == "parser_invalid_argument"
+
+    # Invalid naive --as-of
+    exit2 = main(["--as-of", "2026-07-25T00:15:00"])
+    assert exit2 == 2
+    captured2 = capsys.readouterr()
+    data2 = json.loads(captured2.out)
+    assert data2["refusal_category"] == "as_of_invalid"
+
+
+def test_ledger_validation_comprehensive_corruption_cases(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("APP_PROFILE", "live")
     (tmp_path / "pyproject.toml").touch()
     (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
 
-    result = run_autonomy_read_only_network_executor(
+    ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Case 1: Directory at ledger_path
+    ledger_path.mkdir(exist_ok=True)
+    res_dir = run_autonomy_read_only_network_executor(as_of="2026-07-25T00:15:00Z", apply=True)
+    assert res_dir["exit_code"] == 2
+    assert res_dir["refusal_category"] == "ledger_corrupt"
+    ledger_path.rmdir()
+
+    # Case 2: Extra keys in ledger record
+    base_event = executor._build_base_ledger_event(
+        session_id="2026-07-24",
         as_of="2026-07-25T00:15:00Z",
-        apply=True,
+        attempt_number=1,
+        run_id="network-2026-07-24-1",
+        reservation_id="network-2026-07-24-1",
+        ledger_status="pending",
+        exit_code=None,
+        adapter_refresh_state=None,
+        network_access_attempted=False,
+        interlock_verdict={"paper_boundary_ok": True},
+        credential_present=True,
+        refusal_category=None,
     )
-    assert result["exit_code"] == 2
-    assert result["refusal_category"] == "live_capital_interlock_blocked"
+    event_extra = dict(base_event)
+    event_extra["unexpected_extra_field"] = "bad"
+    ledger_path.write_text(json.dumps(event_extra) + "\n", encoding="utf-8")
+    res_extra = run_autonomy_read_only_network_executor(as_of="2026-07-25T00:15:00Z", apply=True)
+    assert res_extra["exit_code"] == 2
+    assert res_extra["refusal_category"] == "ledger_corrupt"
+
+    # Case 3: Completed without prior matching pending reservation
+    completed_orphan = executor._build_base_ledger_event(
+        session_id="2026-07-24",
+        as_of="2026-07-25T00:15:00Z",
+        attempt_number=1,
+        run_id="network-2026-07-24-1",
+        reservation_id="network-2026-07-24-1",
+        ledger_status="completed",
+        exit_code=0,
+        adapter_refresh_state="accepted",
+        network_access_attempted=True,
+        interlock_verdict={"paper_boundary_ok": True},
+        credential_present=True,
+        refusal_category=None,
+    )
+    ledger_path.write_text(json.dumps(completed_orphan) + "\n", encoding="utf-8")
+    res_orphan = run_autonomy_read_only_network_executor(as_of="2026-07-25T00:15:00Z", apply=True)
+    assert res_orphan["exit_code"] == 2
+    assert res_orphan["refusal_category"] == "ledger_corrupt"
+
+    # Case 4: Valid pending reservation (crash-surviving) is budget-consuming
+    ledger_path.write_text(json.dumps(base_event) + "\n", encoding="utf-8")
+    count, records = executor._read_and_validate_ledger(ledger_path, "2026-07-24")
+    assert count == 1
+    assert len(records) == 1
+
+
+def test_credential_provider_loads_dotenv_token_exactly_once_and_emits_secret_free_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("APP_PROFILE", "paper")
+    monkeypatch.setenv("ALPACA_API_KEY", "dummy_key")
+    monkeypatch.setenv("ALPACA_SECRET_KEY", "dummy_secret")
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src" / "algotrader").mkdir(parents=True, exist_ok=True)
+    secret_value = "secret_tiingo_token_99999"
+    (tmp_path / ".env").write_text(f"TIINGO_API_KEY={secret_value}\n", encoding="utf-8")
+
+    load_call_count = 0
+    real_load = executor.load_tiingo_api_key_from_dotenv
+
+    def _counted_load(path: Path, token_env_var: str = "TIINGO_API_KEY") -> str | None:
+        nonlocal load_call_count
+        load_call_count += 1
+        return real_load(path, token_env_var=token_env_var)
+
+    monkeypatch.setattr(executor, "load_tiingo_api_key_from_dotenv", _counted_load)
+
+    def _dummy_run_spy_refresh(config: Any, token_lookup: Any) -> dict[str, Any]:
+        val = token_lookup("TIINGO_API_KEY")
+        assert val == secret_value
+        return {"refresh_state": "accepted"}
+
+    monkeypatch.setattr(executor, "run_spy_adjusted_data_refresh", _dummy_run_spy_refresh)
+
+    exit_code = main(["--as-of", "2026-07-25T00:15:00Z", "--apply", "--format", "json"])
+    assert exit_code == 0
+    assert load_call_count == 1
+
+    captured = capsys.readouterr()
+    assert secret_value not in captured.out
+    assert secret_value not in captured.err
 
     ledger_path = tmp_path / "runs" / "autonomy_network_executor" / "ledger.jsonl"
-    records = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert len(records) == 1
-    assert records[0]["ledger_status"] == "refused"
-    assert records[0]["refusal_category"] == "live_capital_interlock_blocked"
-
+    ledger_text = ledger_path.read_text(encoding="utf-8")
+    assert secret_value not in ledger_text

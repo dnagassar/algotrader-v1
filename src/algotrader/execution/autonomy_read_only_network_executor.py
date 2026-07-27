@@ -117,14 +117,15 @@ def _validate_canonical_env_path(root: Path) -> Path:
 def _parse_as_of(as_of_raw: str) -> datetime:
     if not as_of_raw or not isinstance(as_of_raw, str):
         raise ValidationError("as_of_invalid")
+    raw = as_of_raw.strip()
+    if not raw:
+        raise ValidationError("as_of_invalid")
     try:
-        dt = datetime.fromisoformat(as_of_raw)
+        dt = datetime.fromisoformat(raw)
     except ValueError as exc:
         raise ValidationError("as_of_invalid") from exc
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    else:
-        dt = dt.astimezone(UTC)
+    if dt.tzinfo is None or dt.utcoffset() != timedelta(0):
+        raise ValidationError("as_of_invalid")
     return dt
 
 
@@ -148,8 +149,8 @@ def _check_soak_report_qualified(soak_report_path: Path, session_id: str) -> boo
     try:
         data = json.loads(soak_report_path.read_text(encoding="utf-8"))
         qualifying = data.get("qualifying_session_dates", [])
-        if isinstance(qualifying, list):
-            return session_id in qualifying
+        if isinstance(qualifying, list) and session_id in qualifying:
+            return True
     except (OSError, json.JSONDecodeError):
         pass
     return False
@@ -157,34 +158,36 @@ def _check_soak_report_qualified(soak_report_path: Path, session_id: str) -> boo
 
 def _acquire_lock(lock_path: Path, timeout_seconds: float = 5.0) -> Any:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    f = open(lock_path, "a+b")
-    f.seek(0, os.SEEK_END)
-    if f.tell() == 0:
-        f.write(b"0")
-        f.flush()
-    start_time = _time.monotonic()
+    if not lock_path.exists():
+        lock_path.write_text("lock\n", encoding="utf-8")
+    elif lock_path.is_dir():
+        return None
+
+    deadline = _time.monotonic() + timeout_seconds
     while True:
         try:
-            f.seek(0)
+            lock_file = open(lock_path, "r+", encoding="utf-8")
             if os.name == "nt":
                 import msvcrt
-                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return f
-        except OSError:
-            if _time.monotonic() - start_time >= timeout_seconds:
-                f.close()
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock_file
+        except (OSError, PermissionError):
+            try:
+                lock_file.close()
+            except Exception:
+                pass
+            if _time.monotonic() >= deadline:
                 return None
-            _time.sleep(0.05)
+            _time.sleep(0.1)
 
 
 def _release_lock(lock_file: Any) -> None:
     if lock_file is None:
         return
     try:
-        lock_file.seek(0)
         if os.name == "nt":
             import msvcrt
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
@@ -200,11 +203,51 @@ def _release_lock(lock_file: Any) -> None:
             pass
 
 
+_EXPECTED_LEDGER_KEYS = frozenset({
+    "record_type",
+    "schema_version",
+    "action_token",
+    "apply",
+    "session_already_qualified",
+    "session_id",
+    "as_of",
+    "attempt_number",
+    "run_id",
+    "reservation_id",
+    "ledger_status",
+    "exit_code",
+    "adapter_refresh_state",
+    "network_access_attempted",
+    "interlock_verdict",
+    "credential_present",
+    "refusal_category",
+    "attempt_budget_exhausted",
+    "broker_access_attempted",
+    "broker_mutation_performed",
+    "paper_submit_performed",
+    "live_trading_performed",
+    "live_authorized",
+    "profit_claim",
+})
+
+_VALID_REFUSAL_CATEGORIES = frozenset({
+    "session_attempt_budget_exhausted",
+    "live_capital_interlock_blocked",
+    "token_not_available",
+})
+
+
 def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, list[dict[str, Any]]]:
-    if not ledger_path.exists() or not ledger_path.is_file():
+    if ledger_path.exists() and not ledger_path.is_file():
+        raise ValidationError("ledger_corrupt")
+    if not ledger_path.exists():
         return 0, []
+
     records: list[dict[str, Any]] = []
-    reservation_ids: set[str] = set()
+    seen_pending_reservations: set[str] = set()
+    seen_completed_reservations: set[str] = set()
+    session_reservations: set[str] = set()
+
     try:
         content = ledger_path.read_text(encoding="utf-8")
         for line_no, line in enumerate(content.splitlines(), start=1):
@@ -214,24 +257,124 @@ def _read_and_validate_ledger(ledger_path: Path, session_id: str) -> tuple[int, 
             record = json.loads(line_str)
             if not isinstance(record, dict):
                 raise ValidationError("ledger_corrupt")
+
+            if set(record.keys()) != _EXPECTED_LEDGER_KEYS:
+                raise ValidationError("ledger_corrupt")
+
             if (
-                record.get("record_type") != _RECORD_TYPE
-                or record.get("schema_version") != _SCHEMA_VERSION
-                or record.get("action_token") != _ACTION_TOKEN
+                record["record_type"] != _RECORD_TYPE
+                or record["schema_version"] != _SCHEMA_VERSION
+                or record["action_token"] != _ACTION_TOKEN
+                or record["apply"] is not True
+                or record["session_already_qualified"] is not False
+                or record["broker_access_attempted"] is not False
+                or record["broker_mutation_performed"] is not False
+                or record["paper_submit_performed"] is not False
+                or record["live_trading_performed"] is not False
+                or record["live_authorized"] is not False
+                or record["profit_claim"] != "none"
             ):
                 raise ValidationError("ledger_corrupt")
-            status = record.get("ledger_status")
-            if status not in ("pending", "completed", "refused"):
+
+            rec_session = record["session_id"]
+            rec_as_of = record["as_of"]
+            rec_attempt = record["attempt_number"]
+            rec_run_id = record["run_id"]
+            rec_budget_ex = record["attempt_budget_exhausted"]
+            status = record["ledger_status"]
+
+            if (
+                not isinstance(rec_session, str) or not rec_session
+                or not isinstance(rec_as_of, str) or not rec_as_of
+                or not isinstance(rec_attempt, int) or rec_attempt < 1 or isinstance(rec_attempt, bool)
+                or not isinstance(rec_run_id, str) or not rec_run_id
+                or not isinstance(rec_budget_ex, bool)
+                or status not in ("pending", "completed", "refused")
+            ):
                 raise ValidationError("ledger_corrupt")
+
+            res_id = record["reservation_id"]
+            exit_code = record["exit_code"]
+            adapter_state = record["adapter_refresh_state"]
+            net_access = record["network_access_attempted"]
+            verdict = record["interlock_verdict"]
+            cred_present = record["credential_present"]
+            refusal_cat = record["refusal_category"]
+
+            if status == "pending":
+                if (
+                    res_id != rec_run_id
+                    or exit_code is not None
+                    or adapter_state is not None
+                    or net_access is not False
+                    or not isinstance(verdict, dict)
+                    or cred_present is not True
+                    or refusal_cat is not None
+                    or rec_budget_ex is not False
+                ):
+                    raise ValidationError("ledger_corrupt")
+                seen_pending_reservations.add(res_id)
+                if rec_session == session_id:
+                    session_reservations.add(res_id)
+
+            elif status == "completed":
+                if (
+                    res_id != rec_run_id
+                    or exit_code not in (0, 1) or isinstance(exit_code, bool)
+                    or not isinstance(adapter_state, str) or not adapter_state
+                    or net_access is not True
+                    or not isinstance(verdict, dict)
+                    or cred_present is not True
+                    or refusal_cat is not None
+                    or rec_budget_ex is not False
+                ):
+                    raise ValidationError("ledger_corrupt")
+                if res_id not in seen_pending_reservations:
+                    raise ValidationError("ledger_corrupt")
+                if res_id in seen_completed_reservations:
+                    raise ValidationError("ledger_corrupt")
+                seen_completed_reservations.add(res_id)
+                if rec_session == session_id:
+                    session_reservations.add(res_id)
+
+            elif status == "refused":
+                if (
+                    res_id is not None
+                    or exit_code != 2 or isinstance(exit_code, bool)
+                    or adapter_state is not None
+                    or net_access is not False
+                    or refusal_cat not in _VALID_REFUSAL_CATEGORIES
+                ):
+                    raise ValidationError("ledger_corrupt")
+
+                if refusal_cat == "session_attempt_budget_exhausted":
+                    if (
+                        verdict is not None
+                        or cred_present is not None
+                        or rec_budget_ex is not True
+                    ):
+                        raise ValidationError("ledger_corrupt")
+                elif refusal_cat == "live_capital_interlock_blocked":
+                    if (
+                        not isinstance(verdict, dict)
+                        or cred_present is not None
+                        or rec_budget_ex is not False
+                    ):
+                        raise ValidationError("ledger_corrupt")
+                elif refusal_cat == "token_not_available":
+                    if (
+                        not isinstance(verdict, dict)
+                        or cred_present is not False
+                        or rec_budget_ex is not False
+                    ):
+                        raise ValidationError("ledger_corrupt")
+
             records.append(record)
-            rec_session = record.get("session_id")
-            if rec_session == session_id and status in ("pending", "completed"):
-                res_id = record.get("reservation_id")
-                if isinstance(res_id, str) and res_id:
-                    reservation_ids.add(res_id)
-    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise ValidationError("ledger_corrupt") from exc
-    return len(reservation_ids), records
+
+    return len(session_reservations), records
 
 
 def _append_ledger_event(ledger_path: Path, event: dict[str, Any]) -> None:
@@ -553,8 +696,13 @@ def run_autonomy_read_only_network_executor(
         _release_lock(lock_file)
 
 
+class _SanitizedArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValidationError("parser_invalid_argument")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
+    parser = _SanitizedArgumentParser(
         description="Autonomy read-only network execution seam for SPY market-data refresh.",
         allow_abbrev=False,
     )
@@ -562,17 +710,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--apply", action="store_true", default=False, help="Execute apply mode")
     parser.add_argument("--format", choices=["json"], default="json", help="Output format")
 
-    args, unknown = parser.parse_known_args(argv)
-    if unknown:
-        result = {"action_token": _ACTION_TOKEN, "refusal_category": "parser_invalid_argument", "exit_code": 2}
-        print(json.dumps(result))
-        return 2
+    try:
+        args, unknown = parser.parse_known_args(argv)
+        if unknown:
+            raise ValidationError("parser_invalid_argument")
+        result = run_autonomy_read_only_network_executor(
+            as_of=args.as_of,
+            apply=args.apply,
+            format=args.format,
+        )
+    except ValidationError as exc:
+        msg = str(exc)
+        cat = msg if msg in ("parser_invalid_argument", "as_of_invalid") else "parser_invalid_argument"
+        result = {"action_token": _ACTION_TOKEN, "refusal_category": cat, "exit_code": 2}
 
-    result = run_autonomy_read_only_network_executor(
-        as_of=args.as_of,
-        apply=args.apply,
-        format=args.format,
-    )
     print(json.dumps(result))
     return int(result.get("exit_code", 2))
 
