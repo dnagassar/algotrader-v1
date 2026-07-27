@@ -5,7 +5,7 @@
 - Milestone: `V5.51 — read-only SPY market-data network refresh reachability contract`.
 - Frozen contract:
   `docs/design/v5_51_read_only_spy_market_data_network_refresh_reachability_contract.md`.
-- Review status: **Round-5 orchestrator review of `db2b646` REQUESTED CHANGES (2 P1, 1 P2 — see "Round-5 Orchestrator Review" below). Correction implemented, verified, committed (`0acc5df`, `c0d1176`). NOT self-accepted — awaiting independent acceptance per charter.**
+- Review status: **Round-5 orchestrator review of `db2b646` REQUESTED CHANGES (2 P1, 1 P2, 1 P3 — see "Round-5 Orchestrator Review" below). Correction implemented, verified, committed (`0acc5df`, `c0d1176`, plus the call-operator fix). NOT self-accepted — awaiting independent acceptance per charter.**
 - Implementation status: **Full default pytest PASS on the corrected tree (`c0d1176`): 10071 passed, 5 skipped, exit 0, 26:54. The prior HEAD `db2b646` did NOT pass (1 failed).**
 
 ## Scope and Implementations Completed
@@ -86,10 +86,18 @@ Corrected in `0acc5df` and `c0d1176`.
    and its `as_of_invalid` arm was unreachable (that refusal is returned in the
    result dict, never raised). Now reports `unexpected_validation_error`.
 
-Informational, not filed as a defect: the wrapper calls `python -m ...` bare
-where the contract's prose says "using PowerShell's own call operator". The
-invariant that language protects — one timestamp capture, no second source — is
-satisfied.
+4. **Finding 4 (P3, raised as informational, then adjudicated by the operator as
+   required) — wrapper invocation form did not match the frozen contract.** The
+   wrapper called `python -m ...` bare where "Windows Scheduled Task Update"
+   freezes the form as PowerShell's call operator against the literal captured
+   string. The invariant that clause protects — one timestamp capture, never
+   re-resolved — was already satisfied, so this was form rather than behavior;
+   the operator ruled the frozen form binding. Now
+   `& python -m algotrader.execution.autonomy_read_only_network_executor
+   --as-of $asOfUtc --apply --format json`, asserted verbatim by
+   `test_spy_eod_refresh_wrapper_invokes_the_seam_with_one_utc_capture`.
+   Verified out-of-band that the script parses with zero errors and that the
+   call operator delivers the captured timestamp as exactly one argv entry.
 
 ## Authority And Safety Boundaries
 

@@ -21,7 +21,10 @@ if ($repoRoot -ne $currentDir -or -not (Test-Path (Join-Path $repoRoot "pyprojec
 
 $asOfUtc = [DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
 
-python -m algotrader.execution.autonomy_read_only_network_executor --as-of "$asOfUtc" --apply --format json
+# Call operator against the literal captured string: $asOfUtc is passed as one
+# argument exactly as captured above, never re-resolved inside the Python
+# process (see the V5.51 contract, "Windows Scheduled Task Update").
+& python -m algotrader.execution.autonomy_read_only_network_executor --as-of $asOfUtc --apply --format json
 $exitCode = $LASTEXITCODE
 
 exit $exitCode

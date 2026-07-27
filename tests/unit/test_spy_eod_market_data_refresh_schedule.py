@@ -60,10 +60,13 @@ def test_spy_eod_refresh_schedule_is_isolated_and_drives_the_ledgered_seam() -> 
 def test_spy_eod_refresh_wrapper_invokes_the_seam_with_one_utc_capture() -> None:
     wrapper = WRAPPER.read_text(encoding="utf-8")
 
-    assert "algotrader.execution.autonomy_read_only_network_executor" in wrapper
-    assert "--as-of" in wrapper
-    assert "--apply" in wrapper
-    assert "--format json" in wrapper
+    # The contract freezes the invocation form as PowerShell's call operator
+    # against the literal captured string, so the timestamp reaches Python as
+    # one argument exactly as captured.
+    assert (
+        "& python -m algotrader.execution.autonomy_read_only_network_executor"
+        " --as-of $asOfUtc --apply --format json"
+    ) in wrapper
     # Exactly one timestamp source, captured once: a second resolution inside
     # the Python process could straddle the session cutoff and silently target
     # a different NYSE session than the one the wrapper started for.
