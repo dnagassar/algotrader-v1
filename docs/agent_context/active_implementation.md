@@ -137,7 +137,9 @@ Corrected in `0acc5df` and `c0d1176`.
 
 ## Next Action
 
-independent acceptance review of **`824f265`** — the branch tip, which carries the recorded green full-suite evidence. `26c4fb3` is its parent and lacks that record; do not review it in isolation.
+independent acceptance review of branch `claude/v5.51-readonly-spy-market-data-contract` **through its current tip**. The substantive change ends at **`824f265`** (code plus the recorded green full-suite evidence); anything after it is handoff/pointer editing only. Do not review `26c4fb3` in isolation — it is `824f265`'s parent and lacks that evidence record.
+
+(Phrased against the branch rather than a pinned SHA on purpose: a handoff that names "the tip" stops being true the moment the handoff itself is committed.)
 
 Reviewer must be **Codex/GPT**: Claude Code authored the round-5 correction and Antigravity implemented through `db2b646`, so neither may accept. Tracked as **GPT-2** in the relay lane's routing (`relay/v5.34-readiness-recovery`, `.agent_relay/active_task.json` → `routing.codex_gpt`).
 
