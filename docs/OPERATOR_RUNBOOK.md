@@ -1613,3 +1613,54 @@ The offline child is invoked with an empty environment mapping plus its
 internally pinned `PYTHONPATH`; it must report no network, credential, broker,
 paper-submit, mutation, or live action. Do not run default tests from the
 credential-bearing process.
+
+## V5.54 Paper-Only SPY Decision-Time Shadow
+
+Run the capture during an active NYSE session. The default advisory execution
+window is the next session open:
+
+```powershell
+# Preview: calendar, paper interlock, canonical-history freshness, and paths only.
+python -m algotrader.execution.spy_decision_time_shadow `
+  --mode capture `
+  --as-of <ISO8601_UTC> `
+  --execution-window next_session_open
+
+# Authorized capture: one bounded SPY/IEX snapshot GET through the secure lease.
+.\scripts\run_spy_decision_time_shadow.ps1
+```
+
+The wrapper uses the non-secret credential reference
+`wincred:algotrader/v5.35/alpaca-market-data/production`. Do not put credential
+values in the command or environment. Capture refuses outside the active NYSE
+session, if canonical adjusted history does not end on the previous completed
+session, on a stale/future/out-of-session latest trade, or when the paper/live
+interlock detects a live signal. Transport limits are one exact-host GET per
+invocation, 10 seconds, and 256 KiB.
+
+Exit `0` with `state=provisional_decision_recorded` is the strong capture
+result. Inspect `decision`, `posture`, `latest_trade_at`, `data_age_seconds`,
+`planned_execution_at`, `sma50`, and `sma200`. Repeating the command for that
+session returns `provisional_decision_already_recorded` without credential or
+network access. The output is advisory only: `execution_intent_created`,
+`execution_plan_created`, broker access, broker mutation, paper submit, and live
+authorization must all remain false.
+
+The next successful integrated V5.53 run reconciles automatically after the
+authoritative Tiingo bar reaches M444. Manual credential-free reconciliation is
+also available:
+
+```powershell
+python -m algotrader.execution.spy_decision_time_shadow `
+  --mode reconcile `
+  --session-id <YYYY-MM-DD> `
+  --as-of <ISO8601_UTC>
+```
+
+`classification=matched` means the provisional and authoritative target
+decisions agree; `diverged` means they differ. Before the canonical CSV contains
+that session, the state is `pending_authoritative_adjusted_bar` and no receipt
+is written. Evidence is stored only in generated state:
+
+- `runs/paper_lab/spy_decision_time_shadow/<YYYY-MM-DD>/provisional.json`
+- `runs/paper_lab/spy_decision_time_shadow/<YYYY-MM-DD>/reconciliation.json`

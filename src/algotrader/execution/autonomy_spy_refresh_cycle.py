@@ -27,6 +27,9 @@ from algotrader.execution.autonomy_read_only_network_executor import (
 )
 from algotrader.execution.autonomy_self_refresh_cycle import build_self_refresh_cycle
 from algotrader.execution.autonomy_supervisor import AutonomySupervisorConfig
+from algotrader.execution.spy_decision_time_shadow import (
+    reconcile_spy_decision_time_shadow,
+)
 
 __all__ = [
     "AUTONOMY_SPY_REFRESH_ACTION_TOKEN",
@@ -101,6 +104,31 @@ _SELF_REFRESH_RESULT_KEYS = (
     "credential_access_attempted",
     "live_authorized",
 )
+_SHADOW_RECONCILIATION_RESULT_KEYS = (
+    "milestone",
+    "mode",
+    "state",
+    "session_id",
+    "observed_at",
+    "classification",
+    "provisional_decision",
+    "authoritative_decision",
+    "canonical_latest_bar_date",
+    "provisional_receipt_path",
+    "reconciliation_receipt_path",
+    "network_access_attempted",
+    "credential_access_attempted",
+    "broker_access_attempted",
+    "broker_mutation_performed",
+    "paper_submit_performed",
+    "submitted",
+    "mutated",
+    "live_trading_performed",
+    "live_authorized",
+    "profit_claim",
+    "refusal_category",
+    "exit_code",
+)
 
 
 def run_autonomy_spy_refresh_cycle(
@@ -110,6 +138,7 @@ def run_autonomy_spy_refresh_cycle(
     format: str = "json",
     network_runner=None,
     self_refresh_builder=None,
+    shadow_reconciler=None,
 ) -> dict[str, Any]:
     """Run read-only refresh -> canonical CSV -> offline M444 self-refresh."""
 
@@ -344,6 +373,51 @@ def run_autonomy_spy_refresh_cycle(
                 "exit_code": 0,
             }
         )
+    if apply and result["exit_code"] == 0:
+        active_shadow_reconciler = (
+            reconcile_spy_decision_time_shadow
+            if shadow_reconciler is None
+            else shadow_reconciler
+        )
+        try:
+            raw_shadow = active_shadow_reconciler(
+                session_id=session_id,
+                as_of=normalized_as_of,
+            )
+        except Exception:  # noqa: BLE001 - never echo credential-bearing details
+            result["decision_time_shadow"] = {
+                "state": "reconciliation_internal_failure",
+                "network_access_attempted": False,
+                "credential_access_attempted": False,
+                "broker_access_attempted": False,
+                "broker_mutation_performed": False,
+                "paper_submit_performed": False,
+                "submitted": False,
+                "mutated": False,
+                "live_trading_performed": False,
+                "live_authorized": False,
+                "profit_claim": "none",
+                "exit_code": 2,
+            }
+        else:
+            result["decision_time_shadow"] = (
+                _shadow_reconciliation_summary(raw_shadow)
+                if isinstance(raw_shadow, Mapping)
+                else {
+                    "state": "reconciliation_result_invalid",
+                    "network_access_attempted": False,
+                    "credential_access_attempted": False,
+                    "broker_access_attempted": False,
+                    "broker_mutation_performed": False,
+                    "paper_submit_performed": False,
+                    "submitted": False,
+                    "mutated": False,
+                    "live_trading_performed": False,
+                    "live_authorized": False,
+                    "profit_claim": "none",
+                    "exit_code": 2,
+                }
+            )
     return result
 
 
@@ -382,6 +456,16 @@ def _self_refresh_summary(value: Mapping[str, object]) -> dict[str, Any]:
     }
 
 
+def _shadow_reconciliation_summary(
+    value: Mapping[str, object],
+) -> dict[str, Any]:
+    return {
+        key: _json_safe(value[key])
+        for key in _SHADOW_RECONCILIATION_RESULT_KEYS
+        if key in value
+    }
+
+
 def _credential_access_attempted(network: Mapping[str, object]) -> bool:
     if network.get("network_access_attempted") is True:
         return True
@@ -408,6 +492,19 @@ def _base_result(*, apply: bool) -> dict[str, Any]:
         "live_trading_performed": False,
         "live_authorized": False,
         "profit_claim": "none",
+        "decision_time_shadow": {
+            "state": "not_evaluated",
+            "network_access_attempted": False,
+            "credential_access_attempted": False,
+            "broker_access_attempted": False,
+            "broker_mutation_performed": False,
+            "paper_submit_performed": False,
+            "submitted": False,
+            "mutated": False,
+            "live_trading_performed": False,
+            "live_authorized": False,
+            "profit_claim": "none",
+        },
         "exit_code": 2,
     }
 

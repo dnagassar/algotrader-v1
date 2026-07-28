@@ -3,118 +3,126 @@
 ## Ownership
 
 - Writer: Codex orchestrator, sole writer for this working tree.
-- Branch: `codex/v5.53-integrated-spy-refresh-cycle`.
-- Dirty-file owner before the integration commit: Codex orchestrator.
-- Yield state after the integration commit: V5.53 implementation, authorized
-  operational proof, and verification complete; no dirty-file owner remains.
-- The separate clean V5.51 worktree at
+- Branch: `codex/v5.54-spy-decision-time-shadow`.
+- Base HEAD: `5c14053e33c96d21246708c2b876a1af56626b03`, the clean V5.53
+  integration commit.
+- Dirty-file owner before the V5.54 commit: Codex orchestrator.
+- Yield state after the V5.54 commit: implementation, operational capture, and
+  verification complete; no dirty-file owner remains.
+- The separate V5.51 worktree at
   `.claude/worktrees/v551-readonly-market-data-contract` was not modified.
-
-## Milestone
-
-V5.53 integrates the V5.51 bounded Tiingo read-only refresh with the V5.52
-operator-input-bound offline self-refresh cycle. The planner-routable action is
-`run_authorized_read_only_spy_refresh_cycle`, and the checked-in scheduled-task
-definition routes through `scripts/run_spy_integrated_refresh_cycle.ps1`.
-
-The network stage retains the exact Tiingo HTTPS GET, 20-second timeout, 8 MiB
-response cap, 20,000-row cap, four reserved attempts per NYSE session, scoped
-credential provider, paper/live interlock, immutable ledger, provenance, and
-soak evidence. Only the canonical adjusted SPY CSV and captured UTC clock cross
-into the offline stage. The offline executor receives an empty environment
-mapping and pins the M441-M444 output paths.
 
 ## Takeover and stale-claim audit
 
-- Takeover started from clean `main` at
-  `b32b8554e3793bff6ddf04434e751d95c003def3`, one commit ahead of
-  `origin/main`; staged, unstaged, and untracked sets were empty.
-- The inherited V5.52 claim was verified before changes.
-- The V5.51 branch was clean at
-  `e40a398afccf7885716e23a659df29443937e241` and was merged without committing
-  so its changes could be reconciled with current authority and V5.52.
-- V5.51 attempted to add global standing Tiingo authority to `AGENTS.md`.
-  That stale authority claim was not imported. Current `AGENTS.md` remains
-  unchanged; V5.53 requires explicit scoped authorization.
-- V5.49-V5.51 accumulated contract/review/handoff artifacts and repeated
-  correction passes, but the real V5.51 executor did not bind the adapter's
-  production HTTPS transport and recognized only a test-stub accepted state.
-  Those two defects prevented operational reachability despite green tests.
-- Safety-critical V5.51 work was preserved: destination/method validation,
-  finite caps, redaction, credential scoping, interlock, ledger reservations,
-  corruption checks, attempt budget, normalized outputs, soak evidence, and
-  dependency guards.
-- The fetch-only action token was removed from planner/allowlist routing. It
-  remains the internal network-ledger action token; the integrated action is the
-  sole externally produced network route.
+- Takeover inspection found branch `codex/v5.53-integrated-spy-refresh-cycle`
+  at the base HEAD above with empty staged, unstaged, and untracked sets.
+- The V5.53 handoff correctly described a later-session integrated Tiingo/M444
+  proof. That claim was not stale, but the repository clock resolved only the
+  already-qualified `2026-07-27` session until the `2026-07-28` provider cutoff
+  at 20:10 America/New_York.
+- The operator explicitly authorized V5.54 while that proof was time-gated.
+  This changed milestone priority only; it did not broaden credential, broker,
+  paper-mutation, cap, or live authority.
+- No further review packet, design handoff copy, authority edit, or workflow
+  artifact was added. `AGENTS.md` remains unchanged.
+
+## Milestone
+
+V5.54 adds a paper-only SPY decision-time shadow. During an active NYSE
+session it:
+
+1. requires canonical adjusted history through the previous completed session;
+2. opens the existing one-use Windows Credential Manager
+   `alpaca-market-data` lease;
+3. performs one exact-host `SPY` snapshot GET with explicit IEX feed,
+   10-second timeout, and 256 KiB response cap;
+4. requires an in-session latest trade no more than five minutes old;
+5. appends that trade in memory as a provisional adjusted-close proxy;
+6. evaluates the existing immutable SMA50/200 signal; and
+7. writes one idempotent advisory receipt for the session.
+
+The provisional decision is `target_long`, `target_cash`, or `no_decision`.
+It never creates an `ExecutionIntent`, `ExecutionPlan`, broker order, or submit
+authority. The default intended window is the next NYSE session open.
+
+After an accepted V5.53 authoritative Tiingo refresh and M444 convergence,
+`autonomy_spy_refresh_cycle` automatically runs credential-free reconciliation.
+It evaluates the authoritative adjusted close, writes `matched` or `diverged`,
+and cannot block the authoritative refresh when no provisional receipt exists.
 
 ## Observable operational proof
 
-The explicit V5.53 authorization was exercised in one minimal,
-credential-bearing paper-only process. No credential value was printed,
-persisted, returned, or copied into a command.
+The explicitly authorized production capture ran on `2026-07-28`:
 
-- Dry run: `paper_boundary_ok=true`, `apply_eligible=true`, no live signals,
-  no network access, and no credential access.
-- Attempt 1: truthfully audited as
-  `blocked_live_market_data_fetch_transport_required`; no data/broker/trading
-  mutation.
-- Attempt 2: the corrected bounded HTTPS transport fetched and normalized
-  Tiingo SPY data with adapter state
-  `accepted_adjusted_spy_data_refresh`. This exposed the stale executor equality
-  check and was truthfully recorded with executor exit 1.
-- Successful integrated invocation: reused the now-qualified audited
-  `2026-07-27` session and canonical CSV, ran one credential-free offline SPY
-  action, wrote M444, refreshed `spy_offline_daily_cycle`, and returned exit 0
-  with `observable_outcome=m444_refreshed_nominal`.
-- Canonical CSV: 8,429 rows, first date `1993-01-29`, latest date
-  `2026-07-27`.
-- M444: `daily_chain_state=accepted_observe_hold_noop`; supervisor after-state
-  `nominal`; `refreshed_lanes=["spy_offline_daily_cycle"]`.
-- Soak: `evidence_state=accepted_unattended_market_data_soak`.
-- Exact credential-value scan: 2,783 generated files scanned under `runs/` and
-  `.data/operator_inputs/`; zero matches.
-- Broker access/mutation, paper submit, live trading, and live authorization:
-  all false. No broker API was contacted and no paper or live order was
-  submitted, changed, canceled, closed, or liquidated.
+- observed at `2026-07-28T14:54:53.687348+00:00`;
+- latest IEX trade at `2026-07-28T14:54:51.501588+00:00`;
+- data age: 2 seconds;
+- provisional close: `739.44`;
+- SMA50: `743.957002866540322`;
+- SMA200: `696.1708003802596115`;
+- posture: `bullish_risk_on`;
+- advisory decision: `target_long`;
+- intended execution time: `2026-07-29T13:30:00+00:00`;
+- result: `state=provisional_decision_recorded`, exit 0.
+
+The process used one bounded market-data GET and one secure credential lease.
+No broker endpoint, account, position, order, paper mutation, or live operation
+was accessed. `execution_intent_created`, `execution_plan_created`,
+`broker_access_attempted`, `broker_mutation_performed`,
+`paper_submit_performed`, and `live_authorized` were all false.
+
+The generated receipt is
+`runs/paper_lab/spy_decision_time_shadow/2026-07-28/provisional.json`.
+One file was scanned against the exact leased credential values in memory;
+zero matches were found. A second production-wrapper invocation returned
+`provisional_decision_already_recorded` with both credential and network access
+false. Credential-free reconciliation currently returns
+`pending_authoritative_adjusted_bar` because the canonical CSV still ends on
+`2026-07-27`; no reconciliation receipt was written.
 
 ## Verification
 
-- Credential-free preflight before tests: `APP_PROFILE`, all checked
-  Alpaca/APCA aliases, `TIINGO_API_KEY`, network-test flags, and paper
-  integration flags were absent.
-- Focused transport/adapter/integration/dependency suite: 119 passed.
-- Full affected autonomy/adapter/schedule/dependency surface: 305 passed.
-- Standard offline verification: 109 safety guards passed; `git diff --check`
-  passed.
-- Bounded exact-node full suite: 10,099 canonical nodes across 499 files;
-  10,095 passed, 4 skipped, 0 failures, 0 errors. Five-shard collection and
-  execution equivalence passed; stderr was empty.
+- Every default-test preflight found `APP_PROFILE`, all checked Alpaca/APCA
+  credential aliases, `TIINGO_API_KEY`, and network/paper integration flags
+  absent.
+- Focused V5.54 behavior and V5.53 integration: 24 passed.
+- Affected transport, integration, Tiingo, secure-provider, interlock,
+  adjusted-history, evaluator, dependency, and import-safety surface:
+  204 passed.
+- Standard offline verification: 109 safety guards passed and
+  `git diff --check` passed.
+- A plain full pytest invocation exceeded the one-hour outer runner ceiling
+  without reporting a failing node.
+- A five-shard exact-node run collected 10,113 nodes. One unrelated V5.36
+  PowerShell wrapper test hit its internal 60-second timeout under contention;
+  that exact node passed alone in 49.44 seconds.
+- Final four-shard exact-node run: 10,113 canonical nodes across 500 files;
+  10,109 passed, 4 skipped, 0 failures, 0 errors. Collection and execution
+  equivalence passed; no shard timed out.
 
 ## Files and contracts
 
 New:
 
+- `src/algotrader/execution/spy_decision_time_shadow.py`
+- `scripts/run_spy_decision_time_shadow.ps1`
+- `tests/unit/test_spy_decision_time_shadow.py`
+
+Updated:
+
 - `src/algotrader/execution/autonomy_spy_refresh_cycle.py`
-- `scripts/run_spy_integrated_refresh_cycle.ps1`
 - `tests/unit/test_autonomy_spy_refresh_cycle.py`
+- `docs/deterministic_core.md`
+- `docs/OPERATOR_RUNBOOK.md`
+- this sole mutable handoff.
 
-Integrated V5.51 files include the network executor, adjusted-SPY adapter,
-planner, supervisor, scheduled-task definition, and tests. The workflow-only
-V5.49-V5.51 contract/analysis artifacts were intentionally not carried into
-this branch. V5.53 also updates `docs/deterministic_core.md`,
-`docs/OPERATOR_RUNBOOK.md`, and this sole mutable handoff.
-
-The integration output is a sanitized summary only. Unknown network fields and
-exception text are dropped, so credential-bearing failures cannot be echoed.
-The integration module has no direct HTTP, socket, subprocess, broker SDK, or
-broker mutation boundary.
+Generated `runs/` receipts remain ignored state and are not authority sources.
 
 ## Next implementation action
 
-After the repository-wide offline gate and local integration commit, the next
-capability milestone is to prove a later, previously unqualified NYSE session
-in a single invocation (`network_access_attempted=true` and
-`m444_refreshed_nominal`) without changing caps or installing the scheduled
-task. Do not add more review artifacts or broaden authority unless that proof
-exposes a concrete operational defect.
+At or after `2026-07-28 20:10 America/New_York`, run the already-authorized
+V5.53 integrated cycle once. Require the same invocation to report a new
+`2026-07-28` network attempt, `observable_outcome=m444_refreshed_nominal`, and
+`decision_time_shadow.state=reconciled` with a truthful `matched` or `diverged`
+classification. Do not change V5.54, expand caps, install a task, or add another
+review artifact unless that operational proof exposes a concrete defect.

@@ -348,6 +348,59 @@ def test_wrapper_and_schedule_route_the_integrated_command() -> None:
     assert "run_spy_read_only_network_executor.ps1" not in schedule
 
 
+def test_successful_apply_reconciles_decision_time_shadow_without_broadening_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _canonical_test_root(tmp_path, monkeypatch, with_bars=True)
+    calls: list[dict[str, object]] = []
+
+    def reconciler(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "milestone": "v5.54",
+            "mode": "reconcile",
+            "state": "reconciled",
+            "session_id": "2026-07-24",
+            "classification": "matched",
+            "provisional_decision": "target_long",
+            "authoritative_decision": "target_long",
+            "network_access_attempted": False,
+            "credential_access_attempted": False,
+            "broker_access_attempted": False,
+            "broker_mutation_performed": False,
+            "paper_submit_performed": False,
+            "submitted": False,
+            "mutated": False,
+            "live_trading_performed": False,
+            "live_authorized": False,
+            "profit_claim": "none",
+            "exit_code": 0,
+            "secret_extra": "must-not-cross",
+        }
+
+    result = run_autonomy_spy_refresh_cycle(
+        as_of=AS_OF,
+        apply=True,
+        network_runner=lambda **_kwargs: _network_result(),
+        self_refresh_builder=lambda _config, **_kwargs: _cycle_result(),
+        shadow_reconciler=reconciler,
+    )
+
+    assert result["exit_code"] == 0
+    assert calls == [
+        {
+            "session_id": SESSION_ID,
+            "as_of": AS_OF,
+        }
+    ]
+    assert result["decision_time_shadow"]["state"] == "reconciled"
+    assert result["decision_time_shadow"]["classification"] == "matched"
+    assert "secret_extra" not in result["decision_time_shadow"]
+    assert result["network_access_attempted"] is True
+    assert result["broker_access_attempted"] is False
+
+
 def test_parser_refuses_unknown_arguments_without_echoing_them(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

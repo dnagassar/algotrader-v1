@@ -1388,3 +1388,37 @@ this milestone does not add global credential/network authority to `AGENTS.md`.
 The integration module has no direct HTTP, socket, subprocess, broker SDK, or
 broker mutation boundary. Every result fixes broker, paper-submit, live, and
 profit claims to false/none.
+
+## V5.54 SPY Decision-Time Shadow
+
+`python -m algotrader.execution.spy_decision_time_shadow --mode capture`
+adds a paper-only observation lane before the authoritative adjusted bar is
+available. Capture is permitted only during an active repository-calendar NYSE
+session and only when the Tiingo canonical CSV ends on the immediately previous
+completed session. The production transport performs one GET to the exact
+Alpaca Market Data `SPY` snapshot path with explicit `feed=iex`, a 10-second
+timeout, and a 256 KiB response cap. Credentials cross only the existing
+one-use Windows Credential Manager lease for the
+`alpaca-market-data` family. The paper/live interlock rejects ambient live
+signals before the lease opens.
+
+The latest IEX trade is a provisional current-session adjusted-close proxy. It
+is appended in memory to the canonical adjusted-close history and evaluated by
+the existing immutable SMA50/200 evaluator. The resulting advisory decision is
+one of `target_long`, `target_cash`, or `no_decision`; it is not an
+`ExecutionIntent`, `ExecutionPlan`, broker order, or submission authority. The
+default intended window is the next NYSE session open. `market_close` is
+available only as a shadow label at least five minutes before the session
+closes. IEX is a single-exchange feed, so the receipt records that it is not
+consolidated SIP data.
+
+One immutable provisional receipt is allowed per session under
+`runs/paper_lab/spy_decision_time_shadow/<YYYY-MM-DD>/provisional.json`.
+Repeated capture returns that receipt without reopening credentials or
+networking. After V5.53 accepts the authoritative Tiingo session and completes
+M444, it automatically invokes the credential-free reconciliation path. The
+reconciliation recomputes the target posture from the authoritative adjusted
+close, records `matched` or `diverged`, and writes
+`reconciliation.json` beside the provisional receipt. A missing provisional
+receipt is a valid `provisional_decision_not_captured` no-op and cannot block
+the authoritative refresh.
