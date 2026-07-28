@@ -56,10 +56,12 @@ __all__ = [
     "CANONICAL_SPY_DAILY_CYCLE_MANIFEST_RELPATH",
     "CANONICAL_SPY_DAILY_CYCLE_OUTPUTS",
     "EXECUTION_AUTO_OFFLINE",
+    "EXECUTION_AUTHORIZED_NETWORK_READ_ONLY",
     "EXECUTION_NOOP",
     "EXECUTION_OFFLINE_OPERATOR_INPUT",
     "EXECUTION_OPERATOR_GATED",
     "PLAN_ALL_NOMINAL_OR_WAITING",
+    "PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE",
     "PLAN_OFFLINE_ACTION_AVAILABLE",
     "PLAN_OPERATOR_AUTHORITY_REQUIRED",
     "SPY_DAILY_CYCLE_ABSENT_ACTION",
@@ -122,6 +124,7 @@ EXECUTION_AUTO_OFFLINE = "auto_offline"
 EXECUTION_OFFLINE_OPERATOR_INPUT = "offline_operator_input"
 EXECUTION_OPERATOR_GATED = "operator_gated"
 EXECUTION_NOOP = "noop"
+EXECUTION_AUTHORIZED_NETWORK_READ_ONLY = "authorized_network_read_only"
 
 _EXECUTION_CLASSES = frozenset(
     {
@@ -129,6 +132,7 @@ _EXECUTION_CLASSES = frozenset(
         EXECUTION_OFFLINE_OPERATOR_INPUT,
         EXECUTION_OPERATOR_GATED,
         EXECUTION_NOOP,
+        EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
     }
 )
 
@@ -136,8 +140,62 @@ _OFFLINE_RUNNABLE_CLASSES = frozenset(
     {EXECUTION_AUTO_OFFLINE, EXECUTION_OFFLINE_OPERATOR_INPUT}
 )
 
-# Whole-system plan classifications.
+# Plan rollup buckets. Every execution class maps to exactly one of these, and
+# the mapping is checked against the class vocabulary at import time.
+#
+# Round-6 correction (finding F3). The V5.51a repair guarded the fourth
+# recurrence of this defect class with a test that sampled three report
+# fixtures, so a future class used only in a lane state no fixture exercises
+# could still fall out of every bucket. Deriving the buckets from one total
+# mapping — rather than from four independent comprehensions — makes that
+# structurally impossible: a class added without a bucket fails at import,
+# regardless of which lane states any test happens to construct.
+BUCKET_OFFLINE_RUNNABLE = "offline_runnable_lanes"
+BUCKET_AUTHORIZED_NETWORK = "authorized_network_lanes"
+BUCKET_OPERATOR_GATED = "operator_gated_lanes"
+BUCKET_NOOP = "noop_lanes"
+
+PLAN_BUCKET_BY_EXECUTION_CLASS: dict[str, str] = {
+    EXECUTION_AUTO_OFFLINE: BUCKET_OFFLINE_RUNNABLE,
+    EXECUTION_OFFLINE_OPERATOR_INPUT: BUCKET_OFFLINE_RUNNABLE,
+    EXECUTION_AUTHORIZED_NETWORK_READ_ONLY: BUCKET_AUTHORIZED_NETWORK,
+    EXECUTION_OPERATOR_GATED: BUCKET_OPERATOR_GATED,
+    EXECUTION_NOOP: BUCKET_NOOP,
+}
+
+if set(PLAN_BUCKET_BY_EXECUTION_CLASS) != set(_EXECUTION_CLASSES):
+    raise ValidationError(
+        "every execution class must map to exactly one plan bucket."
+    )
+
+
+def _bucket_lanes(actions: list[dict[str, object]]) -> dict[str, list[str]]:
+    """Partition lanes across the plan buckets, total by construction."""
+
+    buckets: dict[str, list[str]] = {
+        BUCKET_OFFLINE_RUNNABLE: [],
+        BUCKET_AUTHORIZED_NETWORK: [],
+        BUCKET_OPERATOR_GATED: [],
+        BUCKET_NOOP: [],
+    }
+    for action in actions:
+        execution_class = str(action["execution_class"])
+        # ActionClass already rejects any class outside the vocabulary, and the
+        # import-time check above proves the vocabulary is fully mapped, so this
+        # lookup cannot miss.
+        buckets[PLAN_BUCKET_BY_EXECUTION_CLASS[execution_class]].append(
+            str(action["lane_id"])
+        )
+    return buckets
+
+# Whole-system plan classifications, ordered here from most to least autonomous
+# progress. ``PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE`` exists because
+# :data:`EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` is neither offline-runnable nor
+# an operator blocker: without its own plan class such a lane would fall through
+# every bucket and the plan would report ``all_nominal_or_waiting`` while an
+# explicitly authorized read-only network action was pending.
 PLAN_OFFLINE_ACTION_AVAILABLE = "offline_action_available"
+PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE = "authorized_network_action_available"
 PLAN_OPERATOR_AUTHORITY_REQUIRED = "operator_authority_required"
 PLAN_ALL_NOMINAL_OR_WAITING = "all_nominal_or_waiting"
 
@@ -164,8 +222,10 @@ _GATE_UNCLASSIFIED = "unclassified_action_operator_review"
 class ActionClass:
     """Frozen classification of one supervisor ``recommended_next_action`` token.
 
-    ``command`` is the exact offline command a caller (or the operator) may run
-    to advance the lane; it is empty when no offline command exists.
+    ``command`` is the exact command a caller (or the operator) may run to
+    advance the lane; it is empty when no command exists (only offline-runnable
+    actions and :data:`EXECUTION_AUTHORIZED_NETWORK_READ_ONLY` may carry a
+    non-empty command).
     ``required_operator_inputs`` lists the operator-supplied arguments the
     command still needs. ``gate`` names the single blocker to progress and is
     empty for :data:`EXECUTION_AUTO_OFFLINE` and :data:`EXECUTION_NOOP`.
@@ -204,7 +264,11 @@ class ActionClass:
             )
         if self.offline_runnable and self.command == "":
             raise ValidationError("offline-runnable actions must carry a command.")
-        if not self.offline_runnable and self.command != "":
+        if (
+            not self.offline_runnable
+            and self.command != ""
+            and self.execution_class != EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+        ):
             raise ValidationError(
                 "only offline-runnable actions may carry a command."
             )
@@ -372,11 +436,21 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
             "--daily-bars-csv: refreshed local adjusted SPY daily-bars CSV path",
         ),
     ),
-    # --- Operator-gated: market-data fetch (network). ---
-    "run_authorized_read_only_market_data_refresh_to_seed_soak": _operator_gated(
-        _GATE_NETWORK_MARKET_DATA,
-        "seeding the soak needs an authorized read-only market-data fetch "
-        "(network); outside the offline envelope.",
+    # --- Authorized network read-only: market-data refresh. ---
+    "run_authorized_read_only_spy_refresh_cycle": ActionClass(
+        execution_class=EXECUTION_AUTHORIZED_NETWORK_READ_ONLY,
+        offline_runnable=False,
+        gate=_GATE_NETWORK_MARKET_DATA,
+        gate_detail=(
+            "Requires explicit scoped authority for the bounded Tiingo GET, "
+            "then binds the canonical adjusted SPY CSV into the isolated "
+            "offline M444 self-refresh cycle."
+        ),
+        command=(
+            "python -m algotrader.execution.autonomy_spy_refresh_cycle"
+            " --as-of <ISO8601_UTC> [--apply] --format json"
+        ),
+        required_operator_inputs=(),
     ),
     "authorized_read_only_market_data_fetch_for_shadow_window": _operator_gated(
         _GATE_NETWORK_MARKET_DATA,
@@ -574,21 +648,11 @@ def build_autonomy_next_plan_from_report(
     for summary in lane_summaries:
         actions.append(_plan_lane(summary))
 
-    offline_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["offline_runnable"] is True
-    ]
-    gated_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["execution_class"] == EXECUTION_OPERATOR_GATED
-    ]
-    noop_lanes = [
-        str(action["lane_id"])
-        for action in actions
-        if action["execution_class"] == EXECUTION_NOOP
-    ]
+    buckets = _bucket_lanes(actions)
+    offline_lanes = buckets[BUCKET_OFFLINE_RUNNABLE]
+    authorized_network_lanes = buckets[BUCKET_AUTHORIZED_NETWORK]
+    gated_lanes = buckets[BUCKET_OPERATOR_GATED]
+    noop_lanes = buckets[BUCKET_NOOP]
 
     next_offline = _highest_priority_action(
         actions,
@@ -598,7 +662,13 @@ def build_autonomy_next_plan_from_report(
         next_offline = _highest_priority_action(
             actions, lambda action: action["offline_runnable"] is True
         )
-    plan_class = _plan_class(offline_lanes, gated_lanes)
+    next_authorized_network = _highest_priority_action(
+        actions,
+        lambda action: (
+            action["execution_class"] == EXECUTION_AUTHORIZED_NETWORK_READ_ONLY
+        ),
+    )
+    plan_class = _plan_class(offline_lanes, authorized_network_lanes, gated_lanes)
 
     operator_gated_actions = [
         {
@@ -634,12 +704,19 @@ def build_autonomy_next_plan_from_report(
             str(next_offline["lane_id"]) if next_offline else ""
         ),
         "next_offline_action": next_offline,
+        "next_authorized_network_action_lane": (
+            str(next_authorized_network["lane_id"])
+            if next_authorized_network
+            else ""
+        ),
+        "next_authorized_network_action": next_authorized_network,
         "offline_runnable_lanes": offline_lanes,
+        "authorized_network_lanes": authorized_network_lanes,
         "operator_gated_lanes": gated_lanes,
         "noop_lanes": noop_lanes,
         "operator_gated_actions": operator_gated_actions,
         "operator_summary": _operator_summary(
-            plan_class, next_offline, gated_lanes
+            plan_class, next_offline, next_authorized_network, gated_lanes
         ),
         "submitted": False,
         "mutated": False,
@@ -876,9 +953,24 @@ def _highest_priority_action(
     return None
 
 
-def _plan_class(offline_lanes: list[str], gated_lanes: list[str]) -> str:
+def _plan_class(
+    offline_lanes: list[str],
+    authorized_network_lanes: list[str],
+    gated_lanes: list[str],
+) -> str:
+    """Rank the plan by the most autonomous progress actually available.
+
+    ``authorized_network_lanes`` is ranked below offline (an offline command
+    needs no network at all) but above operator-gated, and — critically —
+    above ``PLAN_ALL_NOMINAL_OR_WAITING``: a lane carrying an explicitly
+    authorized read-only network command is a pending next action, not a
+    nominal lane.
+    """
+
     if offline_lanes:
         return PLAN_OFFLINE_ACTION_AVAILABLE
+    if authorized_network_lanes:
+        return PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE
     if gated_lanes:
         return PLAN_OPERATOR_AUTHORITY_REQUIRED
     return PLAN_ALL_NOMINAL_OR_WAITING
@@ -887,6 +979,7 @@ def _plan_class(offline_lanes: list[str], gated_lanes: list[str]) -> str:
 def _operator_summary(
     plan_class: str,
     next_offline: dict[str, object] | None,
+    next_authorized_network: dict[str, object] | None,
     gated_lanes: list[str],
 ) -> str:
     if plan_class == PLAN_ALL_NOMINAL_OR_WAITING:
@@ -900,6 +993,19 @@ def _operator_summary(
             f"Next offline action on lane {next_offline['lane_id']}: run "
             f"`{next_offline['command']}` "
             f"(gate: {next_offline['gate']}). "
+            f"{gated} further lane(s) are gated on the operator."
+        )
+    if (
+        plan_class == PLAN_AUTHORIZED_NETWORK_ACTION_AVAILABLE
+        and next_authorized_network is not None
+    ):
+        gated = len(gated_lanes)
+        return (
+            "No offline action is available; next authorized read-only "
+            f"network action on lane {next_authorized_network['lane_id']}: run "
+            f"`{next_authorized_network['command']}` "
+            f"(gate: {next_authorized_network['gate']}, explicit scoped "
+            "authorization required). "
             f"{gated} further lane(s) are gated on the operator."
         )
     return (
@@ -925,6 +1031,8 @@ def render_autonomy_next_plan_text(payload: Mapping[str, object]) -> str:
         f"supervisor_system_status: {payload.get('supervisor_system_status', '')}",
         f"plan_class: {payload.get('plan_class', '')}",
         f"next_offline_action_lane: {payload.get('next_offline_action_lane', '')}",
+        "next_authorized_network_action_lane: "
+        f"{payload.get('next_authorized_network_action_lane', '')}",
         "actions:",
     ]
     for action in _mapping_list(payload.get("actions")):

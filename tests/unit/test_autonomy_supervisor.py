@@ -180,6 +180,60 @@ def test_absent_lane_is_never_recommended_while_evidence_exists(
     assert _lane_state(payload, "crypto_supervised_readiness_trial") == "nominal"
 
 
+def _readiness_lane():  # noqa: ANN202
+    for lane in AUTONOMY_SUPERVISOR_LANES:
+        if lane.lane_id == "crypto_supervised_readiness_trial":
+            return lane
+    raise AssertionError("crypto readiness lane is not registered")
+
+
+def test_readiness_staleness_is_permanently_dormant_by_design() -> None:
+    # V5.49 was reviewed and closed without implementation: the replay is a
+    # pure function of fixed constants, so a freshness timestamp would attest
+    # re-execution recency, not readiness recency. Age-based staleness for
+    # this lane is therefore dormant by design, not by omission.
+    # Changing max_age_hours here without first freezing and accepting a
+    # replacement freshness contract reopens a closed decision.
+    lane = _readiness_lane()
+
+    assert lane.max_age_hours == 0
+    assert lane.stale_requires_operator_action is False
+
+
+def test_readiness_lane_never_goes_stale_at_any_evaluation_time(
+    tmp_path: Path,
+) -> None:
+    # Behavioural half of the dormancy invariant: even if a packet did carry
+    # every timestamp field the lane knows how to read, and even evaluated
+    # centuries later, max_age_hours=0 means the staleness predicate can
+    # never fire.
+    lane = _readiness_lane()
+    record = {"trial_classification": "accepted"}
+    for field_name in lane.as_of_fields:
+        record[field_name] = "2020-01-01T00:00:00Z"
+
+    payload = build_autonomy_supervisor_report_from_records(
+        _config(tmp_path, as_of="2999-12-31T23:59:59Z"),
+        {"crypto_supervised_readiness_trial": record},
+    )
+
+    summary = _lane_summary(payload, "crypto_supervised_readiness_trial")
+    assert summary["normalized_state"] == "nominal"
+    assert summary["stale"] is False
+    assert summary["next_action"] != "rerun_supervised_readiness_trial"
+
+
+def test_readiness_stale_token_stays_registered_while_unreachable() -> None:
+    # The stale token remains a registered producer token so the V5.48
+    # two-way producer/classification/allowlist closure stays exact. It is
+    # deliberately dead code paired with a live registration, and that
+    # pairing is the documented steady state — not a defect to "fix" by
+    # deleting the mapping.
+    lane = _readiness_lane()
+
+    assert lane.next_actions["stale"] == "rerun_supervised_readiness_trial"
+
+
 def test_aggregate_recommendation_renders_in_text_and_json(tmp_path: Path) -> None:
     payload = build_autonomy_supervisor_report(_config(tmp_path))
 

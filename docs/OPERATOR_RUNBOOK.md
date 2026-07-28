@@ -1570,3 +1570,46 @@ the credential lease, and performs the complete interlock again inside the lease
 callback immediately before read-only HTTP. A refusal must leave both provider
 open count and HTTP call count at zero. This path grants no broker mutation or
 live-capital authority.
+
+## V5.53 Integrated SPY Refresh to M444
+
+Use the integrated command when an explicitly authorized read-only Tiingo
+refresh should immediately feed the supervised offline SPY daily cycle:
+
+```powershell
+# Preview only: validates the paper interlock and session; no credential or network access.
+python -m algotrader.execution.autonomy_spy_refresh_cycle `
+  --as-of <ISO8601_UTC> --format json
+
+# Authorized apply from a minimal credential-bearing process.
+.\scripts\run_spy_integrated_refresh_cycle.ps1
+```
+
+The apply path requires the canonical `.env` Tiingo token and a passing
+paper-only interlock in the wrapper process. Use the repository's non-echoing
+credential provider/helper; never copy credential values into commands,
+artifacts, reports, or handoffs. The wrapper captures UTC once. It performs at
+most one exact-host Tiingo GET per invocation, while the network ledger permits
+at most four reserved attempts for one NYSE session. Provider transport limits
+are 20 seconds, 8 MiB, and 20,000 rows.
+
+Exit `0` means the network session was accepted/already qualified and the
+credential-free offline cycle converged. Inspect `observable_outcome`,
+`network_refresh`, `offline_self_refresh`, and `spy_daily_cycle_refreshed`.
+`observable_outcome=m444_refreshed_nominal` is the strong end-to-end result:
+the canonical adjusted CSV was bound to the offline action, M444 was accepted,
+and the SPY lane refreshed to nominal. Exit `1` is a preview, adapter rejection,
+offline failure, or non-converged cycle; exit `2` is a fail-closed refusal.
+
+Canonical evidence:
+
+- `runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv`
+- `runs/autonomy_network_executor/ledger.jsonl`
+- `runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl`
+- `runs/paper_lab/spy_adjusted_market_data_soak_report.json`
+- `runs/paper_lab/m444_offline_daily_cycle_run.jsonl`
+
+The offline child is invoked with an empty environment mapping plus its
+internally pinned `PYTHONPATH`; it must report no network, credential, broker,
+paper-submit, mutation, or live action. Do not run default tests from the
+credential-bearing process.

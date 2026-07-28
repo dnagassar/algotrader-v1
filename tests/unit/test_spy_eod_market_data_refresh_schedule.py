@@ -11,6 +11,7 @@ SCHEDULE = (
     / "design"
     / "spy_eod_market_data_refresh_scheduled_task.xml"
 )
+WRAPPER = PROJECT_ROOT / "scripts" / "run_spy_read_only_network_executor.ps1"
 NAMESPACE = {"task": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
@@ -38,23 +39,37 @@ def test_spy_eod_refresh_schedule_runs_after_tiingo_correction_window() -> None:
     assert _text(root, ".//task:ExecutionTimeLimit") == "PT15M"
 
 
-def test_spy_eod_refresh_schedule_is_isolated_tiingo_only() -> None:
+def test_spy_eod_refresh_schedule_is_isolated_and_drives_the_ledgered_seam() -> None:
     root = ET.parse(SCHEDULE).getroot()
     arguments = _text(root, ".//task:Arguments")
 
-    assert "refresh_spy_adjusted_data.ps1" in arguments
-    assert "-Provider tiingo" in arguments
-    assert "-Mode live_market_data_fetch" in arguments
-    assert "-LiveMarketDataFetchAuthorized" in arguments
-    assert "-RevisionLookbackDays 10" in arguments
-    assert "-StartDate auto" in arguments
-    assert "m446_spy_daily_tiingo_adjusted_canonical.csv" in arguments
-    assert "tiingo_spy_adjusted_raw_latest.json" in arguments
-    assert "spy_adjusted_market_data_soak_ledger.jsonl" in arguments
-    assert "spy_adjusted_market_data_soak_report.json" in arguments
-    assert "-SoakRequiredSessions 5" in arguments
+    # V5.53 keeps the V5.51 ledgered network seam but routes its canonical CSV
+    # directly into the isolated offline M444 self-refresh cycle.
+    assert "run_spy_integrated_refresh_cycle.ps1" in arguments
+    assert "run_spy_read_only_network_executor.ps1" not in arguments
+    assert "refresh_spy_adjusted_data.ps1" not in arguments
     assert "run_spy_paper_mutation_supervisor.ps1" not in arguments
     assert "paper-autopilot-supervisor" not in arguments
+
+
+def test_spy_eod_refresh_wrapper_invokes_the_seam_with_one_utc_capture() -> None:
+    wrapper = WRAPPER.read_text(encoding="utf-8")
+
+    # The contract freezes the invocation form as PowerShell's call operator
+    # against the literal captured string, so the timestamp reaches Python as
+    # one argument exactly as captured.
+    assert (
+        "& python -m algotrader.execution.autonomy_read_only_network_executor"
+        " --as-of $asOfUtc --apply --format json"
+    ) in wrapper
+    # Exactly one timestamp source, captured once: a second resolution inside
+    # the Python process could straddle the session cutoff and silently target
+    # a different NYSE session than the one the wrapper started for.
+    assert wrapper.count("UtcNow") == 1
+    assert "Get-Date" not in wrapper
+    # The wrapper carries no credential of its own; the seam resolves it.
+    assert "TIINGO_API_KEY" not in wrapper
+    assert "run_spy_paper_mutation_supervisor" not in wrapper
 
 
 def _text(root: ET.Element, path: str) -> str:

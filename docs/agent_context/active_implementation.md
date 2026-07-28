@@ -1,203 +1,120 @@
-# Active Implementation Checkpoint
+# Active Implementation
 
-## Classification
+## Ownership
 
-- Milestone: `V5.52 — operator-bound SPY daily-cycle self-refresh`.
-- Status: **implementation complete and fully verified in the current checkout**.
-- Base: `main@600bf7285f1d1fd451941a6cf047fa7deb19d5e8`
-  (`origin/main` at takeover).
-- Writer: Codex is the sole writer in
-  `C:\Users\danie\Desktop\algo_trader`.
-- Commit: the implementation and this checkpoint form one coherent local
-  commit; inspect the current `HEAD` for its hash.
+- Writer: Codex orchestrator, sole writer for this working tree.
+- Branch: `codex/v5.53-integrated-spy-refresh-cycle`.
+- Dirty-file owner before the integration commit: Codex orchestrator.
+- Yield state after the integration commit: V5.53 implementation, authorized
+  operational proof, and verification complete; no dirty-file owner remains.
+- The separate clean V5.51 worktree at
+  `.claude/worktrees/v551-readonly-market-data-contract` was not modified.
 
-## Takeover Evidence And Stale Claims
+## Milestone
 
-- Takeover branch: `main`.
-- Takeover HEAD: `600bf7285f1d1fd451941a6cf047fa7deb19d5e8`.
-- Staged diff: empty.
-- Unstaged diff: empty.
-- Untracked files: empty.
-- `main` exactly matched `origin/main`.
-- The inherited checkpoint was stale operationally: it still centered V5.48,
-  named a Claude implementation worktree as the active checkout, and routed
-  V5.49 contract work. The current checkout was clean `main`, V5.48 was already
-  accepted, and the registered editable Python install still pointed at the
-  historical V5.44 Claude worktree. The full verifier safely rebound that
-  install to this checkout.
-- A separate clean worktree exists at
-  `claude/v5.51-readonly-spy-market-data-contract@e40a398`. It is preserved and
-  untouched. Its ancestry contains the closed V5.49 freshness contract, V5.50
-  eligibility analysis, and unmerged V5.51 read-only network work. V5.52 does
-  not claim those commits are on `main`.
+V5.53 integrates the V5.51 bounded Tiingo read-only refresh with the V5.52
+operator-input-bound offline self-refresh cycle. The planner-routable action is
+`run_authorized_read_only_spy_refresh_cycle`, and the checked-in scheduled-task
+definition routes through `scripts/run_spy_integrated_refresh_cycle.ps1`.
 
-## Milestone Drag Audit
+The network stage retains the exact Tiingo HTTPS GET, 20-second timeout, 8 MiB
+response cap, 20,000-row cap, four reserved attempts per NYSE session, scoped
+credential provider, paper/live interlock, immutable ledger, provenance, and
+soak evidence. Only the canonical adjusted SPY CSV and captured UTC clock cross
+into the offline stage. The offline executor receives an empty environment
+mapping and pins the M441-M444 output paths.
 
-The V5.44–V5.48 sequence used 20 commits:
+## Takeover and stale-claim audit
 
-- 8 contract, contract-correction, or accepted-contract handoff commits.
-- 2 read-only reachability-audit commits.
-- 6 evidence, handoff, acceptance, or promotion commits.
-- 4 implementation/repair commits.
+- Takeover started from clean `main` at
+  `b32b8554e3793bff6ddf04434e751d95c003def3`, one commit ahead of
+  `origin/main`; staged, unstaged, and untracked sets were empty.
+- The inherited V5.52 claim was verified before changes.
+- The V5.51 branch was clean at
+  `e40a398afccf7885716e23a659df29443937e241` and was merged without committing
+  so its changes could be reconciled with current authority and V5.52.
+- V5.51 attempted to add global standing Tiingo authority to `AGENTS.md`.
+  That stale authority claim was not imported. Current `AGENTS.md` remains
+  unchanged; V5.53 requires explicit scoped authorization.
+- V5.49-V5.51 accumulated contract/review/handoff artifacts and repeated
+  correction passes, but the real V5.51 executor did not bind the adapter's
+  production HTTPS transport and recognized only a test-stub accepted state.
+  Those two defects prevented operational reachability despite green tests.
+- Safety-critical V5.51 work was preserved: destination/method validation,
+  finite caps, redaction, credential scoping, interlock, ledger reservations,
+  corruption checks, attempt budget, normalized outputs, soak evidence, and
+  dependency guards.
+- The fetch-only action token was removed from planner/allowlist routing. It
+  remains the internal network-ledger action token; the integrated action is the
+  sole externally produced network route.
 
-V5.44 improved result truthfulness but added no new operation. V5.45 produced
-only an audit. V5.46 spent four commits freezing/correcting a future launcher
-contract. V5.47 added a real import-pure replay command, but it produced only
-deterministic readiness evidence. V5.48 finally made that command reachable
-through the executor.
+## Observable operational proof
 
-V5.49 then froze/reviewed/closed freshness as permanently dormant, and V5.50
-correctly found no second lane eligible for **auto-offline** execution. The
-workflow gap left open was narrower and useful: the planner already declared
-the SPY daily-cycle action `offline_operator_input`, but the executor and
-self-refresh command could not bind the two inputs. Operators had to leave the
-one-command cycle and manually invoke M444.
+The explicit V5.53 authorization was exercised in one minimal,
+credential-bearing paper-only process. No credential value was printed,
+persisted, returned, or copied into a command.
 
-V5.52 removes that drag without fabricating data or broadening unattended
-authority.
+- Dry run: `paper_boundary_ok=true`, `apply_eligible=true`, no live signals,
+  no network access, and no credential access.
+- Attempt 1: truthfully audited as
+  `blocked_live_market_data_fetch_transport_required`; no data/broker/trading
+  mutation.
+- Attempt 2: the corrected bounded HTTPS transport fetched and normalized
+  Tiingo SPY data with adapter state
+  `accepted_adjusted_spy_data_refresh`. This exposed the stale executor equality
+  check and was truthfully recorded with executor exit 1.
+- Successful integrated invocation: reused the now-qualified audited
+  `2026-07-27` session and canonical CSV, ran one credential-free offline SPY
+  action, wrote M444, refreshed `spy_offline_daily_cycle`, and returned exit 0
+  with `observable_outcome=m444_refreshed_nominal`.
+- Canonical CSV: 8,429 rows, first date `1993-01-29`, latest date
+  `2026-07-27`.
+- M444: `daily_chain_state=accepted_observe_hold_noop`; supervisor after-state
+  `nominal`; `refreshed_lanes=["spy_offline_daily_cycle"]`.
+- Soak: `evidence_state=accepted_unattended_market_data_soak`.
+- Exact credential-value scan: 2,783 generated files scanned under `runs/` and
+  `.data/operator_inputs/`; zero matches.
+- Broker access/mutation, paper submit, live trading, and live authorization:
+  all false. No broker API was contacted and no paper or live order was
+  submitted, changed, canceled, closed, or liquidated.
 
-## New Observable Behavior
+## Verification
 
-`autonomy-apply-plan` and `autonomy-self-refresh-cycle` now accept the pair:
+- Credential-free preflight before tests: `APP_PROFILE`, all checked
+  Alpaca/APCA aliases, `TIINGO_API_KEY`, network-test flags, and paper
+  integration flags were absent.
+- Focused transport/adapter/integration/dependency suite: 119 passed.
+- Full affected autonomy/adapter/schedule/dependency surface: 305 passed.
+- Standard offline verification: 109 safety guards passed; `git diff --check`
+  passed.
+- Bounded exact-node full suite: 10,099 canonical nodes across 499 files;
+  10,095 passed, 4 skipped, 0 failures, 0 errors. Five-shard collection and
+  execution equivalence passed; stderr was empty.
 
-- `--validated-at <timezone-aware ISO-8601>`
-- `--daily-bars-csv <existing local adjusted SPY CSV>`
+## Files and contracts
 
-The pair is optional, but partial input is a validation error. When the SPY
-daily-cycle lane is absent or stale and both inputs are supplied:
+New:
 
-1. The executor resolves the CSV as an existing nonsymlink local file.
-2. It normalizes the timestamp to UTC.
-3. It constructs argv as a tuple without a shell.
-4. It pins the M441, M442, M443, and supervised M444 outputs to their exact
-   canonical paths under `runs/paper_lab`.
-5. The existing M444 child validates the data and produces the chain.
-6. The self-refresh cycle re-observes the supervised M444 artifact.
-7. A successful absent/stale to nominal/waiting transition is named in
-   `refreshed_lanes`, even when another lane keeps the whole-system status
-   unchanged.
+- `src/algotrader/execution/autonomy_spy_refresh_cycle.py`
+- `scripts/run_spy_integrated_refresh_cycle.ps1`
+- `tests/unit/test_autonomy_spy_refresh_cycle.py`
 
-Dry-run remains the default. `--apply` is still required. Supplying inputs for
-an already nominal lane is idempotent: no action is bound or executed.
+Integrated V5.51 files include the network executor, adjusted-SPY adapter,
+planner, supervisor, scheduled-task definition, and tests. The workflow-only
+V5.49-V5.51 contract/analysis artifacts were intentionally not carried into
+this branch. V5.53 also updates `docs/deterministic_core.md`,
+`docs/OPERATOR_RUNBOOK.md`, and this sole mutable handoff.
 
-## Contract And Safety Summary
+The integration output is a sanitized summary only. Unknown network fields and
+exception text are dropped, so credential-bearing failures cannot be echoed.
+The integration module has no direct HTTP, socket, subprocess, broker SDK, or
+broker mutation boundary.
 
-- SPY seed and stale actions remain `EXECUTION_OFFLINE_OPERATOR_INPUT`; they do
-  not become `EXECUTION_AUTO_OFFLINE`.
-- `AUTONOMY_EXECUTOR_ALLOWLIST` remains the exact static crypto readiness
-  closure.
-- A separate exact operator-input action registry contains only the two SPY
-  daily-cycle action tokens.
-- The executor independently validates the canonical `runs` root, supervised
-  readiness packet, supervised M444 manifest, lane state/action/class/command
-  relationship, CSV existence, nonsymlink traversal, and fixed output paths
-  before any runner call.
-- `_execute` re-derives the exact static or operator-bound argv immediately
-  before subprocess handoff.
-- The child environment still strips every profile, broker credential, and
-  network-test variable.
-- No default test gains network, broker, credential, paper, order, or live
-  access.
-- No submit, cancel, replace, close, liquidation, broker reconciliation, or
-  paper mutation path changed.
-- `live_authorized=false`; the repository remains paper-only and not
-  live-authorized.
+## Next implementation action
 
-## Files Changed
-
-- `src/algotrader/cli.py`
-- `src/algotrader/execution/autonomy_supervisor.py`
-- `src/algotrader/execution/autonomy_next_plan.py`
-- `src/algotrader/execution/autonomy_offline_executor.py`
-- `src/algotrader/execution/autonomy_self_refresh_cycle.py`
-- `scripts/run_autonomy_apply_plan.ps1`
-- `scripts/run_autonomy_self_refresh_cycle.ps1`
-- `tests/unit/test_autonomy_next_plan.py`
-- `tests/unit/test_autonomy_offline_executor.py`
-- `tests/unit/test_autonomy_self_refresh_cycle.py`
-- `docs/deterministic_core.md`
-- `docs/OPERATOR_RUNBOOK.md`
-- `docs/agent_context/active_implementation.md`
-
-## Verification Evidence
-
-Presence-only preflight before testing:
-
-- `APP_PROFILE`: not loaded; paper profile false.
-- Alpaca/APCA credential aliases: not loaded.
-- Network-test escape hatches: disabled.
-- Paper-integration test flag: disabled.
-
-Focused and safety verification:
-
-- Planner/executor/self-refresh focused suite: **116 passed**.
-- Supervisor/planner/executor/self-refresh/dependency suite: **210 passed**.
-- `.\scripts\verify_offline.ps1`: **PASS**, including **107 passed** safety
-  guards.
-- `.\scripts\verify_offline.ps1 -Full`: **PASS**.
-  - Canonical node ids: 10,048.
-  - Eight shards; collection equivalence passed.
-  - Execution equivalence passed.
-  - Aggregate: **10,044 passed, 4 skipped, 0 failures, 0 errors**.
-- `git diff --check`: clean.
-- `git diff --name-only HEAD -- src`: exactly the five source files listed
-  above.
-- `git ls-files --others --exclude-standard src tests`: empty.
-
-## Isolated Real-Process Proof
-
-A detached temporary worktree at the V5.48 base received only the five edited
-runtime files and repository-generated synthetic SPY inputs. The exact CLI
-`autonomy-self-refresh-cycle --apply` was run with both operator inputs:
-
-- Before: all six lanes absent; system `no_lane_evidence`.
-- Eligible/executed: SPY daily-cycle seed and crypto readiness replay.
-- Both child processes exited 0.
-- SPY M441–M444 chain accepted 200 synthetic adjusted bars and produced an
-  accepted hold/noop M444 manifest at the supervised canonical path.
-- Crypto readiness replay produced accepted R1 evidence.
-- After: SPY daily-cycle and crypto readiness both nominal; system nominal.
-- `cycle_outcome=refreshed`; both lane ids appeared in `refreshed_lanes`.
-- Every broker, network, credential, mutation, submit, and live flag remained
-  false.
-
-The temporary worktree and all generated proof artifacts were removed. No user
-`runs/` artifact was read, overwritten, tracked, or committed.
-
-## Network, Broker, Paper, Caps, Receipts
-
-- Network access: none.
-- Broker or paper-account access: none.
-- Paper mutations: none.
-- Order mutations: none.
-- Effective quantity/notional/portfolio caps: not applicable; no order or
-  capital action exists in this slice.
-- Broker receipt/reconciliation status: not applicable.
-- Local deterministic child-artifact validation: accepted in the isolated
-  proof.
-- Credential values: never requested, read, printed, logged, or persisted.
-- Live-authorized state: false.
-
-## Preserved Unrelated Work And Integration Risk
-
-- No historical worktree, branch, staged file, untracked file, or generated
-  user artifact was changed.
-- V5.51 is clean and unmerged in its own worktree. It also changes
-  `autonomy_next_plan.py`; integrating V5.51 and V5.52 therefore requires an
-  intentional planner merge plus rerunning both focused suites and the bounded
-  full verifier. Do not resolve that overlap by dropping either the V5.51
-  authorized-network plan bucket or the V5.52 operator-input classification.
-
-## Recommended Next Capability Milestone
-
-After the V5.51/V5.52 planner integration is resolved, route one observable
-read-only pipeline rather than another contract/review-only round:
-
-`authorized SPY market-data refresh -> canonical adjusted CSV -> operator-bound
-self-refresh -> accepted supervised M444 -> re-observed nominal SPY lane`.
-
-Acceptance must be an end-to-end state transition with bounded response bytes
-and provider rows, a validated paper/read-only boundary, one credential lease,
-secret-free output, canonical artifact paths, and zero broker/order/live
-mutation. A documentation-only review, another eligibility inventory, or an
-artifact that no supervised lane consumes does not satisfy the milestone.
+After the repository-wide offline gate and local integration commit, the next
+capability milestone is to prove a later, previously unqualified NYSE session
+in a single invocation (`network_access_attempted=true` and
+`m444_refreshed_nominal`) without changing caps or installing the scheduled
+task. Do not add more review artifacts or broaden authority unless that proof
+exposes a concrete operational defect.

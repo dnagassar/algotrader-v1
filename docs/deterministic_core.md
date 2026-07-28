@@ -1355,3 +1355,36 @@ paper-boundary check runs again immediately before HTTP. It does not authorize
 broker mutation or live capital and does not persist or expose credentials. The
 detailed V5.42 contract is in
 `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
+
+## V5.53 Integrated SPY Read-Only Refresh Cycle
+
+`python -m algotrader.execution.autonomy_spy_refresh_cycle --as-of <UTC>
+[--apply] --format json` is the planner-routable SPY network action. It composes
+the bounded V5.51 Tiingo stage with the V5.52 operator-input-bound offline
+self-refresh stage. The network stage retains its exact HTTPS GET destination,
+20-second timeout, 8 MiB response cap, 20,000-row cap, four-attempt per-session
+ledger, scoped `.env` token provider, paper/live interlock, raw-response
+provenance, normalized canonical CSV, soak evidence, and fail-closed error
+categories.
+
+On an accepted refresh, or when the requested session is already qualified,
+only `runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv` crosses
+the trust-domain boundary. It is bound with the network stage's captured UTC
+clock into the offline executor. That executor receives `environ={}` and
+constructs shell-free argv with canonical M441-M444 outputs, so neither the
+Tiingo credential nor paper-profile/broker variables can reach the child.
+Success requires a valid network result, the canonical CSV, a successful
+offline execution (or a genuine converged no-op), and a converged supervisor
+report. `m444_refreshed_nominal` additionally requires the
+`spy_offline_daily_cycle` lane to appear in `refreshed_lanes`.
+
+The supervisor's absent SPY soak action and the network action registry both
+name only `run_authorized_read_only_spy_refresh_cycle`; the fetch-only executor
+is an internal audited stage, not a second planner action. The checked-in
+scheduled-task template routes through
+`scripts/run_spy_integrated_refresh_cycle.ps1`. Installing or running that task
+still requires explicit scoped authority and a passing paper-only interlock;
+this milestone does not add global credential/network authority to `AGENTS.md`.
+The integration module has no direct HTTP, socket, subprocess, broker SDK, or
+broker mutation boundary. Every result fixes broker, paper-submit, live, and
+profit claims to false/none.

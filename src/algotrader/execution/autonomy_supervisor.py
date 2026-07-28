@@ -290,7 +290,7 @@ AUTONOMY_SUPERVISOR_LANES: tuple[LaneSpec, ...] = (
             STATE_BLOCKED: "operator_review_latest_failed_market_data_session_read_only",
             STATE_ATTENTION: "operator_review_market_data_soak_evidence",
             STATE_UNKNOWN: "operator_review_market_data_soak_evidence",
-            STATE_ABSENT: "run_authorized_read_only_market_data_refresh_to_seed_soak",
+            STATE_ABSENT: "run_authorized_read_only_spy_refresh_cycle",
         },
         # A stale soak means the scheduled refresh task stopped producing
         # sessions. Only the operator can restore it; no offline command can.

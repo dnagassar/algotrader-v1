@@ -42,6 +42,7 @@ __all__ = [
     "render_spy_adjusted_data_refresh_json",
     "render_spy_adjusted_data_refresh_text",
     "run_spy_adjusted_data_refresh",
+    "tiingo_bounded_http_get",
     "write_spy_adjusted_data_refresh_jsonl",
 ]
 
@@ -63,6 +64,8 @@ _DEFAULT_START_DATE = "1993-01-29"
 _DEFAULT_REVISION_LOOKBACK_DAYS = 10
 _MAX_REVISION_LOOKBACK_DAYS = 31
 _HTTP_TIMEOUT_SECONDS = 20.0
+_MAX_RESPONSE_BYTES = 8_388_608
+_MAX_PROVIDER_ROWS = 20_000
 _CANONICAL_COLUMNS = (
     "symbol",
     "date",
@@ -568,11 +571,14 @@ def _build_refresh_payload(
         _write_bytes_atomic(raw_path, raw_bytes)
         try:
             records = _read_provider_json_bytes(raw_bytes)
-        except ValidationError:
+        except ValidationError as exc:
+            blocker = str(exc)
+            if blocker != "provider_row_count_exceeded":
+                blocker = "invalid_provider_json_response"
             return _manifest(
                 config,
                 refresh_state="blocked_invalid_provider_json_response",
-                refresh_blockers=["invalid_provider_json_response"],
+                refresh_blockers=[blocker],
                 provider_request=request,
                 current_canonical_latest_bar_date=current_latest,
                 current_canonical_sha256=current_canonical_sha256,
@@ -1065,6 +1071,8 @@ def _read_provider_json_bytes(data: bytes) -> list[Mapping[str, object]]:
         raise ValidationError("provider JSON response is malformed.") from exc
     if not isinstance(parsed, list):
         raise ValidationError("provider JSON response must be a list.")
+    if len(parsed) > _MAX_PROVIDER_ROWS:
+        raise ValidationError("provider_row_count_exceeded")
     records: list[Mapping[str, object]] = []
     for item in parsed:
         if not isinstance(item, Mapping):
@@ -1136,15 +1144,24 @@ def _tiingo_http_get(url: str, headers: Mapping[str, str]) -> bytes:
         response = connection.getresponse()
         status = int(response.status)
         if status < 200 or status >= 300:
-            response.read()
+            response.read(_MAX_RESPONSE_BYTES + 1)
             raise MarketDataFetchError(_http_status_category(status))
-        return response.read()
+        content = response.read(_MAX_RESPONSE_BYTES + 1)
+        if len(content) > _MAX_RESPONSE_BYTES:
+            raise MarketDataFetchError("provider_response_too_large")
+        return content
     except MarketDataFetchError:
         raise
     except (TimeoutError, OSError, http.client.HTTPException) as exc:
         raise MarketDataFetchError("provider_network_error") from exc
     finally:
         connection.close()
+
+
+def tiingo_bounded_http_get(url: str, headers: Mapping[str, str]) -> bytes:
+    """Run the production Tiingo GET through the frozen bounded transport."""
+
+    return _tiingo_http_get(url, headers)
 
 
 def _http_status_category(status: int) -> str:
@@ -1686,7 +1703,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.dotenv_path,
                 token_env_var=name,
             )
-            http_get = _tiingo_http_get
+            http_get = tiingo_bounded_http_get
         payload = run_spy_adjusted_data_refresh(
             SPYAdjustedDataRefreshConfig(
                 provider=args.provider,
