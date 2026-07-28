@@ -8,9 +8,15 @@ hard gate.
 
 Its authority is deliberately narrow:
 
-- It executes only the two supervisor-produced readiness tokens on the frozen
+- It executes the two supervisor-produced readiness tokens on the frozen
   :data:`AUTONOMY_EXECUTOR_ALLOWLIST`. Both resolve to the same fully-defaulted
-  import-pure replay command. An action not on the allowlist is never executed.
+  import-pure replay command.
+- It may execute the SPY daily-cycle seed/refresh tokens only when both declared
+  operator inputs are supplied together. The input file is resolved as an
+  existing local file, the timestamp is normalized, argv is constructed without
+  a shell, and all M441-M444 outputs are pinned to the canonical supervised
+  ``runs/`` paths.
+- An action not on either exact registry is never executed.
 - It is **dry-run by default**. Without ``apply=True`` it resolves what *would*
   run and executes nothing (it spawns no subprocess at all).
 - Before any execution it runs a credential/profile/network preflight over the
@@ -33,6 +39,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -45,7 +52,14 @@ from algotrader.execution.autonomy_next_plan import (
     CANONICAL_LANES_ROOT_RELPATH,
     CANONICAL_READINESS_PACKET_RELPATH,
     CANONICAL_REPLAY_ARGV,
+    CANONICAL_SPY_DAILY_CYCLE_MANIFEST_RELPATH,
+    CANONICAL_SPY_DAILY_CYCLE_OUTPUTS,
     EXECUTION_AUTO_OFFLINE,
+    EXECUTION_OFFLINE_OPERATOR_INPUT,
+    SPY_DAILY_CYCLE_ABSENT_ACTION,
+    SPY_DAILY_CYCLE_LANE_ID,
+    SPY_DAILY_CYCLE_SEED_COMMAND,
+    SPY_DAILY_CYCLE_STALE_ACTION,
     build_autonomy_next_plan,
     build_autonomy_next_plan_from_report,
 )
@@ -57,7 +71,9 @@ from algotrader.execution.autonomy_supervisor import (
 __all__ = [
     "AUTONOMY_EXECUTOR_ALLOWLIST",
     "AUTONOMY_EXECUTOR_LABELS",
+    "AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS",
     "CREDENTIAL_PREFLIGHT_ENV_KEYS",
+    "OfflineOperatorInputs",
     "SKIP_NOT_ALLOWLISTED",
     "SKIP_NOT_OFFLINE_RUNNABLE",
     "SKIP_REQUIRES_OPERATOR_INPUT",
@@ -97,13 +113,14 @@ _PROFILE_ENV_KEY = "APP_PROFILE"
 _STRIPPED_CHILD_ENV_KEYS = (*CREDENTIAL_PREFLIGHT_ENV_KEYS, _PROFILE_ENV_KEY)
 
 # Frozen allowlist mapping the two readiness producer tokens to the one exact
-# import-pure replay argv. The SPY seed remains absent because it needs
-# operator-supplied inputs. The historical M446 reproduction command remains
-# manually runnable but is not an autonomy producer and is not allowlisted.
+# import-pure replay argv.
 AUTONOMY_EXECUTOR_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "run_supervised_readiness_trial_to_seed_r1_evidence": CANONICAL_REPLAY_ARGV,
     "rerun_supervised_readiness_trial": CANONICAL_REPLAY_ARGV,
 }
+AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS = frozenset(
+    {SPY_DAILY_CYCLE_ABSENT_ACTION, SPY_DAILY_CYCLE_STALE_ACTION}
+)
 _READINESS_LANE_ID = "crypto_supervised_readiness_trial"
 _READINESS_REPLAY_COMMAND = "python -m algotrader.cli crypto-readiness-replay"
 
@@ -150,11 +167,32 @@ class _SkippedAction:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class OfflineOperatorInputs:
+    """Operator-bound local inputs for the SPY offline daily-cycle action."""
+
+    validated_at: str
+    daily_bars_csv: Path | str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "validated_at",
+            _normalized_timestamp(self.validated_at, "validated_at"),
+        )
+        object.__setattr__(
+            self,
+            "daily_bars_csv",
+            _required_path(self.daily_bars_csv, "daily_bars_csv"),
+        )
+
+
 def build_offline_execution_ledger(
     config: AutonomySupervisorConfig,
     *,
     apply: bool = False,
     plan_report: Mapping[str, object] | None = None,
+    operator_inputs: OfflineOperatorInputs | None = None,
     environ: Mapping[str, str] | None = None,
     runner=None,
 ) -> dict[str, object]:
@@ -170,6 +208,8 @@ def build_offline_execution_ledger(
         raise ValidationError("config must be an AutonomySupervisorConfig.")
     if type(apply) is not bool:
         raise ValidationError("apply must be a bool.")
+    if operator_inputs is not None and type(operator_inputs) is not OfflineOperatorInputs:
+        raise ValidationError("operator_inputs must be OfflineOperatorInputs or None.")
 
     canonical_plan = build_autonomy_next_plan(config)
     if plan_report is None:
@@ -185,7 +225,8 @@ def build_offline_execution_ledger(
         plan = canonical_plan
 
     repo_root = _validate_executor_target(config, plan)
-    eligible, skipped = _partition_actions(plan)
+    resolved_inputs = _resolve_operator_inputs(operator_inputs, repo_root)
+    eligible, skipped = _partition_actions(plan, resolved_inputs)
     preflight_ok, preflight_reasons = execution_preflight(environ)
 
     executed: list[dict[str, object]] = []
@@ -197,7 +238,14 @@ def build_offline_execution_ledger(
             active_runner = runner if runner is not None else _run_subprocess
             child_environ = _sanitized_child_environment(environ, repo_root)
             for action in eligible:
-                executed.append(_execute(action, active_runner, child_environ))
+                executed.append(
+                    _execute(
+                        action,
+                        active_runner,
+                        child_environ,
+                        operator_inputs=resolved_inputs,
+                    )
+                )
 
     execution_count = len(executed)
     # V5.44: zero executions is not a success claim about anything that
@@ -225,6 +273,12 @@ def build_offline_execution_ledger(
         "dry_run": not apply,
         "preflight_ok": preflight_ok,
         "preflight_reasons": preflight_reasons,
+        "operator_inputs_provided": resolved_inputs is not None,
+        "operator_input_bound_actions": [
+            action.recommended_action
+            for action in eligible
+            if action.recommended_action in AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS
+        ],
         "plan_class": plan["plan_class"],
         "supervisor_system_status": plan["supervisor_system_status"],
         "eligible_actions": [
@@ -342,6 +396,9 @@ def _validate_executor_target(
     root = _executing_repository_root()
     expected_lanes_root = _canonical_target(root, CANONICAL_LANES_ROOT_RELPATH)
     expected_packet = _canonical_target(root, CANONICAL_READINESS_PACKET_RELPATH)
+    expected_daily_manifest = _canonical_target(
+        root, CANONICAL_SPY_DAILY_CYCLE_MANIFEST_RELPATH
+    )
 
     for value, field_name in (
         (config.lanes_root, "config lanes_root"),
@@ -416,6 +473,59 @@ def _validate_executor_target(
             raise ValidationError(
                 "selected next action must equal the crypto readiness action."
             )
+
+    daily_override = config.lane_artifact_overrides.get(SPY_DAILY_CYCLE_LANE_ID)
+    if daily_override is not None and (
+        _resolved_target(
+            daily_override,
+            root=root,
+            field_name="SPY daily-cycle lane override",
+        )
+        != expected_daily_manifest
+    ):
+        raise ValidationError(
+            "SPY daily-cycle lane override must equal the canonical manifest."
+        )
+    daily_actions = [
+        action
+        for action in _plan_actions(plan)
+        if action.get("lane_id") == SPY_DAILY_CYCLE_LANE_ID
+    ]
+    if len(daily_actions) != 1:
+        raise ValidationError("plan must contain exactly one SPY daily-cycle action.")
+    daily = daily_actions[0]
+    if (
+        _resolved_target(
+            daily.get("artifact_path"),
+            root=root,
+            field_name="SPY daily-cycle artifact_path",
+        )
+        != expected_daily_manifest
+    ):
+        raise ValidationError(
+            "SPY daily-cycle artifact_path must equal the canonical manifest."
+        )
+    daily_state = _text(daily.get("normalized_state"))
+    daily_spec = next(
+        lane
+        for lane in AUTONOMY_SUPERVISOR_LANES
+        if lane.lane_id == SPY_DAILY_CYCLE_LANE_ID
+    )
+    if daily_state not in daily_spec.next_actions:
+        raise ValidationError("SPY daily-cycle normalized_state is not supported.")
+    expected_daily_action = daily_spec.next_actions[daily_state]
+    if daily.get("recommended_action") != expected_daily_action:
+        raise ValidationError(
+            "SPY daily-cycle action does not match its normalized state."
+        )
+    if expected_daily_action in AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS and (
+        daily.get("execution_class") != EXECUTION_OFFLINE_OPERATOR_INPUT
+        or daily.get("offline_runnable") is not True
+        or daily.get("gate") != "operator_supplied_inputs"
+        or daily.get("command") != SPY_DAILY_CYCLE_SEED_COMMAND
+        or not daily.get("required_operator_inputs")
+    ):
+        raise ValidationError("SPY daily-cycle execution binding is not canonical.")
     return root
 
 
@@ -446,6 +556,7 @@ def _sanitized_child_environment(
 
 def _partition_actions(
     plan: Mapping[str, object],
+    operator_inputs: OfflineOperatorInputs | None = None,
 ) -> tuple[list[_EligibleAction], list[_SkippedAction]]:
     eligible: list[_EligibleAction] = []
     skipped: list[_SkippedAction] = []
@@ -461,6 +572,28 @@ def _partition_actions(
                     lane_id, recommended, execution_class, SKIP_NOT_OFFLINE_RUNNABLE
                 )
             )
+            continue
+        if execution_class == EXECUTION_OFFLINE_OPERATOR_INPUT:
+            if (
+                recommended in AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS
+                and operator_inputs is not None
+            ):
+                eligible.append(
+                    _EligibleAction(
+                        lane_id=lane_id,
+                        recommended_action=recommended,
+                        argv=_spy_daily_cycle_argv(operator_inputs),
+                    )
+                )
+            else:
+                reason = (
+                    SKIP_REQUIRES_OPERATOR_INPUT
+                    if operator_inputs is None
+                    else SKIP_NOT_ALLOWLISTED
+                )
+                skipped.append(
+                    _SkippedAction(lane_id, recommended, execution_class, reason)
+                )
             continue
         if (
             recommended not in AUTONOMY_EXECUTOR_ALLOWLIST
@@ -487,12 +620,27 @@ def _partition_actions(
     return eligible, skipped
 
 
-def _execute(action: _EligibleAction, runner, environ) -> dict[str, object]:
-    # Defence in depth: never hand a non-allowlisted argv to the runner.
-    if action.recommended_action not in AUTONOMY_EXECUTOR_ALLOWLIST:
+def _execute(
+    action: _EligibleAction,
+    runner,
+    environ,
+    *,
+    operator_inputs: OfflineOperatorInputs | None = None,
+) -> dict[str, object]:
+    # Defence in depth: independently rederive either the static allowlist argv
+    # or the exact operator-bound SPY argv immediately before runner handoff.
+    if action.recommended_action in AUTONOMY_EXECUTOR_ALLOWLIST:
+        expected_argv = AUTONOMY_EXECUTOR_ALLOWLIST[action.recommended_action]
+    elif action.recommended_action in AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS:
+        if operator_inputs is None:
+            raise ValidationError(
+                "refusing to execute an operator-input action without inputs."
+            )
+        expected_argv = _spy_daily_cycle_argv(operator_inputs)
+    else:
         raise ValidationError("refusing to execute a non-allowlisted action.")
-    if AUTONOMY_EXECUTOR_ALLOWLIST[action.recommended_action] != action.argv:
-        raise ValidationError("resolved argv does not match the allowlist.")
+    if expected_argv != action.argv:
+        raise ValidationError("resolved argv does not match the action binding.")
 
     result = runner(action.argv, environ)
     return {
@@ -505,6 +653,90 @@ def _execute(action: _EligibleAction, runner, environ) -> dict[str, object]:
         "stderr_tail": _tail(_text(result.get("stderr"))),
         "timed_out": result.get("timed_out") is True,
     }
+
+
+def _resolve_operator_inputs(
+    value: OfflineOperatorInputs | None,
+    repo_root: Path,
+) -> OfflineOperatorInputs | None:
+    if value is None:
+        return None
+    resolved_csv = _resolved_input_file(
+        value.daily_bars_csv,
+        root=repo_root,
+        field_name="daily_bars_csv",
+    )
+    canonical_outputs = {
+        _canonical_target(repo_root, relpath)
+        for _, relpath in CANONICAL_SPY_DAILY_CYCLE_OUTPUTS
+    }
+    if resolved_csv in canonical_outputs:
+        raise ValidationError("daily_bars_csv must not equal a canonical output path.")
+    return OfflineOperatorInputs(
+        validated_at=value.validated_at,
+        daily_bars_csv=resolved_csv,
+    )
+
+
+def _resolved_input_file(
+    value: Path | str,
+    *,
+    root: Path,
+    field_name: str,
+) -> Path:
+    path = _required_path(value, field_name)
+    candidate = path if path.is_absolute() else root / path
+    _reject_symlink_components(candidate, field_name)
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as exc:
+        raise ValidationError(f"{field_name} must be an existing local file.") from exc
+    if not resolved.is_file():
+        raise ValidationError(f"{field_name} must be an existing local file.")
+    return resolved
+
+
+def _required_path(value: object, field_name: str) -> Path:
+    if isinstance(value, Path):
+        path = value
+    elif type(value) is str:
+        path = Path(value.strip())
+    else:
+        raise ValidationError(f"{field_name} must be a path string.")
+    if str(path).strip() == "":
+        raise ValidationError(f"{field_name} is required.")
+    return path
+
+
+def _normalized_timestamp(value: object, field_name: str) -> str:
+    if type(value) is not str or value.strip() == "":
+        raise ValidationError(f"{field_name} is required.")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValidationError(
+            f"{field_name} must be a timezone-aware ISO-8601 value."
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValidationError(
+            f"{field_name} must be a timezone-aware ISO-8601 value."
+        )
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _spy_daily_cycle_argv(
+    operator_inputs: OfflineOperatorInputs,
+) -> tuple[str, ...]:
+    argv = [
+        "etf-sma-offline-daily-cycle-run",
+        "--validated-at",
+        operator_inputs.validated_at,
+        "--daily-bars-csv",
+        str(operator_inputs.daily_bars_csv),
+    ]
+    for flag, relpath in CANONICAL_SPY_DAILY_CYCLE_OUTPUTS:
+        argv.extend((flag, relpath.as_posix()))
+    return tuple(argv)
 
 
 def _run_subprocess(

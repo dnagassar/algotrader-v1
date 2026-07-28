@@ -31,11 +31,14 @@ from algotrader.execution.autonomy_next_plan import (
     build_autonomy_next_plan_from_report,
 )
 from algotrader.execution.autonomy_offline_executor import (
+    OfflineOperatorInputs,
     build_offline_execution_ledger,
 )
 from algotrader.execution.autonomy_supervisor import (
     AUTONOMY_SUPERVISOR_SYSTEM_STATUSES,
     AutonomySupervisorConfig,
+    STATE_NOMINAL,
+    STATE_WAITING,
     SYSTEM_NOMINAL,
     SYSTEM_NO_LANE_EVIDENCE,
     SYSTEM_WAITING,
@@ -99,6 +102,7 @@ def build_self_refresh_cycle(
     *,
     apply: bool = False,
     allow_empty_lab: bool = False,
+    operator_inputs: OfflineOperatorInputs | None = None,
     environ: Mapping[str, str] | None = None,
     runner=None,
 ) -> dict[str, object]:
@@ -123,6 +127,7 @@ def build_self_refresh_cycle(
         config,
         apply=apply,
         plan_report=plan,
+        operator_inputs=operator_inputs,
         environ=environ,
         runner=runner,
     )
@@ -135,6 +140,7 @@ def build_self_refresh_cycle(
     # forward it verbatim rather than coercing None to False, which would
     # turn "not applicable, nothing ran" into a false failure claim.
     all_succeeded = ledger["all_executions_succeeded"]
+    refreshed_lanes = _refreshed_lanes(before, after, ledger)
 
     outcome = _classify_outcome(
         apply=apply,
@@ -143,6 +149,7 @@ def build_self_refresh_cycle(
         before_status=before_status,
         after_status=after_status,
         allow_empty_lab=allow_empty_lab,
+        lane_refresh_count=len(refreshed_lanes),
     )
     evidence_required = (
         after_status == SYSTEM_NO_LANE_EVIDENCE and not allow_empty_lab
@@ -165,6 +172,8 @@ def build_self_refresh_cycle(
         "apply": apply,
         "dry_run": not apply,
         "allow_empty_lab": allow_empty_lab,
+        "operator_inputs_provided": ledger["operator_inputs_provided"],
+        "operator_input_bound_actions": ledger["operator_input_bound_actions"],
         "evidence_required": evidence_required,
         "before_system_status": before_status,
         "before_plan_class": str(plan["plan_class"]),
@@ -174,6 +183,7 @@ def build_self_refresh_cycle(
         "after_system_status": after_status,
         "cycle_outcome": outcome,
         "converged": converged,
+        "refreshed_lanes": refreshed_lanes,
         "before_report": _report_summary(before),
         "plan_summary": {
             "plan_class": str(plan["plan_class"]),
@@ -201,6 +211,7 @@ def _classify_outcome(
     before_status: str,
     after_status: str,
     allow_empty_lab: bool = False,
+    lane_refresh_count: int = 0,
 ) -> str:
     if after_status == SYSTEM_NO_LANE_EVIDENCE and not allow_empty_lab:
         return OUTCOME_EVIDENCE_REQUIRED
@@ -213,7 +224,10 @@ def _classify_outcome(
     # unexpected None as success if that contract is ever violated.
     if all_succeeded is not True:
         return OUTCOME_EXECUTION_FAILED
-    if _system_rank(after_status) < _system_rank(before_status):
+    if (
+        _system_rank(after_status) < _system_rank(before_status)
+        or lane_refresh_count > 0
+    ):
         return OUTCOME_REFRESHED
     return OUTCOME_STILL_PENDING
 
@@ -250,6 +264,41 @@ def _report_summary(report: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _refreshed_lanes(
+    before: Mapping[str, object],
+    after: Mapping[str, object],
+    ledger: Mapping[str, object],
+) -> list[str]:
+    """Name successful executed lanes that reached a healthy steady state."""
+
+    before_states = _lane_states(before)
+    after_states = _lane_states(after)
+    refreshed: list[str] = []
+    for execution in _mapping_list(ledger.get("executed_actions")):
+        if execution.get("succeeded") is not True:
+            continue
+        lane_id = str(execution.get("lane_id", ""))
+        before_state = before_states.get(lane_id)
+        after_state = after_states.get(lane_id)
+        if (
+            lane_id
+            and before_state != after_state
+            and after_state in {STATE_NOMINAL, STATE_WAITING}
+        ):
+            refreshed.append(lane_id)
+    return refreshed
+
+
+def _lane_states(report: Mapping[str, object]) -> dict[str, str]:
+    states: dict[str, str] = {}
+    for lane in _mapping_list(report.get("lanes")):
+        lane_id = str(lane.get("lane_id", ""))
+        state = str(lane.get("normalized_state", ""))
+        if lane_id and state:
+            states[lane_id] = state
+    return states
+
+
 def render_self_refresh_cycle_json(payload: Mapping[str, object]) -> str:
     """Render one newline-free deterministic JSON object."""
 
@@ -265,12 +314,14 @@ def render_self_refresh_cycle_text(payload: Mapping[str, object]) -> str:
         f"as_of: {payload.get('as_of', '')}",
         f"apply: {_bool_text(payload.get('apply'))}",
         f"allow_empty_lab: {_bool_text(payload.get('allow_empty_lab'))}",
+        f"operator_inputs_provided: {_bool_text(payload.get('operator_inputs_provided'))}",
         f"before_system_status: {payload.get('before_system_status', '')}",
         f"eligible_count: {payload.get('eligible_count', 0)}",
         f"execution_count: {payload.get('execution_count', 0)}",
         f"all_executions_succeeded: {_tri_bool_text(payload.get('all_executions_succeeded'))}",
         f"after_system_status: {payload.get('after_system_status', '')}",
         f"cycle_outcome: {payload.get('cycle_outcome', '')}",
+        f"refreshed_lanes: {_joined(_string_list(payload.get('refreshed_lanes')))}",
         f"evidence_required: {_bool_text(payload.get('evidence_required'))}",
         f"converged: {_bool_text(payload.get('converged'))}",
     ]
@@ -341,6 +392,12 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
         return []
     return [str(item) for item in value if str(item)]
+
+
+def _mapping_list(value: object) -> list[Mapping[str, object]]:
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
 
 
 def _bool_text(value: object) -> str:

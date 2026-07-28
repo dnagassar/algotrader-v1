@@ -1785,6 +1785,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     autonomy_apply_plan_parser.add_argument(
+        "--validated-at",
+        default=None,
+        help=(
+            "Operator-supplied timezone-aware ISO-8601 clock for the SPY "
+            "offline daily-cycle action. Must be supplied with --daily-bars-csv."
+        ),
+    )
+    autonomy_apply_plan_parser.add_argument(
+        "--daily-bars-csv",
+        default=None,
+        help=(
+            "Existing local adjusted SPY daily-bars CSV for the SPY offline "
+            "daily-cycle action. Must be supplied with --validated-at."
+        ),
+    )
+    autonomy_apply_plan_parser.add_argument(
         "--run-log",
         default=None,
         help="Write exactly one deterministic ledger JSONL record to PATH.",
@@ -1834,6 +1850,22 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Actually execute the eligible allowlisted offline refresh actions. "
             "Without this flag the cycle is a dry run and executes nothing."
+        ),
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--validated-at",
+        default=None,
+        help=(
+            "Operator-supplied timezone-aware ISO-8601 clock for an eligible "
+            "SPY offline daily-cycle action. Must accompany --daily-bars-csv."
+        ),
+    )
+    autonomy_self_refresh_parser.add_argument(
+        "--daily-bars-csv",
+        default=None,
+        help=(
+            "Existing local adjusted SPY daily-bars CSV for an eligible SPY "
+            "offline daily-cycle action. Must accompany --validated-at."
         ),
     )
     autonomy_self_refresh_parser.add_argument(
@@ -6137,6 +6169,7 @@ def _run_autonomy_next_plan(args: argparse.Namespace) -> int:
 def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
     from .errors import ValidationError
     from .execution.autonomy_offline_executor import (
+        OfflineOperatorInputs,
         build_offline_execution_ledger,
         render_offline_execution_ledger_json,
         render_offline_execution_ledger_text,
@@ -6159,6 +6192,18 @@ def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
                     "each --lane override must be LANE_ID=PATH."
                 )
             overrides[lane_id] = path_text
+        if (args.validated_at is None) != (args.daily_bars_csv is None):
+            raise ValidationError(
+                "--validated-at and --daily-bars-csv must be supplied together."
+            )
+        operator_inputs = (
+            None
+            if args.validated_at is None
+            else OfflineOperatorInputs(
+                validated_at=args.validated_at,
+                daily_bars_csv=args.daily_bars_csv,
+            )
+        )
         payload = build_offline_execution_ledger(
             AutonomySupervisorConfig(
                 run_id=args.run_id,
@@ -6167,6 +6212,7 @@ def _run_autonomy_apply_plan(args: argparse.Namespace) -> int:
                 lane_artifact_overrides=overrides,
             ),
             apply=args.apply,
+            operator_inputs=operator_inputs,
         )
         if args.run_log is not None:
             write_offline_execution_ledger_jsonl(payload, args.run_log)
@@ -6201,6 +6247,7 @@ def _run_autonomy_self_refresh_cycle(args: argparse.Namespace) -> int:
         render_self_refresh_cycle_text,
         write_self_refresh_cycle_jsonl,
     )
+    from .execution.autonomy_offline_executor import OfflineOperatorInputs
     from .execution.autonomy_supervisor import AutonomySupervisorConfig
 
     try:
@@ -6218,6 +6265,18 @@ def _run_autonomy_self_refresh_cycle(args: argparse.Namespace) -> int:
                     "each --lane override must be LANE_ID=PATH."
                 )
             overrides[lane_id] = path_text
+        if (args.validated_at is None) != (args.daily_bars_csv is None):
+            raise ValidationError(
+                "--validated-at and --daily-bars-csv must be supplied together."
+            )
+        operator_inputs = (
+            None
+            if args.validated_at is None
+            else OfflineOperatorInputs(
+                validated_at=args.validated_at,
+                daily_bars_csv=args.daily_bars_csv,
+            )
+        )
         payload = build_self_refresh_cycle(
             AutonomySupervisorConfig(
                 run_id=args.run_id,
@@ -6227,6 +6286,7 @@ def _run_autonomy_self_refresh_cycle(args: argparse.Namespace) -> int:
             ),
             apply=args.apply,
             allow_empty_lab=args.allow_empty_lab,
+            operator_inputs=operator_inputs,
         )
         if args.run_log is not None:
             write_self_refresh_cycle_jsonl(payload, args.run_log)

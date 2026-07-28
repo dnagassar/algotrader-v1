@@ -1449,29 +1449,37 @@ the offline-runnable, allowlisted subset. It is dry-run by default; you must pas
 # Apply: actually run the eligible allowlisted offline commands.
 .\scripts\run_autonomy_apply_plan.ps1 -RunId apply-<yyyymmdd> -AsOf <UTC> -Apply `
   -RunLog runs\autonomy_apply_plan\latest\ledger.jsonl -Format json
+
+# Bind the two SPY inputs and apply an absent/stale daily-cycle action.
+.\scripts\run_autonomy_apply_plan.ps1 -RunId apply-spy-<yyyymmdd> -AsOf <UTC> `
+  -ValidatedAt <UTC> -DailyBarsCsv <LOCAL_ADJUSTED_SPY_CSV> -Apply `
+  -RunLog runs\autonomy_apply_plan\latest\ledger.jsonl -Format json
 ```
 
 The wrapper and the executor both refuse to run under `APP_PROFILE=paper`/`live`
 or any Alpaca credential/network-test variable (reporting the variable name only,
 never its value), and each executed command runs with a child environment that
-strips every credential/profile variable. Only commands on the frozen
-`AUTONOMY_EXECUTOR_ALLOWLIST` are ever run — today just
-`etf-sma-offline-daily-cycle-rerun-m446`; the daily-cycle seed is excluded
-because it needs operator-supplied inputs (it is skipped with
-`requires_operator_input`). The ledger records eligible, skipped, and executed
-actions with exit codes and every safety boolean false.
+strips every credential/profile variable. Fully-defaulted crypto readiness
+replays are fixed in `AUTONOMY_EXECUTOR_ALLOWLIST`. SPY daily-cycle seed and
+stale-refresh actions use a separate exact operator-input registry: both
+`-ValidatedAt` and an existing local `-DailyBarsCsv` must be supplied together,
+argv is constructed without a shell, and the M441–M444 outputs are pinned under
+`runs\paper_lab`, including the supervised
+`m444_offline_daily_cycle_run.jsonl`. Without both inputs the SPY action remains
+skipped as `requires_operator_input`. The ledger records whether inputs were
+provided, which actions were bound, and every eligible, skipped, and executed
+action with exit codes and false broker/network/live safety booleans.
 
 Exit code: `2` on input error or a preflight-refused `-Apply`; `1` on a failed
 execution or a dry run with eligible work pending; `0` otherwise.
 
-Note: the allowlist retains the pinned
-`etf-sma-offline-daily-cycle-rerun-m446` reproduction command, but the current
-SPY daily-cycle stale route is
-`operator_refresh_offline_daily_cycle_inputs`. M446 writes the M447 manifest,
-not the supervised M444 artifact, so it cannot cure this lane. No current lane
-action reaches the executor allowlist; the executor is intentionally inert
-today. The detailed contract is in
-`docs/design/v5_39_gated_offline_autonomy_executor.md`.
+The pinned `etf-sma-offline-daily-cycle-rerun-m446` command remains manually
+runnable historical reproduction only; it writes the M447 manifest and is not
+an autonomy action. Use the paired-input path above for either
+`run_offline_daily_cycle_chain_to_seed_evidence` or
+`operator_refresh_offline_daily_cycle_inputs`. The historical V5.39 contract is
+in `docs/design/v5_39_gated_offline_autonomy_executor.md`; V5.52 adds the bounded
+operator-input binding described here.
 
 ## V5.42 Autonomy Self-Refresh Cycle
 
@@ -1491,6 +1499,11 @@ execute the eligible allowlisted offline refresh actions.
 # Apply: run the eligible offline refresh actions and re-observe.
 .\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId cycle-<yyyymmdd> -AsOf <UTC> -Apply `
   -RunLog runs\autonomy_self_refresh_cycle\latest\cycle.jsonl -Format json
+
+# One-command SPY absent/stale -> accepted re-observation.
+.\scripts\run_autonomy_self_refresh_cycle.ps1 -RunId cycle-spy-<yyyymmdd> `
+  -AsOf <UTC> -ValidatedAt <UTC> -DailyBarsCsv <LOCAL_ADJUSTED_SPY_CSV> -Apply `
+  -RunLog runs\autonomy_self_refresh_cycle\latest\cycle.jsonl -Format json
 ```
 
 `cycle_outcome` is one of `evidence_required`, `dry_run_preview`,
@@ -1505,23 +1518,20 @@ credential/profile refusal and safety guarantees as the executor apply. The
 detailed contract is in
 `docs/design/v5_42_offline_autonomy_self_refresh_cycle.md`.
 
-`refreshed` versus `still_pending` is decided by comparing the before/after
-system-status severity, where V5.42a ranks `no_lane_evidence` as the most severe
-status. A cycle that lost its lane evidence therefore reports `still_pending`,
-never `refreshed`, and a cycle that seeded an empty lab reports `refreshed`.
-Before V5.42a both read the opposite way. An unrecognized system status is now
-refused outright rather than assumed healthy.
+`refreshed` versus `still_pending` uses both whole-system severity and successful
+lane-level transitions. `refreshed_lanes` names executed lanes that changed to
+`nominal` or `waiting`; this means a successful SPY absent/stale → nominal
+transition is visible even if an unrelated lane keeps the aggregate system at
+`waiting`. V5.42a's fail-closed system ordering remains intact: losing all lane
+evidence never reads as refreshed, and unrecognized statuses are refused.
 
-What to expect today: no lane state currently emits an allowlisted action, so
-`-Apply` executes nothing and the cycle reports `noop_no_action` with
-`converged: true` (exit `0`). When daily-cycle evidence ages past 30h the cycle
-converges to `waiting` and the plan names the operator inputs needed — supply a
-refreshed adjusted SPY daily-bars CSV and re-seed the chain with
-`etf-sma-offline-daily-cycle-run --manifest-output-jsonl
-runs\paper_lab\m444_offline_daily_cycle_run.jsonl`. Do **not** expect
-`etf-sma-offline-daily-cycle-rerun-m446` to refresh this lane: it is a pinned
-reproduction of the 2026-06-08 M446/M447 milestone and writes a different
-artifact.
+What to expect today: an absent crypto readiness lane can run the import-pure
+replay automatically under `-Apply`. An absent or stale SPY daily-cycle lane can
+run only when the paired inputs are supplied; the child must accept the CSV and
+produce an accepted canonical M444 manifest before re-observation can list the
+lane in `refreshed_lanes`. Missing, partial, nonexistent, noncanonical, blocked,
+or failed bindings never claim a refresh. The other network, scheduler, broker
+observation, and operator-review lanes remain gated.
 
 A wrong or empty `-LanesRoot` now reports `no_lane_evidence` with
 `cycle_outcome: evidence_required`, `converged: false`, and exit `1`. Do not

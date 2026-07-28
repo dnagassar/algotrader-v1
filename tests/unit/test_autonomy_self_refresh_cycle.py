@@ -12,6 +12,7 @@ import algotrader.cli as cli_module
 import algotrader.execution.autonomy_next_plan as plan_module
 import algotrader.execution.autonomy_offline_executor as executor_module
 from algotrader.errors import ValidationError
+from algotrader.execution.autonomy_offline_executor import OfflineOperatorInputs
 from algotrader.execution.autonomy_supervisor import (
     AUTONOMY_SUPERVISOR_SYSTEM_STATUSES,
     AutonomySupervisorConfig,
@@ -35,6 +36,7 @@ from algotrader.execution.autonomy_self_refresh_cycle import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = REPO_ROOT / "src/algotrader/execution/autonomy_self_refresh_cycle.py"
 SCRIPT_PATH = REPO_ROOT / "scripts/run_autonomy_self_refresh_cycle.ps1"
+APPLY_SCRIPT_PATH = REPO_ROOT / "scripts/run_autonomy_apply_plan.ps1"
 AS_OF = "2026-07-24T00:00:00Z"
 STALE_AT = "2026-07-20T00:00:00Z"
 
@@ -222,6 +224,70 @@ def test_absent_apply_executes_once_reobserves_nominal_and_does_not_repeat(
     assert second["execution_count"] == 0
     assert second["cycle_outcome"] == OUTCOME_DRY_RUN_PREVIEW
     assert second["converged"] is True
+
+
+def test_spy_operator_inputs_seed_lane_and_report_lane_refresh(
+    tmp_path: Path,
+) -> None:
+    _seed_accepted_readiness_packet()
+    daily_bars = Path("operator_input") / "spy.csv"
+    daily_bars.parent.mkdir(parents=True, exist_ok=True)
+    daily_bars.write_text("date,symbol,adjusted_close\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def _runner(argv, environ):
+        calls.append(argv)
+        _daily_cycle_path(tmp_path).write_text(
+            json.dumps(
+                {
+                    "daily_chain_state": "accepted_observe_hold_noop",
+                    "validated_at": AS_OF,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "timed_out": False}
+
+    cycle = build_self_refresh_cycle(
+        _config(tmp_path),
+        apply=True,
+        operator_inputs=OfflineOperatorInputs(
+            validated_at=AS_OF,
+            daily_bars_csv=daily_bars,
+        ),
+        environ={},
+        runner=_runner,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][0] == "etf-sma-offline-daily-cycle-run"
+    assert cycle["before_system_status"] == "nominal"
+    assert cycle["after_system_status"] == "nominal"
+    assert cycle["operator_inputs_provided"] is True
+    assert cycle["operator_input_bound_actions"] == [
+        "run_offline_daily_cycle_chain_to_seed_evidence"
+    ]
+    assert cycle["refreshed_lanes"] == ["spy_offline_daily_cycle"]
+    assert cycle["cycle_outcome"] == OUTCOME_REFRESHED
+    assert cycle["converged"] is True
+    assert "spy_offline_daily_cycle" in cycle["after_report"]["nominal_lanes"]
+    _assert_safety_false(cycle)
+
+    second = build_self_refresh_cycle(
+        _config(tmp_path),
+        apply=True,
+        operator_inputs=OfflineOperatorInputs(
+            validated_at=AS_OF,
+            daily_bars_csv=daily_bars,
+        ),
+        environ={},
+        runner=lambda argv, environ: pytest.fail("nominal lane must not rerun"),
+    )
+    assert second["execution_count"] == 0
+    assert second["operator_input_bound_actions"] == []
+    assert second["refreshed_lanes"] == []
+    assert second["cycle_outcome"] == OUTCOME_NOOP_NO_ACTION
 
 
 def test_child_failure_never_claims_refresh_or_convergence(tmp_path: Path) -> None:
@@ -585,6 +651,19 @@ def test_powershell_wrapper_forwards_allow_empty_lab() -> None:
 
     assert "[switch]$AllowEmptyLab" in script
     assert '$Arguments += "--allow-empty-lab"' in script
+
+
+@pytest.mark.parametrize("script_path", [SCRIPT_PATH, APPLY_SCRIPT_PATH])
+def test_powershell_wrappers_forward_paired_spy_operator_inputs(
+    script_path: Path,
+) -> None:
+    script = script_path.read_text(encoding="utf-8")
+
+    assert "[string]$ValidatedAt" in script
+    assert "[string]$DailyBarsCsv" in script
+    assert "$HasValidatedAt -xor $HasDailyBarsCsv" in script
+    assert '@("--validated-at", $ValidatedAt)' in script
+    assert '@("--daily-bars-csv", $DailyBarsCsv)' in script
 
 
 def test_cli_bad_lane_override_returns_validation_exit(tmp_path: Path) -> None:

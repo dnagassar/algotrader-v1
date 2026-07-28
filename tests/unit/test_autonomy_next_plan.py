@@ -29,6 +29,9 @@ from algotrader.execution.autonomy_next_plan import (
     PLAN_ALL_NOMINAL_OR_WAITING,
     PLAN_OFFLINE_ACTION_AVAILABLE,
     PLAN_OPERATOR_AUTHORITY_REQUIRED,
+    SPY_DAILY_CYCLE_ABSENT_ACTION,
+    SPY_DAILY_CYCLE_SEED_COMMAND,
+    SPY_DAILY_CYCLE_STALE_ACTION,
     ActionClass,
     build_autonomy_next_plan,
     build_autonomy_next_plan_from_report,
@@ -237,9 +240,10 @@ def test_all_lanes_absent_action_is_classified_operator_gated() -> None:
 
 def test_stale_operator_action_flag_matches_action_classification() -> None:
     # The supervisor declares, per lane, whether staleness is operator-curable
-    # only; the planner independently classifies that lane's stale action. If the
-    # two drift, the supervisor would report "waiting" for a lane the executor
-    # actually could advance (or spin on one it cannot). Keep them in lockstep.
+    # only; the planner independently classifies that lane's stale action.
+    # Operator-input execution is runnable after explicit binding but is still
+    # operator-curable, whereas auto-offline execution is not. Keep those
+    # semantics in lockstep.
     from algotrader.execution.autonomy_supervisor import STATE_STALE
 
     for lane in AUTONOMY_SUPERVISOR_LANES:
@@ -248,10 +252,11 @@ def test_stale_operator_action_flag_matches_action_classification() -> None:
             continue
         stale_action = lane.next_actions[STATE_STALE]
         classified = AUTONOMY_ACTION_CLASSIFICATION[stale_action]
-        assert classified.offline_runnable is not lane.stale_requires_operator_action, (
+        requires_operator = classified.execution_class != EXECUTION_AUTO_OFFLINE
+        assert lane.stale_requires_operator_action is requires_operator, (
             f"{lane.lane_id}: stale_requires_operator_action="
             f"{lane.stale_requires_operator_action} but {stale_action} is "
-            f"offline_runnable={classified.offline_runnable}"
+            f"classified={classified.execution_class}"
         )
 
 
@@ -270,6 +275,18 @@ def test_classification_registry_is_internally_consistent() -> None:
             assert classified.gate == "", token
         else:
             assert classified.gate != "", token
+
+
+def test_spy_seed_and_stale_actions_share_one_operator_bound_command() -> None:
+    absent = AUTONOMY_ACTION_CLASSIFICATION[SPY_DAILY_CYCLE_ABSENT_ACTION]
+    stale = AUTONOMY_ACTION_CLASSIFICATION[SPY_DAILY_CYCLE_STALE_ACTION]
+
+    for classified in (absent, stale):
+        assert classified.execution_class == EXECUTION_OFFLINE_OPERATOR_INPUT
+        assert classified.offline_runnable is True
+        assert classified.gate == "operator_supplied_inputs"
+        assert classified.command == SPY_DAILY_CYCLE_SEED_COMMAND
+        assert len(classified.required_operator_inputs) == 2
 
 
 def test_unknown_action_fails_closed_to_operator_review() -> None:

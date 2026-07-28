@@ -5,13 +5,14 @@ Runs the V5.39 gated offline autonomy executor.
 .DESCRIPTION
 Executes only the offline-runnable, allowlisted subset of the V5.38 autonomy
 plan. It is dry-run by default; pass -Apply to actually run the eligible
-allowlisted offline commands. Every allowlisted command is a fully-defaulted
-offline CLI subcommand whose producing module imports no network, broker,
-credential, or profile surface. The executor and this wrapper both refuse to run
-under a loaded paper/live profile or any Alpaca credential/network-test variable,
-so secrets never reach the execution surface. No wall clock is read; -AsOf is the
-only time source. It performs no broker/submit/mutation/live action and writes
-one deterministic local action ledger.
+allowlisted offline commands. The SPY daily-cycle seed/refresh becomes eligible
+only when -ValidatedAt and -DailyBarsCsv are supplied together; its child outputs
+remain pinned to the canonical supervised runs paths. The executor and this
+wrapper both refuse to run under a loaded paper/live profile or any Alpaca
+credential/network-test variable, so secrets never reach the execution surface.
+No wall clock is read; -AsOf is the only supervisory time source. It performs no
+broker/submit/mutation/live action and writes one deterministic local action
+ledger.
 #>
 
 [CmdletBinding()]
@@ -23,6 +24,8 @@ param(
     [string]$LanesRoot = "runs",
     [string[]]$Lane = @(),
     [switch]$Apply,
+    [string]$ValidatedAt,
+    [string]$DailyBarsCsv,
     [string]$RunLog,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -33,6 +36,12 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$HasValidatedAt = -not [string]::IsNullOrWhiteSpace($ValidatedAt)
+$HasDailyBarsCsv = -not [string]::IsNullOrWhiteSpace($DailyBarsCsv)
+if ($HasValidatedAt -xor $HasDailyBarsCsv) {
+    Write-Error "-ValidatedAt and -DailyBarsCsv must be supplied together."
+    exit 2
+}
 
 function Test-EnvLoaded {
     param([string]$Name)
@@ -75,6 +84,10 @@ foreach ($Override in $Lane) {
 }
 if ($Apply.IsPresent) {
     $Arguments += "--apply"
+}
+if ($HasValidatedAt) {
+    $Arguments += @("--validated-at", $ValidatedAt)
+    $Arguments += @("--daily-bars-csv", $DailyBarsCsv)
 }
 if (-not [string]::IsNullOrWhiteSpace($RunLog)) {
     $Arguments += @("--run-log", $RunLog)

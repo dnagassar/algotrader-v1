@@ -20,12 +20,17 @@ from algotrader.execution.autonomy_supervisor import (
 from algotrader.execution.autonomy_next_plan import (
     AUTONOMY_ACTION_CLASSIFICATION,
     EXECUTION_AUTO_OFFLINE,
+    EXECUTION_OFFLINE_OPERATOR_INPUT,
+    SPY_DAILY_CYCLE_ABSENT_ACTION,
+    SPY_DAILY_CYCLE_STALE_ACTION,
     build_autonomy_next_plan_from_report,
 )
 from algotrader.execution.autonomy_offline_executor import (
     AUTONOMY_EXECUTOR_ALLOWLIST,
     AUTONOMY_EXECUTOR_LABELS,
+    AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS,
     CREDENTIAL_PREFLIGHT_ENV_KEYS,
+    OfflineOperatorInputs,
     SKIP_NOT_OFFLINE_RUNNABLE,
     SKIP_REQUIRES_OPERATOR_INPUT,
     build_offline_execution_ledger,
@@ -118,6 +123,18 @@ def _nominal_plan(config: AutonomySupervisorConfig) -> dict:
     return build_autonomy_next_plan_from_report(report)
 
 
+def _spy_seed_plan(config: AutonomySupervisorConfig) -> dict:
+    report = build_autonomy_supervisor_report_from_records(
+        config,
+        {
+            "crypto_supervised_readiness_trial": {
+                "trial_classification": "accepted"
+            }
+        },
+    )
+    return build_autonomy_next_plan_from_report(report)
+
+
 def _install_canonical_plan(
     monkeypatch: pytest.MonkeyPatch,
     plan: dict,
@@ -170,6 +187,25 @@ def test_allowlisted_actions_are_reachable_from_current_lane_registry() -> None:
         emitted_actions.intersection(AUTONOMY_EXECUTOR_ALLOWLIST)
     )
     assert reachable_allowlisted == sorted(AUTONOMY_EXECUTOR_ALLOWLIST)
+
+
+def test_operator_input_registry_is_exact_reachable_closure() -> None:
+    producer_tokens = {
+        token
+        for lane in AUTONOMY_SUPERVISOR_LANES
+        for token in lane.next_actions.values()
+    }
+    operator_input_tokens = {
+        token
+        for token, classified in AUTONOMY_ACTION_CLASSIFICATION.items()
+        if classified.execution_class == EXECUTION_OFFLINE_OPERATOR_INPUT
+    }
+    assert AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS == operator_input_tokens
+    assert AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS <= producer_tokens
+    assert AUTONOMY_EXECUTOR_OPERATOR_INPUT_ACTIONS == {
+        SPY_DAILY_CYCLE_ABSENT_ACTION,
+        SPY_DAILY_CYCLE_STALE_ACTION,
+    }
 
 
 def test_preflight_passes_on_clean_env() -> None:
@@ -254,6 +290,84 @@ def test_absent_readiness_is_eligible_and_spy_seed_is_skipped(
         if s["lane_id"] == "spy_market_data_soak"
     ]
     assert gated and gated[0]["reason"] == SKIP_NOT_OFFLINE_RUNNABLE
+
+
+def test_spy_operator_inputs_bind_exact_canonical_argv_and_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _spy_seed_plan(_config(tmp_path))
+    _install_canonical_plan(monkeypatch, plan)
+    daily_bars = tmp_path / "spy.csv"
+    daily_bars.write_text("date,symbol,adjusted_close\n", encoding="utf-8")
+    inputs = OfflineOperatorInputs(
+        validated_at="2026-07-24T00:00:00Z",
+        daily_bars_csv=daily_bars,
+    )
+    calls = []
+
+    def _runner(argv, environ):
+        calls.append((argv, environ))
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "timed_out": False}
+
+    ledger = build_offline_execution_ledger(
+        _config(tmp_path),
+        apply=True,
+        plan_report=plan,
+        operator_inputs=inputs,
+        environ={"PATH": "safe"},
+        runner=_runner,
+    )
+
+    assert len(calls) == 1
+    argv = calls[0][0]
+    assert argv[:5] == (
+        "etf-sma-offline-daily-cycle-run",
+        "--validated-at",
+        "2026-07-24T00:00:00+00:00",
+        "--daily-bars-csv",
+        str(daily_bars.resolve()),
+    )
+    assert argv[5:] == (
+        "--readiness-output-jsonl",
+        "runs/paper_lab/m441_unified_cycle_readiness_packet.jsonl",
+        "--validation-output-jsonl",
+        "runs/paper_lab/m442_offline_daily_cycle_validation.jsonl",
+        "--summary-output-jsonl",
+        "runs/paper_lab/m443_offline_daily_cycle_summary.jsonl",
+        "--manifest-output-jsonl",
+        "runs/paper_lab/m444_offline_daily_cycle_run.jsonl",
+    )
+    assert ledger["operator_inputs_provided"] is True
+    assert ledger["operator_input_bound_actions"] == [
+        SPY_DAILY_CYCLE_ABSENT_ACTION
+    ]
+    assert ledger["execution_count"] == 1
+    assert ledger["all_executions_succeeded"] is True
+    _assert_safety_booleans_false(ledger)
+
+
+def test_spy_operator_input_binding_refuses_missing_file_before_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _spy_seed_plan(_config(tmp_path))
+    _install_canonical_plan(monkeypatch, plan)
+    calls = []
+
+    with pytest.raises(ValidationError, match="existing local file"):
+        build_offline_execution_ledger(
+            _config(tmp_path),
+            apply=True,
+            plan_report=plan,
+            operator_inputs=OfflineOperatorInputs(
+                validated_at=AS_OF,
+                daily_bars_csv=tmp_path / "missing.csv",
+            ),
+            environ={},
+            runner=lambda argv, environ: calls.append(argv),
+        )
+    assert calls == []
 
 
 # --------------------------------------------------------------------------- #
@@ -469,6 +583,28 @@ def test_execute_refuses_argv_not_matching_allowlist(tmp_path: Path) -> None:
     )
     with pytest.raises(ValidationError):
         executor_module._execute(tampered, lambda argv, env: {"exit_code": 0}, {})
+
+
+def test_execute_refuses_tampered_operator_bound_argv(tmp_path: Path) -> None:
+    daily_bars = tmp_path / "spy.csv"
+    daily_bars.write_text("date,symbol,adjusted_close\n", encoding="utf-8")
+    inputs = OfflineOperatorInputs(
+        validated_at=AS_OF,
+        daily_bars_csv=daily_bars.resolve(),
+    )
+    canonical = executor_module._spy_daily_cycle_argv(inputs)
+    tampered = executor_module._EligibleAction(
+        lane_id="spy_offline_daily_cycle",
+        recommended_action=SPY_DAILY_CYCLE_ABSENT_ACTION,
+        argv=(*canonical, "--format", "json"),
+    )
+    with pytest.raises(ValidationError, match="action binding"):
+        executor_module._execute(
+            tampered,
+            lambda argv, env: {"exit_code": 0},
+            {},
+            operator_inputs=inputs,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -804,6 +940,34 @@ def test_cli_bad_lane_override_returns_validation_exit(tmp_path: Path) -> None:
         ]
     )
     assert exit_code == 2
+
+
+@pytest.mark.parametrize(
+    "single_flag",
+    [
+        ("--validated-at", AS_OF),
+        ("--daily-bars-csv", "missing.csv"),
+    ],
+)
+def test_cli_refuses_partial_spy_operator_inputs(
+    tmp_path: Path,
+    single_flag: tuple[str, str],
+) -> None:
+    run_log = tmp_path / "ledger.jsonl"
+    exit_code = cli_module.main(
+        [
+            "autonomy-apply-plan",
+            "--run-id",
+            "cli",
+            "--as-of",
+            AS_OF,
+            *single_flag,
+            "--run-log",
+            str(run_log),
+        ]
+    )
+    assert exit_code == 2
+    assert not run_log.exists()
 
 
 # --------------------------------------------------------------------------- #

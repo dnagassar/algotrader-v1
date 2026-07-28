@@ -1283,16 +1283,13 @@ means nothing is pending (`all_nominal_or_waiting`); `1` means an action is
 pending; `2` is an input-validation error.
 
 `AUTONOMY_ACTION_CLASSIFICATION` covers every action the frozen supervisor lane
-registry can emit (proven by test). The daily-cycle seed action requires
-operator-supplied inputs and is excluded from the unattended executor allowlist.
-The fully-defaulted `etf-sma-offline-daily-cycle-rerun-m446` remains classified
-and allowlisted as a pinned milestone reproduction, but no current lane state
-emits its action token. Every reachable action is therefore `noop` or
-operator-gated. **No lane can be advanced without operator-supplied input or
-operator authority**, and unattended execution of even the offline commands is a deliberate, higher
-milestone that grants the system a new standing authority and therefore requires
-explicit operator authorization. This planner is the complete advisory layer up
-to, but not across, that gate. The detailed contract is in
+registry can emit (proven by test). The crypto readiness replay actions are
+auto-offline. The daily-cycle absent and stale actions are
+`offline_operator_input`: they name the exact same canonical M441–M444 command
+shape but remain ineligible until the operator supplies both a local adjusted
+SPY CSV and a timezone-aware chain clock. Network, broker-observation, scheduler,
+and review work remains operator-gated. The planner still executes nothing; the
+detailed historical contract is in
 `docs/design/v5_38_offline_autonomy_next_action_planner.md`.
 
 ## V5.39 Gated Offline Autonomy Executor
@@ -1302,10 +1299,13 @@ executes only the offline-runnable, allowlisted subset of the V5.38 plan, behind
 a hard gate. It is **dry-run by default** (spawns no subprocess); `--apply` runs
 the eligible allowlisted commands after a credential/profile preflight and writes
 a deterministic action ledger. The frozen `AUTONOMY_EXECUTOR_ALLOWLIST` holds
-only fully-defaulted offline commands whose producing modules import no network/
-broker/credential/profile surface (today: `etf-sma-offline-daily-cycle-rerun-m446`);
-the seed command that needs operator inputs is intentionally excluded. Before any
-execution it refuses (zero executions) if `APP_PROFILE` is `paper`/`live` or any
+only the fully-defaulted crypto readiness replay actions. A separate exact
+operator-input registry covers only the SPY daily-cycle absent/stale actions.
+Those actions become eligible only when `--validated-at` and an existing local
+`--daily-bars-csv` are supplied together; argv is constructed without a shell
+and every child output is pinned to the canonical M441–M444 path under `runs/`.
+Before any execution it refuses (zero executions) if `APP_PROFILE` is
+`paper`/`live` or any
 Alpaca credential/network-test variable is loaded — reporting variable names only,
 never values — and it runs each command with a child environment that strips every
 credential/profile variable. Every ledger record fixes the same broker/submit/
@@ -1314,13 +1314,12 @@ broker/paper/live action of its own. A source-scan permits `os`/`sys`/`subproces
 (execution needs them) but forbids every network/broker/credential-SDK import and
 broker mutation call.
 
-Honest current limitation: the sole allowlisted command is the pinned M446/M447
-milestone reproduction. It cannot refresh the M444 artifact supervised by the
-SPY offline daily-cycle lane, and the V5.42 stale action correctly routes to an
-operator-supplied refreshed CSV and chain clock instead. No current lane action
-therefore reaches the allowlist; the executor is inert today and remains the
-reviewed, tested seam future autonomous execution must pass through. The detailed
-contract is in `docs/design/v5_39_gated_offline_autonomy_executor.md`.
+The pinned M446/M447 reproduction remains manually runnable but is not an
+autonomy action because it writes a different manifest. V5.52 closes the useful
+path instead: the operator-bound child writes the exact supervised M444 artifact,
+so an absent or stale SPY lane can be advanced through the executor without a
+manual second command. The historical V5.39 contract remains in
+`docs/design/v5_39_gated_offline_autonomy_executor.md`.
 
 ## V5.42 Offline Autonomy Self-Refresh Cycle (Stage 3)
 
@@ -1333,13 +1332,13 @@ execution ledger, before/after lane summaries, a `cycle_outcome`
 `still_pending`/`execution_failed`), `allow_empty_lab`, `evidence_required`, and
 `converged`. It is dry-run by default (spawns no subprocess); `--apply` can run
 only eligible allowlisted offline actions behind the executor's
-credential/profile preflight. The `spy_offline_daily_cycle` lane
-has a 30h staleness bound, but its stale remedy needs an operator-supplied
-refreshed CSV and chain clock: stale remains visible in `stale_lanes`, aggregates
-as `waiting`, and emits `operator_refresh_offline_daily_cycle_inputs` rather than
-the pinned M446 rerun. No current lane action reaches the executor allowlist, so
-`--apply` performs zero executions and converges truthfully to waiting. An
-all-absent lane set is different: `no_lane_evidence` now fails closed with
+credential/profile preflight. The `spy_offline_daily_cycle` lane has a 30h
+staleness bound and still aggregates stale evidence as `waiting`, but V5.52 lets
+the cycle bind the required refreshed CSV and chain clock directly. A successful
+child writes the canonical M444 artifact, the re-observation sees the new lane
+state, and `refreshed_lanes` records a transition to `nominal`/`waiting` even
+when the whole-system status is unchanged because of another lane. An all-absent
+lane set is different: `no_lane_evidence` fails closed with
 `cycle_outcome=evidence_required`, `converged=false`, and exit `1`. Only the
 explicit `--allow-empty-lab` bootstrap exception permits that status to converge,
 and the exception is recorded in the payload. The orchestrator imports no

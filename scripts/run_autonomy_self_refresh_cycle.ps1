@@ -9,9 +9,11 @@ offline executor over the plan, then rebuilds the supervisor report and reports
 whether the system converged. It is dry-run by default; pass -Apply to actually
 execute the eligible allowlisted offline refresh actions. It is credential-free,
 network-free, broker-free: the only side effects are the executor's frozen-
-allowlist offline commands, run behind a credential/profile preflight. It refuses
+allowlist offline commands, run behind a credential/profile preflight. The SPY
+daily-cycle seed/refresh becomes eligible only when -ValidatedAt and
+-DailyBarsCsv are supplied together; all child outputs are canonical. It refuses
 to run if a paper/live profile or any Alpaca credential/network-test variable is
-loaded. No wall clock is read; -AsOf is the only time source.
+loaded. No wall clock is read; -AsOf is the only supervisory time source.
 #>
 
 [CmdletBinding()]
@@ -24,6 +26,8 @@ param(
     [string[]]$Lane = @(),
     [switch]$Apply,
     [switch]$AllowEmptyLab,
+    [string]$ValidatedAt,
+    [string]$DailyBarsCsv,
     [string]$RunLog,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -34,6 +38,12 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$HasValidatedAt = -not [string]::IsNullOrWhiteSpace($ValidatedAt)
+$HasDailyBarsCsv = -not [string]::IsNullOrWhiteSpace($DailyBarsCsv)
+if ($HasValidatedAt -xor $HasDailyBarsCsv) {
+    Write-Error "-ValidatedAt and -DailyBarsCsv must be supplied together."
+    exit 2
+}
 
 function Test-EnvLoaded {
     param([string]$Name)
@@ -79,6 +89,10 @@ if ($Apply.IsPresent) {
 }
 if ($AllowEmptyLab.IsPresent) {
     $Arguments += "--allow-empty-lab"
+}
+if ($HasValidatedAt) {
+    $Arguments += @("--validated-at", $ValidatedAt)
+    $Arguments += @("--daily-bars-csv", $DailyBarsCsv)
 }
 if (-not [string]::IsNullOrWhiteSpace($RunLog)) {
     $Arguments += @("--run-log", $RunLog)

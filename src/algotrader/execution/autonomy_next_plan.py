@@ -21,9 +21,11 @@ as the supervisor. It loads no runtime profile, inspects no credential, imports
 no broker SDK, opens no socket, reads no wall clock, spawns no subprocess, and
 performs and exposes no submit/cancel/replace/close/liquidation/paper-mutation/
 capital/live path. It *plans* commands; it never executes them. The readiness
-replay action has standing offline authority, but remains controlled by exact
-allowlisting, canonical-target validation, executor preflight, and the
-executor's explicit ``--apply`` switch.
+replay action has standing offline authority. The SPY daily-cycle seed/refresh
+can become executable only when its two declared operator inputs are bound by
+the executor. Both paths remain controlled by exact action binding,
+canonical-target validation, executor preflight, and the executor's explicit
+``--apply`` switch.
 """
 
 from __future__ import annotations
@@ -51,6 +53,8 @@ __all__ = [
     "CANONICAL_LANES_ROOT_RELPATH",
     "CANONICAL_READINESS_PACKET_RELPATH",
     "CANONICAL_REPLAY_ARGV",
+    "CANONICAL_SPY_DAILY_CYCLE_MANIFEST_RELPATH",
+    "CANONICAL_SPY_DAILY_CYCLE_OUTPUTS",
     "EXECUTION_AUTO_OFFLINE",
     "EXECUTION_NOOP",
     "EXECUTION_OFFLINE_OPERATOR_INPUT",
@@ -58,6 +62,10 @@ __all__ = [
     "PLAN_ALL_NOMINAL_OR_WAITING",
     "PLAN_OFFLINE_ACTION_AVAILABLE",
     "PLAN_OPERATOR_AUTHORITY_REQUIRED",
+    "SPY_DAILY_CYCLE_ABSENT_ACTION",
+    "SPY_DAILY_CYCLE_LANE_ID",
+    "SPY_DAILY_CYCLE_SEED_COMMAND",
+    "SPY_DAILY_CYCLE_STALE_ACTION",
     "build_autonomy_next_plan",
     "build_autonomy_next_plan_from_report",
     "classify_action",
@@ -81,6 +89,27 @@ _READINESS_LANE_ID = "crypto_supervised_readiness_trial"
 _READINESS_ABSENT_ACTION = "run_supervised_readiness_trial_to_seed_r1_evidence"
 _READINESS_STALE_ACTION = "rerun_supervised_readiness_trial"
 _READINESS_REPLAY_COMMAND = "python -m algotrader.cli crypto-readiness-replay"
+SPY_DAILY_CYCLE_LANE_ID = "spy_offline_daily_cycle"
+SPY_DAILY_CYCLE_ABSENT_ACTION = "run_offline_daily_cycle_chain_to_seed_evidence"
+SPY_DAILY_CYCLE_STALE_ACTION = "operator_refresh_offline_daily_cycle_inputs"
+CANONICAL_SPY_DAILY_CYCLE_MANIFEST_RELPATH = Path(
+    "runs/paper_lab/m444_offline_daily_cycle_run.jsonl"
+)
+CANONICAL_SPY_DAILY_CYCLE_OUTPUTS: tuple[tuple[str, Path], ...] = (
+    (
+        "--readiness-output-jsonl",
+        Path("runs/paper_lab/m441_unified_cycle_readiness_packet.jsonl"),
+    ),
+    (
+        "--validation-output-jsonl",
+        Path("runs/paper_lab/m442_offline_daily_cycle_validation.jsonl"),
+    ),
+    (
+        "--summary-output-jsonl",
+        Path("runs/paper_lab/m443_offline_daily_cycle_summary.jsonl"),
+    ),
+    ("--manifest-output-jsonl", CANONICAL_SPY_DAILY_CYCLE_MANIFEST_RELPATH),
+)
 
 AUTONOMY_NEXT_PLAN_LABELS = (
     "paper_lab_only",
@@ -227,7 +256,7 @@ def _operator_gated(gate: str, gate_detail: str) -> ActionClass:
 
 # Exact offline seed command for the SPY daily-cycle lane. It remains an
 # operator-input action and is not executor-allowlisted.
-_OFFLINE_DAILY_CYCLE_SEED_COMMAND = (
+SPY_DAILY_CYCLE_SEED_COMMAND = (
     "python -m algotrader.cli etf-sma-offline-daily-cycle-run"
     " --validated-at <OPERATOR_ISO8601_UTC_DAILY_CHAIN_CLOCK>"
     " --daily-bars-csv <OPERATOR_LOCAL_ADJUSTED_SPY_DAILY_BARS_CSV>"
@@ -281,7 +310,7 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
         "capability production waiting on the V5.25 terminal winner."
     ),
     # --- Offline-runnable: operator-input SPY seed and auto crypto replay. ---
-    "run_offline_daily_cycle_chain_to_seed_evidence": ActionClass(
+    SPY_DAILY_CYCLE_ABSENT_ACTION: ActionClass(
         execution_class=EXECUTION_OFFLINE_OPERATOR_INPUT,
         offline_runnable=True,
         gate=_GATE_OPERATOR_INPUTS,
@@ -289,7 +318,7 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
             "offline command exists but needs an operator-supplied daily chain "
             "clock and a local adjusted SPY daily-bars CSV."
         ),
-        command=_OFFLINE_DAILY_CYCLE_SEED_COMMAND,
+        command=SPY_DAILY_CYCLE_SEED_COMMAND,
         required_operator_inputs=(
             "--validated-at: timezone-aware ISO-8601 daily chain clock",
             "--daily-bars-csv: local adjusted SPY daily-bars CSV path",
@@ -327,17 +356,17 @@ AUTONOMY_ACTION_CLASSIFICATION: dict[str, ActionClass] = {
             "crypto-readiness-replay import-purity and parser guards pass",
         ),
     ),
-    "operator_refresh_offline_daily_cycle_inputs": ActionClass(
-        execution_class=EXECUTION_OPERATOR_GATED,
-        offline_runnable=False,
+    SPY_DAILY_CYCLE_STALE_ACTION: ActionClass(
+        execution_class=EXECUTION_OFFLINE_OPERATOR_INPUT,
+        offline_runnable=True,
         gate=_GATE_OPERATOR_INPUTS,
         gate_detail=(
             "stale daily-cycle evidence means the underlying daily bars are old; "
             "curing it needs an operator-supplied refreshed adjusted SPY "
             "daily-bars CSV and daily chain clock, then a reseed of the chain "
-            "via etf-sma-offline-daily-cycle-run. No allowlisted offline command "
-            "writes this lane's artifact."
+            "via the executor-bound etf-sma-offline-daily-cycle-run command."
         ),
+        command=SPY_DAILY_CYCLE_SEED_COMMAND,
         required_operator_inputs=(
             "--validated-at: timezone-aware ISO-8601 daily chain clock",
             "--daily-bars-csv: refreshed local adjusted SPY daily-bars CSV path",

@@ -330,9 +330,10 @@ AUTONOMY_SUPERVISOR_LANES: tuple[LaneSpec, ...] = (
         blocker_fields=("chain_blockers", "validation_blockers", "blockers"),
         # Stale daily-cycle evidence means the underlying daily bars are old.
         # The only command that writes this lane's artifact is the seed command,
-        # which requires an operator-supplied clock and CSV; the allowlisted
-        # m446 rerun is pinned to one historical dataset and writes a different
-        # artifact, so it can never cure staleness here.
+        # which requires an operator-supplied clock and CSV. The executor may
+        # bind those inputs explicitly, but the lane remains operator-curable
+        # rather than auto-offline. The pinned M446 reproduction writes a
+        # different artifact and cannot cure this lane.
         stale_requires_operator_action=True,
     ),
     LaneSpec(
