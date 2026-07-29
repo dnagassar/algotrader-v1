@@ -2,119 +2,167 @@
 
 ## Ownership
 
-- Writer: Codex orchestrator, sole writer for this working tree.
-- Branch: `codex/v5.58-nexustrade-research-intake`.
-- Base HEAD: `db853ff6986876e48d6ca8bea069473e380de246`, the
-  committed V5.57 strategy-owned paper sleeves milestone.
-- V5.58 is a coherent local feature slice. No dirty-file owner should remain
-  after the commit.
-- The separate V5.51 worktree at
-  `.claude/worktrees/v551-readonly-market-data-contract` was not modified.
+- Writer: Codex, sole implementation writer for this working tree.
+- Branch: `codex/v5.59-nexustrade-authentic-composite`.
+- Base HEAD: `021b55c10d17757d8ec865bf37de2e39f91da8e1`, the committed
+  V5.58 NexusTrade research-intake milestone.
+- V5.59 reached a demonstrated source-evidence hard gate. No production code,
+  test, safety-contract, or paper-runtime file was changed.
 
-## Takeover and stale-claim audit
+## Takeover
 
-- Takeover inspection found V5.57 clean with empty staged, unstaged, and
-  untracked sets.
-- The inherited V5.57 safety and commissioning claims remain current.
-- Its next action, to wait only for the first scheduled paper cycles, became
-  stale when the operator authorized a parallel NexusTrade research lane.
-- Recent V5.55 through V5.57 milestones added secure unattended paper
-  operation, selectable RSI, and concurrent strategy-owned sleeves. V5.58
-  therefore does not add another review packet or hardening-only artifact. It
-  creates an executable external-candidate-to-local-replay path while paper
-  data observation continues independently.
+- The checkout began detached at the exact expected V5.58 commit.
+- Staged, unstaged, and untracked sets were empty.
+- `APP_PROFILE_is_paper=false` and `APP_PROFILE_is_live=false`.
+- All checked Alpaca and NexusTrade credential aliases were unloaded. Only
+  boolean presence was inspected; no value was requested or exposed.
+- A new feature branch was created only after that clean takeover.
 
-## New operational capability
+## Authentic-source discovery
 
-`scripts/run_nexustrade_strategy_intake.ps1` consumes a bounded local JSON
-capture of NexusTrade strategy definitions and source backtest metadata. The
-wrapper requires a credential-free `dev` environment and rejects paper/live
-profiles, all Alpaca aliases, and a loaded NexusTrade API key. It never
-contacts NexusTrade or a broker.
+Safe read-only discovery covered authoritative public NexusTrade material:
 
-The intake:
+- the public Strategy Library and exact-rule previews;
+- the public marketplace and shared-portfolio detail pages;
+- official NexusTrade documentation and founder-authored strategy/backtest
+  articles;
+- the public Aurora agent trace for SOXL single- and dual-filter research; and
+- official developer/API documentation.
 
-- accepts at most 50 candidates and 2 MiB of UTF-8 JSON;
-- requires exact NexusTrade HTTPS provenance, source rules, structured
-  parameters, source backtest dates/data mode/validation/costs/trade count/
-  summary metrics, lineage, and pairing role;
-- rejects credential-like fields or text without echoing values;
-- rejects duplicate IDs, current operating IDs, and exact mechanical
-  duplicates of the controlled local set;
-- retains incomplete evidence as `needs_source_evidence`;
-- retains intraday, unsupported, or not-yet-modeled mechanics as
-  `needs_local_adapter`; and
-- translates complete supported daily candidates into immutable
-  `StrategyChallengerCandidate` values for the existing challenger factory.
+No user-controlled export was present. The browser session was not signed in,
+no already-authorized NexusTrade connector/provider was installed, and no
+OAuth or key-backed connection was opened. API/MCP documentation confirms that
+non-public records require account-authorized OAuth or an API key. No key,
+token, account identifier, login, subscription, purchase, write, or NexusTrade
+backtest action was requested or attempted.
 
-Supported local adapters are SMA crossover, time-series momentum, the existing
-20-percent drawdown filter, and ETF relative momentum. Source metrics are
-always marked untrusted and are never used for ranking or promotion. Local
-replay applies the existing chronological OOS, walk-forward, cost-sensitivity,
-baseline, and cross-asset gates.
+The strongest public paired evidence was the Aurora SOXL trace. It publishes
+exact standalone and composite rules:
 
-The compact report emits an explicit route for every candidate:
-`repair_intake_blockers`, `await_or_repair_local_data`,
-`continue_local_research`, `reject`, or `preview_review`. No route creates an
-execution intent or grants paper promotion.
+- standalone: SOXL price above its 20-day SMA; and
+- paired: the same SOXL signal AND SPY above its 50-day SMA, with the same
+  SOXL trend/position-loss exits and sizing variants.
 
-## Safety contract
+It reports several regime results, but does not publish the exact trade counts,
+explicit fee/slippage assumptions, or data mode. The same named regimes were
+used iteratively to revise the strategy, so the public record also does not
+establish an untouched chronological OOS designation. It therefore cannot
+authorize a local adapter or composite replay.
 
-- Offline research only; no broker, execution, risk, scheduler, network, or
-  credential-provider imports.
-- No NexusTrade API call or broker connection was performed.
-- No paper submit, cancel, replace, close, liquidation, or other broker
-  mutation occurred.
-- No source metric participates in local ranking or promotion.
-- `paper_promotion_allowed=false`, `broker_access_attempted=false`,
-  `network_access_attempted=false`, `broker_mutation_performed=false`, and
-  `live_mutation_performed=false`.
-- V5.57 paper limits and sleeve reconciliation remain unchanged:
-  `$25.00` maximum entry order notional, `$60.00` aggregate marked SPY entry
-  exposure, one order per cycle, and two sleeve intents per UTC session day.
-- Live mode and live capital remain prohibited and unauthorized.
+## Machine-demonstrated intake gate
+
+An ignored generated capture records one authentic, exact-rule, single-symbol
+candidate from the official GPT o1 TQQQ retrospective:
+
+`runs/v5_59_nexustrade_authentic_candidate_gate/gpt_o1_tqqq_partial_capture.json`
+
+The exact published rules are:
+
+- buy `$2,500` of TQQQ when SMA(50) is above SMA(200) and at least seven days
+  have passed since the last filled TQQQ buy; and
+- sell 100 percent of TQQQ when its 14-day rate of change is above 15.
+
+The source explicitly reports a `2024-10-15` through `2025-07-12` retrospective
+backtest and an approximately `-40%` return. It does not report enough evidence
+to complete the V5.58 schema without invention.
+
+The credential-free V5.58 wrapper completed and wrote:
+
+`runs/v5_59_nexustrade_authentic_candidate_gate/intake/nexustrade_intake_report.json`
+
+The input SHA-256 is
+`e55c13fd22ff7e66cadc3016834d3b15c4092a298eeb318b5d443643de8bf1ed`.
+The result is:
+
+- `eligible_candidate_count=0`;
+- `local_replay_status=not_run_no_eligible_candidates`;
+- route `repair_intake_blockers`;
+- source metrics not used for ranking or promotion; and
+- paper promotion, broker access, broker mutation, network access from the
+  intake, and live mutation all fixed false.
+
+Exact blockers:
+
+- `source_data_mode_missing`;
+- `source_out_of_sample_validation_missing`;
+- `source_cost_assumptions_missing`;
+- `source_trade_count_missing`;
+- `source_summary_metrics_missing`;
+- `local_timeframe_adapter_required`; and
+- `local_strategy_family_adapter_required`.
+
+Because the candidate is not blocked solely by local-adapter needs, V5.59 did
+not implement an adapter. Because no eligible standalone candidate exists,
+V5.59 did not create or merely label a paired variant. No synthetic fills,
+costs, trade counts, validation designations, metrics, rules, or backtest
+periods were invented.
+
+The configured canonical input
+`runs/operator_input/multi_etf_adjusted_daily_canonical.csv` is also absent in
+this worktree. The only tracked CSV files are three synthetic SPY unit-test
+fixtures, which are not current canonical multi-asset research data. Local
+chronological OOS, walk-forward, cost, baseline, cross-asset, standalone, and
+paired-composite evaluation therefore did not run.
+
+## Safety and unchanged operating contract
+
+- Offline repository research only.
+- Public NexusTrade network reads occurred only during acquisition discovery.
+- The repository intake itself attempted no network access.
+- No broker or broker credential provider was accessed.
+- No paper submit, cancel, replace, close, liquidate, or other mutation
+  occurred; there is no paper receipt or reconciliation event for V5.59.
+- V5.57 sleeve ownership, reconciliation, auditing, and finite limits remain
+  unchanged: `$25.00` maximum entry-order notional, `$60.00` maximum aggregate
+  marked SPY entry exposure, one broker order per secure cycle, and two sleeve
+  intents per UTC session day.
+- No third paper sleeve was added.
+- Live mode, live broker access, live orders, and live capital remain
+  prohibited and unauthorized.
+- No `preview_review` route was produced.
 
 ## Verification
 
-- Default-test preflight:
-  - `APP_PROFILE_is_paper=false`;
-  - `APP_PROFILE_is_live=false`;
-  - all Alpaca credential aliases unloaded;
-  - network and paper-integration test flags unloaded.
-- New NexusTrade intake suite: 19 passed.
-- Challenger/dependency/import regression suites: 74 passed.
-- Existing external-intake boundary suites: 79 passed.
-- Mandatory repository offline verification: 109 passed, result `PASS`.
-- Full default suite: 10,163 passed and 4 skipped in 3,417.69 seconds; zero
-  failures and zero errors.
-- Syntax compile check passed.
-- Final `git diff --check` and Git hygiene checks must be rerun after staging.
+- Focused V5.58 intake suite: 19 passed.
+- Dependency-direction suite: 44 passed.
+- Mandatory `scripts/verify_offline.ps1`: 109 passed; result `PASS`.
+- Full default suite, required because the script skipped it: 10,162 passed
+  and 5 skipped in 3,026.01 seconds; zero failures and zero errors.
+- Verification remained credential-free, network-free, and broker-free.
+- Final `git diff --check` passed.
+- `git diff --name-only HEAD -- src` was empty.
+- `git ls-files --others --exclude-standard src tests` was empty.
+- Immediately before commit, `git status --short` contained only the staged
+  handoff file.
 
-## Files
+## Files and generated state
 
-- `src/algotrader/research/nexustrade_strategy_intake.py`
-- `scripts/run_nexustrade_strategy_intake.ps1`
-- `tests/unit/test_nexustrade_strategy_intake.py`
-- `docs/deterministic_core.md`
-- `docs/OPERATOR_RUNBOOK.md`
-- this sole mutable handoff.
+Tracked change:
 
-## Next action
+- `docs/agent_context/active_implementation.md` only.
 
-Obtain one real NexusTrade candidate capture with exact rules and source
-backtest metadata through a user-controlled export or a separately authorized
-read-only acquisition process. Do not place an API key in the intake JSON or
-load one into the offline wrapper.
+Ignored generated evidence:
 
-Run the intake against current canonical daily bars. Implement a new local
-strategy-family adapter only for a candidate that is blocked solely by
-`needs_local_adapter` and has complete source evidence. Compare standalone and
-declared paired/lineage variants under the same local OOS and cost gates.
-Advance only a locally produced `preview_review` route into a separate
-no-submit shadow design; do not add a third paper sleeve from source-reported
-performance.
+- `runs/v5_59_nexustrade_authentic_candidate_gate/`.
 
-The scheduled V5.57 SMA and RSI cycles remain an independent observation task.
-Stop on any sleeve/broker mismatch, pending sleeve intent, ambiguous broker
-state, or nonterminal reconciliation rather than editing the ledger or
-bypassing readiness.
+There are no production `src` changes and no untracked `src` or `tests` files.
+
+## Next milestone
+
+Resume only after both of these inputs are available without credential
+disclosure:
+
+1. a user-controlled NexusTrade export or an already-secure authenticated
+   read-only provider record containing exact rules plus explicit start/end
+   dates, data mode, untouched OOS or walk-forward method, fee and slippage
+   assumptions, nonzero trade count, and total-return/max-drawdown/Sharpe
+   metrics; and
+2. current canonical daily bars for every required candidate, parent, baseline,
+   and cross-asset symbol.
+
+Re-run V5.58 first. Implement the smallest new family adapter only if the
+authentic candidate is then blocked solely by `needs_local_adapter`. Any
+lineage variant must combine the source candidate and its parent as an actual
+composite signal and must be evaluated under identical local chronological OOS,
+walk-forward, cost-sensitivity, baseline, and cross-asset gates. Only a locally
+produced `preview_review` route may proceed to a later no-submit shadow design.
