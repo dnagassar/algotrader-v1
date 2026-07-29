@@ -1810,3 +1810,48 @@ Stop on `strategy_sleeve_broker_quantity_mismatch`,
 `strategy_sleeve_intent_pending`, a sleeve reconciliation requirement, or any
 readiness sleeve generation/cap mismatch. Do not edit the SQLite ledger by
 hand or re-run adoption against a non-pristine ledger.
+
+## V5.58 NexusTrade Research Intake
+
+Capture exact NexusTrade strategy rules and backtest metadata in a local JSON
+file. Do not include API keys, tokens, account identifiers, broker payloads, or
+credentials. Run the credential-free offline bridge:
+
+```powershell
+.\scripts\run_nexustrade_strategy_intake.ps1 `
+  -InputPath "path\to\nexustrade_candidates.json" `
+  -OutputRoot "runs\nexustrade_strategy_intake\latest" `
+  -BarsCsv "runs\operator_input\multi_etf_adjusted_daily_canonical.csv"
+```
+
+The root JSON fields are exactly:
+
+- `schema_version` (`"1"`), `provider` (`"nexustrade"`), `captured_at`,
+  `source_url`, and `candidates`.
+
+Each candidate contains exactly:
+
+- `candidate_id`, `strategy_name`, `hypothesis`, `source_url`, `family`,
+  `symbol`, `timeframe`, `parameters`, `source_rules`, `source_backtest`,
+  `parent_strategy_ids`, and `pairing_role`.
+
+Supported local daily families are `sma_crossover_long_only`,
+`time_series_momentum_long_only`, `drawdown_filter_long_only`, and
+`etf_relative_momentum_basket`. Other families are retained with
+`needs_local_adapter`. `pairing_role` is one of `standalone`,
+`confirmation_filter`, `risk_regime_filter`, or `diversifier`; it records the
+research hypothesis but grants no routing or execution authority.
+
+Require `source_metrics_used_for_ranking=false`,
+`source_metrics_used_for_promotion=false`,
+`paper_promotion_allowed=false`, all broker/network/mutation fields false, and
+one of these candidate routes:
+
+- `repair_intake_blockers`;
+- `await_or_repair_local_data`;
+- `continue_local_research`;
+- `reject`; or
+- `preview_review`.
+
+Only `preview_review` advances to a separate no-submit design review. Never use
+NexusTrade's deploy control or connect broker credentials through this lane.

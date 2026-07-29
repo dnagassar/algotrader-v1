@@ -1549,3 +1549,30 @@ The checked-in least-privilege tasks run SMA at 09:31 ET and RSI at 09:38 ET,
 each with the existing three 15-minute retries. They share the runtime lease,
 order journal, and sleeve ledger; overlap is serialized and never creates
 parallel broker mutation.
+
+## V5.58 External Strategy Intake to Local Replay
+
+V5.58 adds an offline bridge from bounded NexusTrade research captures to the
+existing deterministic strategy challenger factory. The bridge reads only a
+local JSON file. It imports no network, broker, execution, risk, credential, or
+scheduler module and cannot fetch from NexusTrade.
+
+Each candidate must preserve its source URL, exact source rules, structured
+parameters, source backtest span, data mode, validation method, cost
+assumptions, trade count, summary metrics, lineage, and intended pairing role.
+Source-reported metrics are retained as untrusted external evidence and never
+participate in local ranking or promotion.
+
+The intake fails closed on sensitive fields, malformed provenance, duplicate
+candidate IDs, operating-strategy ID collisions, and exact mechanical
+duplicates of the controlled local set. Missing source evidence remains
+visible as `needs_source_evidence`. Intraday or unsupported strategy mechanics
+remain visible as `needs_local_adapter`; they are never mislabeled as locally
+tested.
+
+Complete daily candidates in a supported family are translated into immutable
+`StrategyChallengerCandidate` values and run through the existing chronological
+OOS, walk-forward, cost-sensitivity, baseline-comparison, and cross-asset
+gates. The resulting route may request more research, reject, or enter preview
+review. Intake never grants paper promotion, creates an execution intent,
+accesses a broker, or authorizes live activity.
