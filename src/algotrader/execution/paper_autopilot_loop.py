@@ -718,7 +718,11 @@ def _observe_broker_state(
         ),
     )
     try:
-        broker = (broker_client_factory or AlpacaSdkClient)(config)
+        broker = (
+            broker_client_factory(config)
+            if broker_client_factory is not None
+            else AlpacaSdkClient(config, interlock_env=env)
+        )
     except Exception as exc:
         return {
             **_unobserved_broker_state("broker_unavailable"),
@@ -3225,10 +3229,33 @@ def _broker_orders(broker: Any, query: AlpacaRecentOrderQuery) -> tuple[Any, ...
 
 def _account_payload(account: Any) -> dict[str, object]:
     data = _object_data(account)
+    status = _text(_first_present(data, "status"))
+    explicit_tradable = _bool_or_none(
+        _first_present(data, "tradable", "account_tradable")
+    )
+    trading_blocked = _bool_or_none(_first_present(data, "trading_blocked"))
+    account_blocked = _bool_or_none(_first_present(data, "account_blocked"))
+    trade_suspended = _bool_or_none(
+        _first_present(data, "trade_suspended_by_user")
+    )
+    if any(value is True for value in (trading_blocked, account_blocked, trade_suspended)):
+        effective_trading_blocked: bool | None = True
+    elif all(
+        value is False
+        for value in (trading_blocked, account_blocked, trade_suspended)
+    ):
+        effective_trading_blocked = False
+    else:
+        effective_trading_blocked = trading_blocked
+    tradable = explicit_tradable
+    if tradable is None and effective_trading_blocked is False:
+        tradable = _normalized_status(status) == "active"
     return {
-        "status": _text(_first_present(data, "status")),
-        "tradable": _bool_or_none(_first_present(data, "tradable", "account_tradable")),
-        "trading_blocked": _bool_or_none(_first_present(data, "trading_blocked")),
+        "status": status,
+        "tradable": tradable,
+        "trading_blocked": effective_trading_blocked,
+        "account_blocked": account_blocked,
+        "trade_suspended_by_user": trade_suspended,
         "currency": _text(_first_present(data, "currency")),
         "cash": _decimal_text(_optional_decimal(_first_present(data, "cash"))),
         "buying_power": _decimal_text(
@@ -3315,6 +3342,7 @@ def _object_data(value: Any) -> dict[str, Any]:
         "account_tradable",
         "account_id",
         "account_number",
+        "account_blocked",
         "asset_class",
         "buying_power",
         "cash",
@@ -3342,6 +3370,7 @@ def _object_data(value: Any) -> dict[str, Any]:
         "submitted_at",
         "symbol",
         "time_in_force",
+        "trade_suspended_by_user",
         "tradable",
         "trading_blocked",
         "type",

@@ -77,6 +77,37 @@ def test_require_returns_verdict_when_paper() -> None:
     assert verdict.paper_boundary_ok is True
 
 
+def test_read_only_market_data_boundary_does_not_require_broker_credentials() -> None:
+    env = {
+        "APP_PROFILE": "paper",
+        "ALPACA_PAPER_BASE_URL": PAPER_URL,
+    }
+    verdict = evaluate_live_capital_interlock(
+        env,
+        require_broker_credentials=False,
+    )
+    assert verdict.paper_boundary_ok is True
+    assert verdict.profile_is_paper is True
+    assert verdict.endpoint_class == ENDPOINT_PAPER
+    assert verdict.live_authorized is False
+
+    with pytest.raises(LiveCapitalGateError):
+        require_live_capital_interlock(env)
+
+
+def test_read_only_market_data_boundary_still_refuses_live_signals() -> None:
+    verdict = evaluate_live_capital_interlock(
+        {
+            "APP_PROFILE": "paper",
+            "ALPACA_PAPER_BASE_URL": PAPER_URL,
+            "ALLOW_LIVE_TRADING": "true",
+        },
+        require_broker_credentials=False,
+    )
+    assert verdict.paper_boundary_ok is False
+    assert "live_signal_detected" in verdict.blockers
+
+
 def test_expected_paper_account_presence_is_recorded() -> None:
     without = evaluate_live_capital_interlock(_paper_env())
     assert without.expected_paper_account_present is False
@@ -182,6 +213,8 @@ def test_to_dict_fixes_safety_booleans_false() -> None:
 def test_env_must_be_mapping() -> None:
     with pytest.raises(ValidationError):
         evaluate_live_capital_interlock(["APP_PROFILE=paper"])  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        evaluate_live_capital_interlock({}, require_broker_credentials=1)  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------------- #

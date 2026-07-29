@@ -163,6 +163,8 @@ def _detect_live_signals(source: Mapping[str, str]) -> list[str]:
 
 def evaluate_live_capital_interlock(
     env: Mapping[str, str] | None = None,
+    *,
+    require_broker_credentials: bool = True,
 ) -> LiveCapitalInterlockVerdict:
     """Evaluate the paper-only execution boundary without raising.
 
@@ -174,6 +176,8 @@ def evaluate_live_capital_interlock(
     source = os.environ if env is None else env
     if not isinstance(source, Mapping):
         raise ValidationError("env must be a mapping.")
+    if type(require_broker_credentials) is not bool:
+        raise ValidationError("require_broker_credentials must be a boolean.")
 
     config = AlpacaPaperConfig.from_env(source)
     app_profile = config.app_profile.strip().lower()
@@ -199,7 +203,12 @@ def evaluate_live_capital_interlock(
 
     # Compose the existing config boundary as a defence-in-depth check. It should
     # already agree; a disagreement is itself a blocker.
-    if profile_is_paper and paper_endpoint_ok and not live_signals:
+    if (
+        require_broker_credentials
+        and profile_is_paper
+        and paper_endpoint_ok
+        and not live_signals
+    ):
         try:
             require_paper_profile(config)
         except ConfigValidationError as exc:
@@ -221,6 +230,8 @@ def evaluate_live_capital_interlock(
 
 def require_live_capital_interlock(
     env: Mapping[str, str] | None = None,
+    *,
+    require_broker_credentials: bool = True,
 ) -> LiveCapitalInterlockVerdict:
     """Return the verdict if the paper boundary holds, else raise.
 
@@ -230,7 +241,10 @@ def require_live_capital_interlock(
     :class:`LiveCapitalGateError`.
     """
 
-    verdict = evaluate_live_capital_interlock(env)
+    verdict = evaluate_live_capital_interlock(
+        env,
+        require_broker_credentials=require_broker_credentials,
+    )
     if not verdict.paper_boundary_ok:
         raise LiveCapitalGateError(
             "live-capital interlock refused execution boundary: "

@@ -1422,3 +1422,46 @@ close, records `matched` or `diverged`, and writes
 `reconciliation.json` beside the provisional receipt. A missing provisional
 receipt is a valid `provisional_decision_not_captured` no-op and cannot block
 the authoritative refresh.
+
+## V5.55 Secure Next-Open SPY Paper Cycle
+
+`python -m algotrader.execution.secure_spy_paper_cycle` makes the existing
+paper-autopilot executable without putting credentials in a process
+environment or pausing for a second human approval. It preserves the existing
+two-phase safety protocol in one credential lease:
+
+1. open the account-bound Windows Credential Manager record once;
+2. run the existing paper autopilot in forced no-submit mode;
+3. require a current-data, matched-account, broker-observed readiness packet;
+4. hash that packet and re-observe every broker and plan condition;
+5. permit at most one paper action only when `--allow-paper-mutation` is
+   explicit; and
+6. require the existing durable order journal and post-submit reconciliation.
+
+The entry-order and new-position notional cap is fixed at `$25.00`; the cycle
+cannot raise it. A risk-reducing full SPY close may exceed that entry cap. SPY
+is the only symbol, the Alpaca endpoint is fixed to
+`https://paper-api.alpaca.markets`, and live authorization remains false. A
+mutation invocation fails before credential access unless the repository NYSE
+calendar places it in the first 60 minutes after the session open. Loaded
+profile, credential, account, or broker-endpoint environment aliases also fail
+before the secure credential provider opens.
+
+The legacy credential reference family is named
+`alpaca-paper-observation`; credential storage does not itself grant mutation
+authority. V5.55's exact command, standing paper-only repository policy,
+explicit mutation flag, fixed endpoint, finite cap, two-phase readiness gate,
+journal, and reconciliation together define the mutation authority.
+
+`AlpacaSdkClient` now accepts the already-validated explicit paper interlock
+environment. This avoids ambient `dev` process state while retaining the same
+live-capital choke point. Native Alpaca account responses do not expose a
+`tradable` field, so the paper-autopilot translation derives it only when the
+account is active and `trading_blocked`, `account_blocked`, and
+`trade_suspended_by_user` are all explicitly false. Any true or unknown
+safety state continues to fail closed.
+
+The checked-in Windows task runs at 09:31 local time on weekdays with three
+15-minute retries, `IgnoreNew`, no catch-up execution, a ten-minute process
+limit, and the Python execution-window guard. Deterministic client-order IDs
+and the SQLite order journal remain the final duplicate-submit fence.

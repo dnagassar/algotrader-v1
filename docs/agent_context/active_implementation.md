@@ -3,126 +3,155 @@
 ## Ownership
 
 - Writer: Codex orchestrator, sole writer for this working tree.
-- Branch: `codex/v5.54-spy-decision-time-shadow`.
-- Base HEAD: `5c14053e33c96d21246708c2b876a1af56626b03`, the clean V5.53
-  integration commit.
-- Dirty-file owner before the V5.54 commit: Codex orchestrator.
-- Yield state after the V5.54 commit: implementation, operational capture, and
-  verification complete; no dirty-file owner remains.
+- Branch: `codex/v5.55-usable-paper-cycle`.
+- Base HEAD: `6d40be5cab037055bf442a60880dd960ff0859fb`, the clean V5.54
+  decision-time shadow commit.
+- Dirty-file owner before the final V5.55 amend: Codex orchestrator.
+- Yield state: implementation, verification, authoritative refresh, and task
+  commissioning complete; no dirty-file owner remains after the amend.
 - The separate V5.51 worktree at
   `.claude/worktrees/v551-readonly-market-data-contract` was not modified.
 
 ## Takeover and stale-claim audit
 
-- Takeover inspection found branch `codex/v5.53-integrated-spy-refresh-cycle`
-  at the base HEAD above with empty staged, unstaged, and untracked sets.
-- The V5.53 handoff correctly described a later-session integrated Tiingo/M444
-  proof. That claim was not stale, but the repository clock resolved only the
-  already-qualified `2026-07-27` session until the `2026-07-28` provider cutoff
-  at 20:10 America/New_York.
-- The operator explicitly authorized V5.54 while that proof was time-gated.
-  This changed milestone priority only; it did not broaden credential, broker,
-  paper-mutation, cap, or live authority.
-- No further review packet, design handoff copy, authority edit, or workflow
-  artifact was added. `AGENTS.md` remains unchanged.
+- Takeover inspection found V5.54 at the base HEAD above with empty staged,
+  unstaged, and untracked sets.
+- The inherited handoff accurately described the V5.54 shadow, but its
+  instruction to wait for 20:10 and avoid scheduling became stale when the
+  operator explicitly redirected the milestone toward a usable unattended
+  paper system.
+- Recent history contained repeated review/correction artifacts before the
+  first operational market-data behavior. V5.55 adds no review packet or
+  backtest artifact. It reuses the existing three-signal router, research
+  tooling, immutable plan, readiness packet, order journal, reconciliation,
+  and paper cap.
+- `AGENTS.md` remains unchanged. Standing bounded paper-only authority is the
+  authority source; the legacy human-review sentence in generated readiness
+  packets is not treated as a separate operator gate.
 
 ## Milestone
 
-V5.54 adds a paper-only SPY decision-time shadow. During an active NYSE
-session it:
+V5.55 adds one secure, bounded, two-phase SPY paper operating cycle:
 
-1. requires canonical adjusted history through the previous completed session;
-2. opens the existing one-use Windows Credential Manager
-   `alpaca-market-data` lease;
-3. performs one exact-host `SPY` snapshot GET with explicit IEX feed,
-   10-second timeout, and 256 KiB response cap;
-4. requires an in-session latest trade no more than five minutes old;
-5. appends that trade in memory as a provisional adjusted-close proxy;
-6. evaluates the existing immutable SMA50/200 signal; and
-7. writes one idempotent advisory receipt for the session.
+1. reject loaded profile, broker credential, account, or endpoint aliases;
+2. require a repository-calendar NYSE session and, for mutation, the first
+   60 minutes after its open;
+3. open the account-bound Windows Credential Manager paper lease once;
+4. run the existing paper autopilot in forced no-submit mode;
+5. require and hash its current-data, matched-account, broker-observed
+   readiness packet;
+6. re-observe broker and planning state in a second pass;
+7. permit at most one `$25.00` SPY paper entry action; and
+8. require the existing durable submit journal and reconciliation.
 
-The provisional decision is `target_long`, `target_cash`, or `no_decision`.
-It never creates an `ExecutionIntent`, `ExecutionPlan`, broker order, or submit
-authority. The default intended window is the next NYSE session open.
+A risk-reducing full SPY close may exceed the entry cap only to flatten
+existing paper exposure. Live authorization and live access remain false.
+The checked-in task template runs at 09:31 local time on weekdays with three
+15-minute retries, ignores overlap, performs no missed-trigger catch-up, and
+cannot be started on demand through Task Scheduler.
 
-After an accepted V5.53 authoritative Tiingo refresh and M444 convergence,
-`autonomy_spy_refresh_cycle` automatically runs credential-free reconciliation.
-It evaluates the authoritative adjusted close, writes `matched` or `diverged`,
-and cannot block the authoritative refresh when no provisional receipt exists.
+## Host task commissioning
+
+The exact checked-in task was registered successfully:
+
+- task name: `algo-trader-secure-spy-paper-cycle`;
+- state: `Ready`, enabled;
+- principal: interactive token, limited/least privilege;
+- action: `powershell.exe` plus the committed
+  `scripts/run_secure_spy_paper_cycle.ps1`;
+- arguments include `-AllowPaperMutation -MaxNotional "25.00"`;
+- working directory: canonical repository root;
+- trigger: weekdays at 09:31 local;
+- repetition: every 15 minutes for 45 minutes;
+- overlap: `IgnoreNew`;
+- start-when-available: false;
+- on-demand start: false;
+- network required: true;
+- execution limit: ten minutes;
+- first next run observed: `2026-07-29T09:31:00-04:00`.
+
+## Defects exposed and fixed
+
+- The secure paper proof initially failed because `AlpacaSdkClient` evaluated
+  ambient process state (`dev`) instead of the explicit already-validated
+  paper environment. The client now accepts that explicit interlock input and
+  still executes the same live-capital choke point before SDK construction.
+- Native Alpaca account responses do not expose the fake-only `tradable`
+  property. Translation now derives tradability only when the account is
+  active and `trading_blocked`, `account_blocked`, and
+  `trade_suspended_by_user` are all explicitly false.
+- The installed 20:10 refresh task missed its trigger, and the wrapper then
+  failed closed under ambient `dev`. The Tiingo-only read path now uses a
+  paper-profile/endpoint interlock that does not invent or require broker
+  credentials, while continuing to refuse every live signal. The wrapper
+  rejects loaded broker credential aliases and supplies only the non-secret
+  paper profile and endpoint.
 
 ## Observable operational proof
 
-The explicitly authorized production capture ran on `2026-07-28`:
+- Final real secure visibility cycle:
+  - `state=ready_no_submit`;
+  - one secure paper credential lease consumed;
+  - real paper broker read completed;
+  - expected paper-account match passed without recording any identifier;
+  - current strategy route selected the SMA training-wheel `buy` plan;
+  - one readiness packet was generated and SHA-256 bound;
+  - maximum order count `1` and entry notional `$25.00`;
+  - paper submit, broker mutation, live access, and live mutation all false.
+- Post-cutoff integrated refresh:
+  - accepted the authoritative `2026-07-28` adjusted SPY session;
+  - canonical CSV now ends on `2026-07-28`;
+  - offline M444 supervisor remained nominal and converged;
+  - V5.54 reconciliation completed with truthful `classification=matched`;
+  - network access was read-only; broker access and paper/live mutation were
+    false.
 
-- observed at `2026-07-28T14:54:53.687348+00:00`;
-- latest IEX trade at `2026-07-28T14:54:51.501588+00:00`;
-- data age: 2 seconds;
-- provisional close: `739.44`;
-- SMA50: `743.957002866540322`;
-- SMA200: `696.1708003802596115`;
-- posture: `bullish_risk_on`;
-- advisory decision: `target_long`;
-- intended execution time: `2026-07-29T13:30:00+00:00`;
-- result: `state=provisional_decision_recorded`, exit 0.
-
-The process used one bounded market-data GET and one secure credential lease.
-No broker endpoint, account, position, order, paper mutation, or live operation
-was accessed. `execution_intent_created`, `execution_plan_created`,
-`broker_access_attempted`, `broker_mutation_performed`,
-`paper_submit_performed`, and `live_authorized` were all false.
-
-The generated receipt is
-`runs/paper_lab/spy_decision_time_shadow/2026-07-28/provisional.json`.
-One file was scanned against the exact leased credential values in memory;
-zero matches were found. A second production-wrapper invocation returned
-`provisional_decision_already_recorded` with both credential and network access
-false. Credential-free reconciliation currently returns
-`pending_authoritative_adjusted_bar` because the canonical CSV still ends on
-`2026-07-27`; no reconciliation receipt was written.
+Generated receipts remain ignored under `runs/` and are not authority sources.
 
 ## Verification
 
-- Every default-test preflight found `APP_PROFILE`, all checked Alpaca/APCA
-  credential aliases, `TIINGO_API_KEY`, and network/paper integration flags
-  absent.
-- Focused V5.54 behavior and V5.53 integration: 24 passed.
-- Affected transport, integration, Tiingo, secure-provider, interlock,
-  adjusted-history, evaluator, dependency, and import-safety surface:
-  204 passed.
-- Standard offline verification: 109 safety guards passed and
-  `git diff --check` passed.
-- A plain full pytest invocation exceeded the one-hour outer runner ceiling
-  without reporting a failing node.
-- A five-shard exact-node run collected 10,113 nodes. One unrelated V5.36
-  PowerShell wrapper test hit its internal 60-second timeout under contention;
-  that exact node passed alone in 49.44 seconds.
-- Final four-shard exact-node run: 10,113 canonical nodes across 500 files;
-  10,109 passed, 4 skipped, 0 failures, 0 errors. Collection and execution
-  equivalence passed; no shard timed out.
+- Every default-test preflight found `APP_PROFILE`, checked Alpaca/APCA
+  aliases, `TIINGO_API_KEY`, and network/paper integration flags absent.
+- V5.55 and affected paper-autopilot safety surface: 231 passed.
+- Post-operational-fix refresh/interlock/paper regression surface: 173 passed.
+- Standard offline verification: 109 safety guards passed; whitespace check
+  passed.
+- The default 300-second sharded collection bound timed out all four
+  collection checks before executing tests. No test failure was reported.
+- Final repository-supported extended run:
+  - 10,126 canonical nodes across 501 files;
+  - collection equivalence passed;
+  - execution equivalence passed;
+  - 10,122 passed, 4 skipped, 0 failures, 0 errors;
+  - all four shards exited 0 without timeout;
+  - `bounded_full_suite=PASS`.
 
-## Files and contracts
+## Files
 
 New:
 
-- `src/algotrader/execution/spy_decision_time_shadow.py`
-- `scripts/run_spy_decision_time_shadow.ps1`
-- `tests/unit/test_spy_decision_time_shadow.py`
+- `src/algotrader/execution/secure_spy_paper_cycle.py`
+- `scripts/run_secure_spy_paper_cycle.ps1`
+- `scripts/register_secure_spy_paper_cycle_task.ps1`
+- `docs/design/secure_spy_paper_cycle_task.xml`
+- `tests/unit/test_secure_spy_paper_cycle.py`
 
 Updated:
 
-- `src/algotrader/execution/autonomy_spy_refresh_cycle.py`
+- `src/algotrader/execution/alpaca_sdk_client.py`
+- `src/algotrader/execution/paper_autopilot_loop.py`
+- `src/algotrader/execution/live_capital_interlock.py`
+- `src/algotrader/execution/autonomy_read_only_network_executor.py`
+- `scripts/run_spy_integrated_refresh_cycle.ps1`
+- `tests/unit/test_live_capital_interlock.py`
 - `tests/unit/test_autonomy_spy_refresh_cycle.py`
 - `docs/deterministic_core.md`
 - `docs/OPERATOR_RUNBOOK.md`
 - this sole mutable handoff.
 
-Generated `runs/` receipts remain ignored state and are not authority sources.
+## Next action
 
-## Next implementation action
-
-At or after `2026-07-28 20:10 America/New_York`, run the already-authorized
-V5.53 integrated cycle once. Require the same invocation to report a new
-`2026-07-28` network attempt, `observable_outcome=m444_refreshed_nominal`, and
-`decision_time_shadow.state=reconciled` with a truthful `matched` or `diverged`
-classification. Do not change V5.54, expand caps, install a task, or add another
-review artifact unless that operational proof exposes a concrete defect.
+At the first eligible 09:31 run, require `healthy_no_action`,
+`paper_action_reconciled`, or `revalidated_no_action`. Any stale data,
+readiness mismatch, open order, unexpected position, account mismatch, live
+signal, or nonterminal reconciliation remains a hard operational stop.

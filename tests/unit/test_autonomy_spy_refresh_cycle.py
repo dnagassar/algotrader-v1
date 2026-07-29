@@ -344,6 +344,12 @@ def test_wrapper_and_schedule_route_the_integrated_command() -> None:
     assert "[DateTimeOffset]::UtcNow" in wrapper
     assert "algotrader.execution.autonomy_spy_refresh_cycle" in wrapper
     assert "--apply" in wrapper
+    assert '$env:APP_PROFILE = "paper"' in wrapper
+    assert (
+        '$env:ALPACA_PAPER_BASE_URL = "https://paper-api.alpaca.markets"'
+        in wrapper
+    )
+    assert "Refusing broker credential aliases" in wrapper
     assert "run_spy_integrated_refresh_cycle.ps1" in schedule
     assert "run_spy_read_only_network_executor.ps1" not in schedule
 

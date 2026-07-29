@@ -1664,3 +1664,61 @@ is written. Evidence is stored only in generated state:
 
 - `runs/paper_lab/spy_decision_time_shadow/<YYYY-MM-DD>/provisional.json`
 - `runs/paper_lab/spy_decision_time_shadow/<YYYY-MM-DD>/reconciliation.json`
+
+## V5.55 Secure Unattended SPY Paper Cycle
+
+The operator no longer waits at 20:10. The existing
+`spy-eod-market-data-refresh` task refreshes and reconciles adjusted data after
+the provider cutoff. The secure paper task independently acts during the next
+NYSE session's first hour.
+
+Run a real paper-account visibility pass with mutation structurally disabled:
+
+```powershell
+.\scripts\run_secure_spy_paper_cycle.ps1 -Format json
+```
+
+The strong no-submit result is `state=ready_no_submit` with:
+
+- `credential_lease_consumed=true`;
+- `paper_broker_read_performed=true`;
+- `expected_account_matched=true`;
+- `readiness.generated=true`;
+- `paper_submit_performed=false`;
+- `broker_mutation_performed=false`; and
+- `live_authorized=false`.
+
+Preview the weekday 09:31 task registration:
+
+```powershell
+.\scripts\register_secure_spy_paper_cycle_task.ps1
+```
+
+Install the exact checked-in task:
+
+```powershell
+.\scripts\register_secure_spy_paper_cycle_task.ps1 -RegisterTask
+```
+
+The task action includes `-AllowPaperMutation`, but Python still refuses before
+credential access outside an actual NYSE session's 09:30–10:30 window. It runs
+at 09:31 with three 15-minute retries, ignores overlapping instances, does not
+catch up a missed trigger, and cannot run on demand through Task Scheduler.
+Each cycle permits at most one new SPY paper order with a `$25.00` notional
+cap. A complete exposure-reducing SPY close is allowed to flatten a larger
+existing position.
+
+Inspect task and generated cycle state without exposing credentials:
+
+```powershell
+Get-ScheduledTask -TaskName "algo-trader-secure-spy-paper-cycle"
+Get-ScheduledTaskInfo -TaskName "algo-trader-secure-spy-paper-cycle"
+Get-Content runs\paper_autopilot\secure_spy_paper_cycle\latest_receipt.json
+```
+
+Healthy terminal states are `healthy_no_action`,
+`paper_action_reconciled`, or `revalidated_no_action`.
+`reconciliation_required`, `blocked_live_safety`, an account mismatch, an open
+SPY order, an unexpected non-SPY position, stale data, or any readiness mismatch
+is fail-closed. Do not bypass the task window, readiness hash, order journal,
+paper endpoint, cap, or reconciliation to make a blocked run proceed.

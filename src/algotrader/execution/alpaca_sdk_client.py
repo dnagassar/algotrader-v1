@@ -6,7 +6,7 @@ requires an explicitly valid paper profile and does not perform network calls.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 import os
 import re
@@ -104,8 +104,11 @@ class AlpacaSdkClient(AlpacaClient):
         sdk_client_factory: SdkClientFactory | None = None,
         sdk_crypto_data_client: Any | None = None,
         sdk_crypto_data_client_factory: CryptoDataClientFactory | None = None,
+        interlock_env: Mapping[str, str] | None = None,
     ) -> None:
         require_paper_profile(config)
+        if interlock_env is not None:
+            require_live_capital_interlock(interlock_env)
 
         if sdk_client is not None and sdk_client_factory is not None:
             raise ValueError(
@@ -121,6 +124,7 @@ class AlpacaSdkClient(AlpacaClient):
             )
 
         self._config = config
+        self._explicit_interlock_verified = interlock_env is not None
         self._uses_alpaca_sdk_request_shape = sdk_client is None
         self._sdk_crypto_data_client = sdk_crypto_data_client
         self._sdk_crypto_data_client_factory = sdk_crypto_data_client_factory
@@ -129,8 +133,13 @@ class AlpacaSdkClient(AlpacaClient):
             self._sdk_client = sdk_client
             return
 
-        factory = sdk_client_factory or _create_trading_client
-        self._sdk_client = factory(config)
+        if sdk_client_factory is None:
+            self._sdk_client = _create_trading_client(
+                config,
+                interlock_preverified=self._explicit_interlock_verified,
+            )
+        else:
+            self._sdk_client = sdk_client_factory(config)
 
     @property
     def raw_trading_client(self) -> Any:
@@ -263,14 +272,26 @@ class AlpacaSdkClient(AlpacaClient):
 
     def _crypto_data_client(self) -> Any:
         if self._sdk_crypto_data_client is None:
-            factory = self._sdk_crypto_data_client_factory or _create_crypto_data_client
-            self._sdk_crypto_data_client = factory(self._config)
+            if self._sdk_crypto_data_client_factory is None:
+                self._sdk_crypto_data_client = _create_crypto_data_client(
+                    self._config,
+                    interlock_preverified=self._explicit_interlock_verified,
+                )
+            else:
+                self._sdk_crypto_data_client = self._sdk_crypto_data_client_factory(
+                    self._config
+                )
 
         return self._sdk_crypto_data_client
 
 
-def _create_trading_client(config: AlpacaPaperConfig) -> Any:
-    require_live_capital_interlock(os.environ)
+def _create_trading_client(
+    config: AlpacaPaperConfig,
+    *,
+    interlock_preverified: bool = False,
+) -> Any:
+    if not interlock_preverified:
+        require_live_capital_interlock(os.environ)
 
     from alpaca.trading.client import TradingClient
 
@@ -282,8 +303,13 @@ def _create_trading_client(config: AlpacaPaperConfig) -> Any:
     )
 
 
-def _create_crypto_data_client(config: AlpacaPaperConfig) -> Any:
-    require_live_capital_interlock(os.environ)
+def _create_crypto_data_client(
+    config: AlpacaPaperConfig,
+    *,
+    interlock_preverified: bool = False,
+) -> Any:
+    if not interlock_preverified:
+        require_live_capital_interlock(os.environ)
 
     from alpaca.data.historical import CryptoHistoricalDataClient
 

@@ -529,7 +529,10 @@ def run_autonomy_read_only_network_executor(
 
     # Dry-run mode
     if not apply:
-        verdict = evaluate_live_capital_interlock(os.environ)
+        verdict = evaluate_live_capital_interlock(
+            os.environ,
+            require_broker_credentials=False,
+        )
         verdict_dict = verdict.to_dict()
         return {
             "action_token": _ACTION_TOKEN,
@@ -601,7 +604,10 @@ def run_autonomy_read_only_network_executor(
             }
 
         # Step 8: Mandatory live-capital interlock preflight
-        verdict = evaluate_live_capital_interlock(os.environ)
+        verdict = evaluate_live_capital_interlock(
+            os.environ,
+            require_broker_credentials=False,
+        )
         verdict_dict = verdict.to_dict()
 
         if not verdict.paper_boundary_ok:
