@@ -38,9 +38,13 @@ from algotrader.execution.secure_credential_provider import (
     WINDOWS_PROVIDER_NAME,
     provider_from_name,
 )
+from algotrader.orchestration.strategy_router import (
+    SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+)
 
 
-SECURE_SPY_PAPER_CYCLE_SCHEMA_VERSION = "v5_55_secure_spy_paper_cycle_v1"
+SECURE_SPY_PAPER_CYCLE_SCHEMA_VERSION = "v5_56_secure_spy_paper_cycle_v1"
 SECURE_SPY_PAPER_CYCLE_POLICY = "standing_bounded_paper_authority"
 SECURE_SPY_PAPER_CREDENTIAL_REFERENCE = (
     "wincred:algotrader/v5.35/alpaca-paper-observation/production"
@@ -111,6 +115,7 @@ class SecureSpyPaperCycleConfig:
     allow_paper_mutation: bool = False
     execution_window_minutes: int = SECURE_SPY_PAPER_EXECUTION_WINDOW_MINUTES
     symbol: str = "SPY"
+    active_strategy_id: str = SMA_TRAINING_WHEEL_STRATEGY_ID
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -154,6 +159,15 @@ class SecureSpyPaperCycleConfig:
         if str(self.symbol).strip().upper() != "SPY":
             raise ValidationError("secure paper cycle is restricted to SPY.")
         object.__setattr__(self, "symbol", "SPY")
+        active_strategy_id = str(self.active_strategy_id).strip()
+        if active_strategy_id not in {
+            SMA_TRAINING_WHEEL_STRATEGY_ID,
+            SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        }:
+            raise ValidationError(
+                "active_strategy_id is not supported by the secure paper cycle."
+            )
+        object.__setattr__(self, "active_strategy_id", active_strategy_id)
 
 
 def run_secure_spy_paper_cycle(
@@ -268,6 +282,7 @@ def run_secure_spy_paper_cycle(
             max_notional=str(resolved.max_notional),
             no_submit=True,
             order_journal_path=resolved.order_journal_path,
+            active_strategy_id=resolved.active_strategy_id,
         )
         preview_result = runner(
             preview_config,
@@ -358,6 +373,7 @@ def run_secure_spy_paper_cycle(
             no_submit=False,
             readiness_packet_path=readiness_path,
             order_journal_path=resolved.order_journal_path,
+            active_strategy_id=resolved.active_strategy_id,
         )
         execution_result = runner(
             execution_config,
@@ -451,6 +467,7 @@ def render_secure_spy_paper_cycle(receipt: Mapping[str, Any]) -> str:
         f"cycle_id={receipt.get('cycle_id', '')}",
         f"allow_paper_mutation={_bool_text(receipt.get('allow_paper_mutation'))}",
         f"max_order_notional={receipt.get('max_order_notional', '')}",
+        f"active_strategy_id={receipt.get('active_strategy_id', '')}",
         f"preview_classification={preview.get('classification', '')}",
         f"preview_action={preview.get('execution_plan_action', '')}",
         f"selected_strategy_id={preview.get('selected_strategy_id', '')}",
@@ -478,6 +495,7 @@ def _base_receipt(
         "cycle_id": cycle_id,
         "observed_at": now.isoformat(),
         "symbol": config.symbol,
+        "active_strategy_id": config.active_strategy_id,
         "bars_csv": str(config.bars_csv),
         "paper_endpoint": _PAPER_ENDPOINT,
         "credential_provider": WINDOWS_PROVIDER_NAME,
@@ -803,6 +821,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-notional",
         default=str(SECURE_SPY_PAPER_MAX_NOTIONAL),
     )
+    parser.add_argument(
+        "--active-strategy-id",
+        default=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        choices=(
+            SMA_TRAINING_WHEEL_STRATEGY_ID,
+            SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        ),
+    )
     parser.add_argument("--allow-paper-mutation", action="store_true")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     return parser
@@ -820,6 +846,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 paper_credential_reference=args.paper_credential_reference,
                 max_notional=args.max_notional,
                 allow_paper_mutation=args.allow_paper_mutation,
+                active_strategy_id=args.active_strategy_id,
             ),
             credential_provider=provider,
         )

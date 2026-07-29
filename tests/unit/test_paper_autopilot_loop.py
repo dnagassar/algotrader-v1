@@ -16,10 +16,12 @@ from algotrader.execution.paper_autopilot_loop import (
 )
 from algotrader.orchestration.strategy_adapter_registry import (
     SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID,
     StrategyAdapterRegistration,
 )
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     StrategySignal,
@@ -205,6 +207,96 @@ def test_paper_autopilot_buy_when_risk_on_without_position_or_order(
     assert request.notional == Decimal("25.00")
     assert request.qty is None
     assert request.client_order_id.startswith("pa-v207-spy-buy-")
+    _assert_no_sensitive_values(record)
+
+
+def test_paper_autopilot_authorizes_current_daily_lab_freshness_contract(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+        data_freshness_status="current_for_daily_bar_lab",
+    )
+
+    record = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=readiness_packet_path,
+        daily_lab_runner=_fake_daily_lab_current_contract,
+    )
+
+    assert record["data_freshness_status"] == "current_for_daily_bar_lab"
+    assert record["pre_broker_daily_cycle_classification"] == (
+        "pre_broker_daily_cycle_ready"
+    )
+    assert record["paper_mutation_readiness_gate_status"] == "authorized"
+    assert record["paper_submit_authorized"] is True
+    assert record["paper_submit_performed"] is True
+    assert record["broker_mutation_performed"] is True
+    assert record["live_mutation_performed"] is False
+    assert len(broker.submitted_requests) == 1
+    _assert_no_sensitive_values(record)
+
+
+def test_paper_autopilot_rsi_strategy_controls_bounded_execution_plan(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker(
+        positions=({"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},)
+    )
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="sell_close",
+        side="sell",
+        notional="",
+        quantity="0.04",
+        spy_position_observed=True,
+        spy_position_quantity="0.04",
+        selected_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        strategy_adapter_id=(
+            SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID
+        ),
+    )
+
+    record = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=readiness_packet_path,
+        active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+    )
+
+    assert record["sma_posture"] == "risk_on"
+    assert record["active_strategy_id"] == (
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+    )
+    assert record["selected_strategy_id"] == (
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+    )
+    assert record["strategy_route_action"] == "sell_close"
+    assert record["strategy_adapter_id"] == (
+        SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID
+    )
+    assert record["execution_plan_action"] == "sell_close"
+    assert record["paper_mutation_readiness_gate_status"] == "authorized"
+    assert record["paper_submit_performed"] is True
+    assert record["broker_mutation_performed"] is True
+    assert record["live_mutation_performed"] is False
+    assert len(broker.submitted_requests) == 1
+    assert broker.submitted_requests[0].side == "sell"
+    assert broker.submitted_requests[0].qty == Decimal("0.04")
     _assert_no_sensitive_values(record)
 
 
@@ -1518,16 +1610,19 @@ def _run(
     broker: FakeAutopilotBroker,
     *,
     readiness_packet_path: Path | None = None,
+    daily_lab_runner=None,
+    active_strategy_id: str | None = None,
 ) -> dict[str, object]:
     return run_paper_autopilot_loop(
         PaperAutopilotLoopConfig(
             output_root=tmp_path / "out",
             bars_csv=bars_csv,
             readiness_packet_path=readiness_packet_path,
+            active_strategy_id=active_strategy_id,
         ),
         env=_paper_env(),
         broker_client_factory=_factory(broker),
-        daily_lab_runner=_fake_daily_lab,
+        daily_lab_runner=daily_lab_runner or _fake_daily_lab,
         timestamp=GENERATED_AT,
     )
 
@@ -1542,6 +1637,9 @@ def _write_readiness_packet(
     quantity: str,
     spy_position_observed: bool,
     spy_position_quantity: str,
+    data_freshness_status: str = "accepted_data_current",
+    selected_strategy_id: str = SMA_TRAINING_WHEEL_STRATEGY_ID,
+    strategy_adapter_id: str = SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
 ) -> Path:
     path = tmp_path / f"readiness_packet_{action}.json"
     as_of_date = "2026-08-08"
@@ -1562,8 +1660,8 @@ def _write_readiness_packet(
         "source_execution_plan_id": "visibility-plan-1",
         "source_client_order_id": client_order_id,
         "symbol": "SPY",
-        "selected_strategy_id": SMA_TRAINING_WHEEL_STRATEGY_ID,
-        "strategy_adapter_id": SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+        "selected_strategy_id": selected_strategy_id,
+        "strategy_adapter_id": strategy_adapter_id,
         "strategy_adapter_mode": "paper_mutation",
         "strategy_route_action": action,
         "execution_plan_action": action,
@@ -1581,7 +1679,7 @@ def _write_readiness_packet(
         "spy_position_quantity": spy_position_quantity,
         "open_spy_orders_observed": 0,
         "unexpected_non_spy_positions": [],
-        "data_freshness_status": "accepted_data_current",
+        "data_freshness_status": data_freshness_status,
         "latest_bar_date": as_of_date,
         "vol_scaled_preview_visible": True,
         "vol_scaled_preview_intended_action": "buy",
@@ -1672,6 +1770,12 @@ def _fake_daily_lab(config):  # noqa: ANN001
         ),
         "output_root": str(config.output_root),
     }
+
+
+def _fake_daily_lab_current_contract(config):  # noqa: ANN001
+    payload = dict(_fake_daily_lab(config))
+    payload["data_freshness_status"] = "current_for_daily_bar_lab"
+    return payload
 
 
 def _fake_daily_lab_no_new_bar(config):  # noqa: ANN001

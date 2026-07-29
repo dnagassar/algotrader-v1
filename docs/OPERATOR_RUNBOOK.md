@@ -1722,3 +1722,35 @@ Healthy terminal states are `healthy_no_action`,
 SPY order, an unexpected non-SPY position, stale data, or any readiness mismatch
 is fail-closed. Do not bypass the task window, readiness hash, order journal,
 paper endpoint, cap, or reconciliation to make a blocked run proceed.
+
+## V5.56 Selectable RSI Paper Strategy
+
+The secure lane accepts exactly one active strategy per cycle. The installed
+task remains explicit about the SMA default:
+
+```powershell
+.\scripts\run_secure_spy_paper_cycle.ps1 `
+  -ActiveStrategyId "spy_sma_50_200_training_wheel" `
+  -Format text
+```
+
+Exercise the promoted RSI(14) strategy with real paper-broker observation and
+mutation disabled:
+
+```powershell
+.\scripts\run_secure_spy_paper_cycle.ps1 `
+  -ActiveStrategyId "spy_rsi_14_mean_reversion_paper" `
+  -Format text
+```
+
+The expected neutral result is `state=healthy_no_action` with
+`selected_strategy_id=spy_rsi_14_mean_reversion_paper`,
+`paper_broker_read_performed=true`, and all submit/mutation/live fields false.
+An actionable RSI result becomes `ready_no_submit` unless
+`-AllowPaperMutation` is also explicit and every V5.55 window, readiness,
+account, cap, journal, and reconciliation gate passes.
+
+Do not register simultaneous SMA and RSI mutation tasks against the same paper
+account. They share one aggregate SPY position. Change the single task's
+`-ActiveStrategyId` only as an intentional strategy-policy change, then verify
+the exact task arguments before the next run.

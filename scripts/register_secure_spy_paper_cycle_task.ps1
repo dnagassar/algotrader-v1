@@ -42,6 +42,7 @@ Write-Host "task_repository_root=$ResolvedRepoRoot"
 Write-Host "task_schedule=weekdays_09:31_America/New_York_plus_three_15_minute_retries"
 Write-Host "task_max_orders_per_cycle=1"
 Write-Host "task_max_order_notional=25.00"
+Write-Host "task_active_strategy_id=spy_sma_50_200_training_wheel"
 Write-Host "task_live_authorized=false"
 
 if (-not $RegisterTask.IsPresent) {

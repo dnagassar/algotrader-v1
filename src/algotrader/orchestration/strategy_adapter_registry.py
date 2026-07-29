@@ -12,6 +12,7 @@ from algotrader.errors import ValidationError
 from algotrader.orchestration.strategy_router import (
     CRYPTO_TREND_PREVIEW_STRATEGY_ID,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     STRATEGY_ROUTER_REQUIRED_LABELS,
     StrategyPromotionStatus,
@@ -32,12 +33,16 @@ SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID = (
 SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID = (
     "spy_vol_scaled_trend_20d_preview_adapter"
 )
+SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID = (
+    "spy_rsi_14_mean_reversion_paper_mutation_adapter"
+)
 CRYPTO_TREND_PREVIEW_ADAPTER_ID = "crypto_sma_20_50_preview_adapter"
 
 __all__ = [
     "CRYPTO_TREND_PREVIEW_ADAPTER_ID",
     "DEFAULT_STRATEGY_ADAPTER_REGISTRY",
     "SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID",
+    "SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID",
     "SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID",
     "StrategyAdapterMode",
     "StrategyAdapterRegistration",
@@ -231,7 +236,15 @@ def resolve_strategy_route_adapter(
     checked_registry = (
         DEFAULT_STRATEGY_ADAPTER_REGISTRY if registry is None else registry
     )
-    if route_receipt.paper_mutation_allowed is not True:
+    selected_no_action = (
+        route_receipt.route_status == "no_action_required"
+        and route_receipt.reason == "selected_strategy_no_action"
+        and route_receipt.selected_signal is not None
+    )
+    if (
+        route_receipt.paper_mutation_allowed is not True
+        and not selected_no_action
+    ):
         return _blocked_resolution(
             reason=f"strategy_router_{route_receipt.reason}",
             strategy_id="",
@@ -533,6 +546,20 @@ DEFAULT_STRATEGY_ADAPTER_REGISTRY: tuple[StrategyAdapterRegistration, ...] = (
         max_order_notional=Decimal("25.00"),
         enabled=True,
         required_labels=STRATEGY_ROUTER_REQUIRED_LABELS,
+    ),
+    StrategyAdapterRegistration(
+        strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        promotion_status="paper_mutation_candidate",
+        adapter_id=SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID,
+        adapter_mode="paper_mutation",
+        asset_class="equity",
+        supported_symbols=("SPY",),
+        max_order_notional=Decimal("25.00"),
+        enabled=True,
+        required_labels=(
+            *STRATEGY_ROUTER_REQUIRED_LABELS,
+            "bounded_paper_candidate",
+        ),
     ),
     StrategyAdapterRegistration(
         strategy_id=SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,

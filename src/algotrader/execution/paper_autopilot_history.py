@@ -1421,6 +1421,7 @@ def _pre_broker_daily_cycle_classification(status: str) -> str:
         "none",
         "no_refresh_required",
         "accepted_data_current",
+        "current_for_daily_bar_lab",
         "fake_daily_cycle_ran",
     }:
         return "pre_broker_daily_cycle_ready"

@@ -9,6 +9,7 @@ from algotrader.orchestration.strategy_adapter_registry import (
     CRYPTO_TREND_PREVIEW_ADAPTER_ID,
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
     SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID,
     StrategyAdapterRegistration,
     resolve_strategy_adapter,
@@ -22,6 +23,7 @@ from algotrader.orchestration.strategy_router import (
     OPTIONS_NOT_AUTHORIZED_BLOCKER,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     STRATEGY_ROUTER_REQUIRED_LABELS,
@@ -49,7 +51,7 @@ def test_known_sma_strategy_resolves_through_default_registry() -> None:
     assert resolution.to_dict()["adapter"]["supported_symbols"] == ["SPY"]
 
 
-def test_default_registry_keeps_sma_as_only_paper_mutation_adapter() -> None:
+def test_default_registry_bounds_both_supported_paper_strategy_adapters() -> None:
     mutation_registrations = [
         registration
         for registration in DEFAULT_STRATEGY_ADAPTER_REGISTRY
@@ -57,11 +59,42 @@ def test_default_registry_keeps_sma_as_only_paper_mutation_adapter() -> None:
     ]
 
     assert [item.strategy_id for item in mutation_registrations] == [
-        SMA_TRAINING_WHEEL_STRATEGY_ID
+        SMA_TRAINING_WHEEL_STRATEGY_ID,
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     ]
     assert mutation_registrations[0].adapter_id == (
         SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID
     )
+    assert mutation_registrations[1].adapter_id == (
+        SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID
+    )
+    assert all(
+        registration.max_order_notional == Decimal("25.00")
+        for registration in mutation_registrations
+    )
+
+
+def test_promoted_spy_rsi_resolves_through_bounded_paper_adapter() -> None:
+    signal = _signal(
+        strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        strategy_family=SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY,
+        labels=(*REQUIRED_LABELS, "bounded_paper_candidate"),
+    )
+    receipt = route_strategy_signals(
+        (signal,),
+        selected_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+    )
+
+    resolution = resolve_strategy_route_adapter(receipt)
+
+    assert receipt.reason == "explicit_strategy_selected"
+    assert resolution.resolution_status == "resolved"
+    assert resolution.adapter_id == (
+        SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID
+    )
+    assert resolution.paper_mutation_allowed is True
+    assert resolution.adapter is not None
+    assert resolution.adapter.max_order_notional == Decimal("25.00")
 
 
 def test_vol_scaled_trend_resolves_only_to_preview_adapter() -> None:

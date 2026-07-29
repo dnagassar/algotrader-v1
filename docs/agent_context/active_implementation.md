@@ -3,155 +3,139 @@
 ## Ownership
 
 - Writer: Codex orchestrator, sole writer for this working tree.
-- Branch: `codex/v5.55-usable-paper-cycle`.
-- Base HEAD: `6d40be5cab037055bf442a60880dd960ff0859fb`, the clean V5.54
-  decision-time shadow commit.
-- Dirty-file owner before the final V5.55 amend: Codex orchestrator.
-- Yield state: implementation, verification, authoritative refresh, and task
-  commissioning complete; no dirty-file owner remains after the amend.
+- Branch: `codex/v5.56-multi-strategy-paper-lane`.
+- Base HEAD: `a1682d96c8f6f7c6c604e89a5dfde14360f8057a`, the committed
+  V5.55 secure unattended SPY paper cycle.
+- Yield target: one coherent V5.56 commit with no dirty-file owner.
 - The separate V5.51 worktree at
   `.claude/worktrees/v551-readonly-market-data-contract` was not modified.
 
 ## Takeover and stale-claim audit
 
-- Takeover inspection found V5.54 at the base HEAD above with empty staged,
+- Takeover inspection found the V5.55 branch clean with empty staged,
   unstaged, and untracked sets.
-- The inherited handoff accurately described the V5.54 shadow, but its
-  instruction to wait for 20:10 and avoid scheduling became stale when the
-  operator explicitly redirected the milestone toward a usable unattended
-  paper system.
-- Recent history contained repeated review/correction artifacts before the
-  first operational market-data behavior. V5.55 adds no review packet or
-  backtest artifact. It reuses the existing three-signal router, research
-  tooling, immutable plan, readiness packet, order journal, reconciliation,
-  and paper cap.
-- `AGENTS.md` remains unchanged. Standing bounded paper-only authority is the
-  authority source; the legacy human-review sentence in generated readiness
-  packets is not treated as a separate operator gate.
+- The V5.55 handoff correctly required the first eligible task receipt.
+- The installed task attempted its bounded cycle and failed closed before
+  submission because the daily-lab producer emitted
+  `current_for_daily_bar_lab` while the readiness consumer recognized only the
+  legacy `accepted_data_current` token.
+- This was a contract defect rather than genuinely stale data: the latest bar,
+  as-of date, and producer freshness decision matched.
+- V5.56 repairs that operational boundary and adds executable strategy choice;
+  it does not add another review packet, backtest artifact, or hardening-only
+  milestone.
 
-## Milestone
+## New operational capability
 
-V5.55 adds one secure, bounded, two-phase SPY paper operating cycle:
+The secure SPY paper lane now supports exactly one explicit active strategy:
 
-1. reject loaded profile, broker credential, account, or endpoint aliases;
-2. require a repository-calendar NYSE session and, for mutation, the first
-   60 minutes after its open;
-3. open the account-bound Windows Credential Manager paper lease once;
-4. run the existing paper autopilot in forced no-submit mode;
-5. require and hash its current-data, matched-account, broker-observed
-   readiness packet;
-6. re-observe broker and planning state in a second pass;
-7. permit at most one `$25.00` SPY paper entry action; and
-8. require the existing durable submit journal and reconciliation.
+- `spy_sma_50_200_training_wheel`; or
+- `spy_rsi_14_mean_reversion_paper`.
 
-A risk-reducing full SPY close may exceed the entry cap only to flatten
-existing paper exposure. Live authorization and live access remain false.
-The checked-in task template runs at 09:31 local time on weekdays with three
-15-minute retries, ignores overlap, performs no missed-trigger catch-up, and
-cannot be started on demand through Task Scheduler.
+Both use the same paper endpoint, one-order-per-cycle bound, `$25.00` entry cap,
+two-pass readiness protocol, immutable execution plan, durable order journal,
+reconciliation, and live prohibition.
+
+The active strategy ID is validated and bound through the wrapper, secure
+cycle, operator, loop, router, adapter registry, readiness packet, and second
+pass. The RSI strategy uses oversold buy, overbought full-close, and neutral
+hold behavior. An explicit selection may choose one of multiple promoted
+signals; absent an explicit selection, the existing conflict behavior remains
+fail-closed. Concurrent mutation tasks against the same aggregate SPY position
+remain unsupported.
+
+The readiness gate now requires the packet strategy ID and adapter ID to
+exactly match the current route. It accepts both current freshness tokens only
+when the latest-bar date equals the as-of date and the packet status matches
+the second pass.
+
+## Observable paper evidence
+
+- The first scheduled V5.55 attempts performed paper-broker reads but submitted
+  nothing and failed closed on the freshness-token mismatch.
+- After the focused fix passed, one authorized direct SMA retry during the
+  actual NYSE execution window:
+  - used one secure credential lease;
+  - submitted exactly one paper-only SPY entry within the `$25.00` cap;
+  - reached terminal filled reconciliation;
+  - performed no live access or live mutation.
+- A subsequent real paper-broker RSI visibility cycle:
+  - selected `spy_rsi_14_mean_reversion_paper`;
+  - produced a healthy hold/no-action plan;
+  - performed no submit or broker mutation;
+  - kept live authorization false.
+- An exact-value scan covered 97 generated files from those two cycles and
+  found zero credential or account-value matches.
+
+No credential value, account identifier, order identifier, quantity, price, or
+raw broker payload is recorded in this handoff.
 
 ## Host task commissioning
 
-The exact checked-in task was registered successfully:
+The exact checked-in task is registered and ready:
 
-- task name: `algo-trader-secure-spy-paper-cycle`;
-- state: `Ready`, enabled;
-- principal: interactive token, limited/least privilege;
-- action: `powershell.exe` plus the committed
-  `scripts/run_secure_spy_paper_cycle.ps1`;
-- arguments include `-AllowPaperMutation -MaxNotional "25.00"`;
-- working directory: canonical repository root;
-- trigger: weekdays at 09:31 local;
-- repetition: every 15 minutes for 45 minutes;
-- overlap: `IgnoreNew`;
-- start-when-available: false;
-- on-demand start: false;
-- network required: true;
-- execution limit: ten minutes;
-- first next run observed: `2026-07-29T09:31:00-04:00`.
+- active strategy:
+  `spy_sma_50_200_training_wheel`;
+- weekdays at 09:31 local with three 15-minute retries;
+- one order maximum and `$25.00` entry cap;
+- limited privilege, network required, `IgnoreNew`;
+- no missed-trigger catch-up and no on-demand start;
+- ten-minute process limit;
+- next run observed: `2026-07-30T09:31:00-04:00`.
 
-## Defects exposed and fixed
-
-- The secure paper proof initially failed because `AlpacaSdkClient` evaluated
-  ambient process state (`dev`) instead of the explicit already-validated
-  paper environment. The client now accepts that explicit interlock input and
-  still executes the same live-capital choke point before SDK construction.
-- Native Alpaca account responses do not expose the fake-only `tradable`
-  property. Translation now derives tradability only when the account is
-  active and `trading_blocked`, `account_blocked`, and
-  `trade_suspended_by_user` are all explicitly false.
-- The installed 20:10 refresh task missed its trigger, and the wrapper then
-  failed closed under ambient `dev`. The Tiingo-only read path now uses a
-  paper-profile/endpoint interlock that does not invent or require broker
-  credentials, while continuing to refuse every live signal. The wrapper
-  rejects loaded broker credential aliases and supplies only the non-secret
-  paper profile and endpoint.
-
-## Observable operational proof
-
-- Final real secure visibility cycle:
-  - `state=ready_no_submit`;
-  - one secure paper credential lease consumed;
-  - real paper broker read completed;
-  - expected paper-account match passed without recording any identifier;
-  - current strategy route selected the SMA training-wheel `buy` plan;
-  - one readiness packet was generated and SHA-256 bound;
-  - maximum order count `1` and entry notional `$25.00`;
-  - paper submit, broker mutation, live access, and live mutation all false.
-- Post-cutoff integrated refresh:
-  - accepted the authoritative `2026-07-28` adjusted SPY session;
-  - canonical CSV now ends on `2026-07-28`;
-  - offline M444 supervisor remained nominal and converged;
-  - V5.54 reconciliation completed with truthful `classification=matched`;
-  - network access was read-only; broker access and paper/live mutation were
-    false.
-
-Generated receipts remain ignored under `runs/` and are not authority sources.
+Windows retains historical result `0x800710E0` from the prior task state. The
+task is not running, its current state is `Ready`, and the next-run action and
+safety settings match the checked-in V5.56 XML.
 
 ## Verification
 
-- Every default-test preflight found `APP_PROFILE`, checked Alpaca/APCA
-  aliases, `TIINGO_API_KEY`, and network/paper integration flags absent.
-- V5.55 and affected paper-autopilot safety surface: 231 passed.
-- Post-operational-fix refresh/interlock/paper regression surface: 173 passed.
-- Standard offline verification: 109 safety guards passed; whitespace check
-  passed.
-- The default 300-second sharded collection bound timed out all four
-  collection checks before executing tests. No test failure was reported.
-- Final repository-supported extended run:
-  - 10,126 canonical nodes across 501 files;
+- Default-test preflights found no paper profile, broker credential alias,
+  Tiingo credential alias, or network-test flag loaded.
+- Focused production-token and secure-cycle tests: 13 passed.
+- Affected strategy/adapter/loop/operator/secure suites: 92 passed.
+- Broader paper history/control/dependency/import surface: 212 passed.
+- Repository offline verification: 109 safety guards passed.
+- Exact-node full suite:
+  - 10,132 canonical nodes across 501 files;
   - collection equivalence passed;
   - execution equivalence passed;
-  - 10,122 passed, 4 skipped, 0 failures, 0 errors;
-  - all four shards exited 0 without timeout;
-  - `bounded_full_suite=PASS`.
+  - 10,128 passed and 4 skipped;
+  - zero failures and zero errors;
+  - all four shards exited zero without timeout.
+- `git diff --check` passed before final staging.
 
 ## Files
 
-New:
+Execution and routing:
 
+- `src/algotrader/execution/paper_autopilot_history.py`
+- `src/algotrader/execution/paper_autopilot_loop.py`
+- `src/algotrader/execution/paper_autopilot_operator.py`
 - `src/algotrader/execution/secure_spy_paper_cycle.py`
+- `src/algotrader/orchestration/strategy_adapter_registry.py`
+- `src/algotrader/orchestration/strategy_router.py`
+
+Host operations and documentation:
+
 - `scripts/run_secure_spy_paper_cycle.ps1`
 - `scripts/register_secure_spy_paper_cycle_task.ps1`
 - `docs/design/secure_spy_paper_cycle_task.xml`
-- `tests/unit/test_secure_spy_paper_cycle.py`
-
-Updated:
-
-- `src/algotrader/execution/alpaca_sdk_client.py`
-- `src/algotrader/execution/paper_autopilot_loop.py`
-- `src/algotrader/execution/live_capital_interlock.py`
-- `src/algotrader/execution/autonomy_read_only_network_executor.py`
-- `scripts/run_spy_integrated_refresh_cycle.ps1`
-- `tests/unit/test_live_capital_interlock.py`
-- `tests/unit/test_autonomy_spy_refresh_cycle.py`
 - `docs/deterministic_core.md`
 - `docs/OPERATOR_RUNBOOK.md`
 - this sole mutable handoff.
 
+Verification:
+
+- `tests/unit/test_paper_autopilot_loop.py`
+- `tests/unit/test_secure_spy_paper_cycle.py`
+- `tests/unit/test_spy_vol_scaled_trend_preview.py`
+- `tests/unit/test_strategy_adapter_registry.py`
+- `tests/unit/test_strategy_router.py`
+
 ## Next action
 
-At the first eligible 09:31 run, require `healthy_no_action`,
-`paper_action_reconciled`, or `revalidated_no_action`. Any stale data,
-readiness mismatch, open order, unexpected position, account mismatch, live
-signal, or nonterminal reconciliation remains a hard operational stop.
+Observe the next scheduled SMA cycle and require `healthy_no_action`,
+`paper_action_reconciled`, or `revalidated_no_action`. Before running SMA and
+RSI concurrently, add explicit strategy-owned paper sleeves or separate paper
+accounts so one strategy cannot close another strategy's aggregate SPY
+position.

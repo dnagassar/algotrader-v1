@@ -25,6 +25,10 @@ from algotrader.execution.secure_spy_paper_cycle import (
     run_secure_spy_paper_cycle,
     secure_spy_paper_cycle_exit_status,
 )
+from algotrader.orchestration.strategy_router import (
+    SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -217,6 +221,7 @@ def _config(
     tmp_path: Path,
     *,
     allow_paper_mutation: bool,
+    active_strategy_id: str = SMA_TRAINING_WHEEL_STRATEGY_ID,
 ) -> SecureSpyPaperCycleConfig:
     tmp_path.mkdir(parents=True, exist_ok=True)
     bars_csv = tmp_path / "bars.csv"
@@ -228,6 +233,7 @@ def _config(
         paper_credential_reference=REFERENCE,
         max_notional="25.00",
         allow_paper_mutation=allow_paper_mutation,
+        active_strategy_id=active_strategy_id,
     )
 
 
@@ -363,6 +369,35 @@ def test_explicit_mutation_runs_two_phase_reobservation_and_reconciliation(
     assert secure_spy_paper_cycle_exit_status(receipt) == 0
 
 
+def test_secure_cycle_binds_both_passes_to_selected_rsi_strategy(
+    tmp_path: Path,
+) -> None:
+    provider = RecordingProvider()
+    operator = TwoPhaseOperator()
+
+    receipt = run_secure_spy_paper_cycle(
+        _config(
+            tmp_path,
+            allow_paper_mutation=True,
+            active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        ),
+        env={},
+        credential_provider=provider,
+        operator_runner=operator,
+        clock=OPEN_CLOCK,
+    )
+
+    assert receipt["state"] == "paper_action_reconciled"
+    assert receipt["active_strategy_id"] == (
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+    )
+    assert len(operator.calls) == 2
+    assert all(
+        config.active_strategy_id == SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+        for config in operator.calls
+    )
+
+
 def test_mutation_outside_next_open_window_fails_before_credential_access(
     tmp_path: Path,
 ) -> None:
@@ -438,7 +473,9 @@ def test_runner_script_contract_and_argument_forwarding(tmp_path: Path) -> None:
         "windows-credential-manager",
         "alpaca-paper-observation/production",
         "[switch]$AllowPaperMutation",
+        "[string]$ActiveStrategyId",
         "--allow-paper-mutation",
+        "--active-strategy-id",
         "preflight_max_orders_per_cycle=1",
         "preflight_live_authorized=false",
     ):
@@ -492,6 +529,10 @@ def test_runner_script_contract_and_argument_forwarding(tmp_path: Path) -> None:
     assert "-m algotrader.execution.secure_spy_paper_cycle" in args
     assert "--allow-paper-mutation" in args
     assert "--max-notional 25.00" in args
+    assert (
+        "--active-strategy-id spy_sma_50_200_training_wheel"
+        in args
+    )
     assert "--credential-provider windows-credential-manager" in args
 
 
@@ -513,6 +554,10 @@ def test_task_template_is_bounded_next_open_paper_only() -> None:
     assert "run_secure_spy_paper_cycle.ps1" in arguments
     assert "-AllowPaperMutation" in arguments
     assert '-MaxNotional "25.00"' in arguments
+    assert (
+        '-ActiveStrategyId "spy_sma_50_200_training_wheel"'
+        in arguments
+    )
     assert "ALPACA_API_KEY" not in arguments
     assert "ALPACA_SECRET_KEY" not in arguments
 
@@ -538,6 +583,7 @@ def test_registration_helper_defaults_to_non_mutating_preview() -> None:
     assert "task_registration=preview_only" in result.stdout
     assert "task_system_mutation_performed=false" in result.stdout
     assert "task_max_orders_per_cycle=1" in result.stdout
+    assert "task_active_strategy_id=spy_sma_50_200_training_wheel" in result.stdout
     assert "task_live_authorized=false" in result.stdout
 
 

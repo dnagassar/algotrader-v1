@@ -11,6 +11,7 @@ from algotrader.orchestration.strategy_router import (
     CRYPTO_TREND_PREVIEW_STRATEGY_ID,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     OPTIONS_NOT_AUTHORIZED_BLOCKER,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
@@ -177,6 +178,50 @@ def test_conflicting_promoted_candidates_block_for_review() -> None:
     assert receipt.reason == "conflict_requires_review"
     assert "conflict_requires_review" in receipt.blockers
     assert receipt.candidate_signal_ids == ("promoted_buy", "promoted_sell")
+
+
+def test_explicit_strategy_selection_routes_one_of_two_promoted_candidates() -> None:
+    sma = _dummy_signal(strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID)
+    rsi = _dummy_signal(
+        strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        intended_action="sell_close",
+        intended_side="sell",
+    )
+
+    receipt = route_strategy_signals(
+        (sma, rsi),
+        selected_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+    )
+
+    assert receipt.route_status == "action_routed"
+    assert receipt.route_action == "sell_close"
+    assert receipt.reason == "explicit_strategy_selected"
+    assert receipt.selected_signal is rsi
+    assert receipt.candidate_signal_ids == (
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+    )
+    assert receipt.blockers == ()
+
+
+def test_explicit_selected_strategy_no_action_is_not_a_route_blocker() -> None:
+    rsi = _dummy_signal(
+        strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        signal_state="no_trade",
+        intended_action="no_action",
+        intended_side="",
+    )
+
+    receipt = route_strategy_signals(
+        (rsi,),
+        selected_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+    )
+
+    assert receipt.route_status == "no_action_required"
+    assert receipt.route_action == "no_action"
+    assert receipt.paper_mutation_allowed is False
+    assert receipt.reason == "selected_strategy_no_action"
+    assert receipt.selected_signal is rsi
+    assert receipt.blockers == ()
 
 
 def test_shadow_rsi_opposite_action_is_recorded_without_shadow_selection() -> None:

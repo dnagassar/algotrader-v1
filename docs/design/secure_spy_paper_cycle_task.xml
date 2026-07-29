@@ -52,7 +52,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_secure_spy_paper_cycle.ps1" -AllowPaperMutation -MaxNotional "25.00" -Format text</Arguments>
+      <Arguments>-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_secure_spy_paper_cycle.ps1" -AllowPaperMutation -MaxNotional "25.00" -ActiveStrategyId "spy_sma_50_200_training_wheel" -Format text</Arguments>
       <WorkingDirectory>%REPO_ROOT%</WorkingDirectory>
     </Exec>
   </Actions>

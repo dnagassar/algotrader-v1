@@ -17,6 +17,11 @@ param(
     [string]$OrderJournalPath = "runs\paper_autopilot\state\order_journal.sqlite3",
     [string]$PaperCredentialReference = "wincred:algotrader/v5.35/alpaca-paper-observation/production",
     [string]$MaxNotional = "25.00",
+    [ValidateSet(
+        "spy_sma_50_200_training_wheel",
+        "spy_rsi_14_mean_reversion_paper"
+    )]
+    [string]$ActiveStrategyId = "spy_sma_50_200_training_wheel",
     [switch]$AllowPaperMutation,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -55,6 +60,7 @@ Write-Host "preflight_paper_endpoint=https://paper-api.alpaca.markets"
 Write-Host "preflight_allow_paper_mutation=$($AllowPaperMutation.IsPresent.ToString().ToLowerInvariant())"
 Write-Host "preflight_max_orders_per_cycle=1"
 Write-Host "preflight_max_order_notional=$MaxNotional"
+Write-Host "preflight_active_strategy_id=$ActiveStrategyId"
 Write-Host "preflight_live_authorized=false"
 
 $CliArgs = @(
@@ -65,6 +71,7 @@ $CliArgs = @(
     "--credential-provider", "windows-credential-manager",
     "--paper-credential-reference", $PaperCredentialReference,
     "--max-notional", $MaxNotional,
+    "--active-strategy-id", $ActiveStrategyId,
     "--format", $Format
 )
 if ($AllowPaperMutation.IsPresent) {

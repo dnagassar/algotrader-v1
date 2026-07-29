@@ -54,6 +54,7 @@ SMA_TRAINING_WHEEL_STRATEGY_FAMILY = "long_only_broad_etf_sma_trend_filter"
 SMA_TRAINING_WHEEL_STRATEGY_ID = "spy_sma_50_200_training_wheel"
 SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY = "mean_reversion"
 SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID = "spy_rsi_14_mean_reversion_shadow"
+SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID = "spy_rsi_14_mean_reversion_paper"
 SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY = SPY_VOL_SCALED_TREND_STRATEGY_FAMILY
 SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID = SPY_VOL_SCALED_TREND_STRATEGY_ID
 CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY = CRYPTO_TREND_STRATEGY_FAMILY
@@ -67,6 +68,7 @@ __all__ = [
     "OPTIONS_NOT_AUTHORIZED_BLOCKER",
     "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY",
     "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID",
+    "SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID",
     "SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY",
     "SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID",
     "STRATEGY_ROUTER_LABEL",
@@ -298,6 +300,7 @@ def route_strategy_signals(
     signals: Iterable[StrategySignal],
     *,
     required_labels: Iterable[str] = STRATEGY_ROUTER_REQUIRED_LABELS,
+    selected_strategy_id: str | None = None,
 ) -> StrategyRouteReceipt:
     """Route strategy signals to at most one paper-mutation candidate."""
 
@@ -308,6 +311,17 @@ def route_strategy_signals(
         for signal in signal_values
         for label in (*signal.labels, STRATEGY_ROUTER_LABEL)
     )
+    if selected_strategy_id is not None:
+        return _route_selected_strategy(
+            signal_values,
+            selected_strategy_id=_required_string(
+                selected_strategy_id,
+                "selected_strategy_id",
+            ),
+            required_labels=required_label_values,
+            labels=labels,
+        )
+
     candidate_signals: list[StrategySignal] = []
     blocked_signal_ids: list[str] = []
     route_blockers: list[str] = []
@@ -435,8 +449,10 @@ def strategy_signal_from_etf_sma_result(
 
 def strategy_signal_from_spy_rsi_mean_reversion_result(
     result: SPYRsiMeanReversionSignalResult,
+    *,
+    promotion_status: StrategyPromotionStatus = "shadow_only",
 ) -> StrategySignal:
-    """Adapt the SPY RSI mean-reversion result into a shadow-only route signal."""
+    """Adapt the SPY RSI result into a shadow or bounded-paper route signal."""
 
     if not isinstance(result, SPYRsiMeanReversionSignalResult):
         raise ValidationError("result must be a SPYRsiMeanReversionSignalResult.")
@@ -462,10 +478,24 @@ def strategy_signal_from_spy_rsi_mean_reversion_result(
         intended_side = ""
         blockers = ()
 
+    promoted_for_paper = promotion_status == "paper_mutation_candidate"
+    labels = tuple(result.labels)
+    if promoted_for_paper:
+        labels = tuple(
+            label
+            for label in labels
+            if label not in {"shadow_only", "signal_evaluation_only"}
+        )
+        labels = (*labels, "bounded_paper_candidate")
+
     return StrategySignal(
         strategy_id=(
-            f"{result.symbol.lower()}_rsi_"
-            f"{result.lookback_window}_mean_reversion_shadow"
+            SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+            if promoted_for_paper
+            else (
+                f"{result.symbol.lower()}_rsi_"
+                f"{result.lookback_window}_mean_reversion_shadow"
+            )
         ),
         strategy_family=result.strategy_type,
         symbol=result.symbol,
@@ -473,12 +503,20 @@ def strategy_signal_from_spy_rsi_mean_reversion_result(
         signal_state=signal_state,
         intended_action=intended_action,
         intended_side=intended_side,
-        expected_holding_period="daily_mean_reversion_shadow_until_next_signal",
-        max_loss_model="not_modeled_shadow_signal_only",
-        risk_budget="none_shadow_only_no_allocation",
+        expected_holding_period="daily_mean_reversion_until_overbought_exit",
+        max_loss_model=(
+            "bounded_entry_notional_no_intraday_stop"
+            if promoted_for_paper
+            else "not_modeled_shadow_signal_only"
+        ),
+        risk_budget=(
+            "bounded_paper_notional"
+            if promoted_for_paper
+            else "none_shadow_only_no_allocation"
+        ),
         data_as_of=result.as_of,
-        promotion_status="shadow_only",
-        labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),
+        promotion_status=promotion_status,
+        labels=tuple(_dedupe((*labels, STRATEGY_ROUTER_LABEL))),
         blockers=blockers,
         evidence_score=None,
     )
@@ -600,6 +638,80 @@ def _receipt(
         blocked_signal_ids=blocked_signal_ids,
         labels=labels,
         blockers=tuple(_dedupe(blockers)),
+    )
+
+
+def _route_selected_strategy(
+    signals: tuple[StrategySignal, ...],
+    *,
+    selected_strategy_id: str,
+    required_labels: tuple[str, ...],
+    labels: tuple[str, ...],
+) -> StrategyRouteReceipt:
+    selected = next(
+        (
+            signal
+            for signal in signals
+            if signal.strategy_id == selected_strategy_id
+        ),
+        None,
+    )
+    if selected is None:
+        return _receipt(
+            route_status="blocked",
+            route_action="blocked",
+            paper_mutation_allowed=False,
+            reason="selected_strategy_missing",
+            signals=signals,
+            selected_signal=None,
+            candidate_signal_ids=(),
+            blocked_signal_ids=(selected_strategy_id,),
+            labels=labels,
+            blockers=(f"selected_strategy_missing:{selected_strategy_id}",),
+        )
+
+    blockers = _paper_mutation_blockers(selected, required_labels)
+    if blockers:
+        return _receipt(
+            route_status="blocked",
+            route_action="blocked",
+            paper_mutation_allowed=False,
+            reason="selected_strategy_blocked",
+            signals=signals,
+            selected_signal=selected,
+            candidate_signal_ids=(),
+            blocked_signal_ids=(selected.strategy_id,),
+            labels=labels,
+            blockers=tuple(
+                f"{selected.strategy_id}:{blocker}" for blocker in blockers
+            ),
+        )
+
+    if selected.signal_state == "trade_candidate":
+        return _receipt(
+            route_status="action_routed",
+            route_action=selected.intended_action,
+            paper_mutation_allowed=True,
+            reason="explicit_strategy_selected",
+            signals=signals,
+            selected_signal=selected,
+            candidate_signal_ids=(selected.strategy_id,),
+            blocked_signal_ids=(),
+            labels=labels,
+            blockers=(),
+        )
+
+    return _receipt(
+        route_status="no_action_required",
+        route_action=selected.intended_action,
+        paper_mutation_allowed=False,
+        reason="selected_strategy_no_action",
+        signals=signals,
+        selected_signal=selected,
+        candidate_signal_ids=(),
+        blocked_signal_ids=(),
+        labels=labels,
+        blockers=(),
     )
 
 

@@ -111,6 +111,7 @@ class PaperAutopilotOperatorConfig:
     order_journal_path: Path | str | None = None
     operator_paused: bool = False
     runtime_lease_seconds: int = 900
+    active_strategy_id: str | None = None
 
     def __post_init__(self) -> None:
         loop_config = self.to_loop_config()
@@ -137,6 +138,7 @@ class PaperAutopilotOperatorConfig:
             order_journal_path=self.order_journal_path,
             operator_paused=self.operator_paused,
             runtime_lease_seconds=self.runtime_lease_seconds,
+            active_strategy_id=self.active_strategy_id,
         )
 
 

@@ -53,6 +53,7 @@ from algotrader.execution.stable_file_snapshot import (
 )
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     STRATEGY_ROUTER_LABEL,
     StrategyRouteReceipt,
     StrategySignal,
@@ -63,7 +64,6 @@ from algotrader.orchestration.strategy_router import (
 )
 from algotrader.orchestration.strategy_adapter_registry import (
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
-    SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
     StrategyAdapterRegistryInput,
     StrategyAdapterResolution,
     resolve_strategy_adapter,
@@ -140,6 +140,15 @@ _SAFE_MESSAGE_LIMIT = 240
 _TERMINAL_ORDER_STATUSES = frozenset(
     {"filled", "rejected", "canceled", "cancelled", "expired"}
 )
+_CURRENT_DAILY_DATA_STATUSES = frozenset(
+    {"accepted_data_current", "current_for_daily_bar_lab"}
+)
+_SUPPORTED_ACTIVE_STRATEGY_IDS = frozenset(
+    {
+        SMA_TRAINING_WHEEL_STRATEGY_ID,
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +170,7 @@ class PaperAutopilotLoopConfig:
     operator_paused: bool = False
     operator_pause_reason: str = "operator_pause_flag"
     runtime_lease_seconds: int = 900
+    active_strategy_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _path(self.output_root, "output_root"))
@@ -198,6 +208,13 @@ class PaperAutopilotLoopConfig:
         object.__setattr__(self, "operator_pause_reason", pause_reason)
         if type(self.runtime_lease_seconds) is not int or self.runtime_lease_seconds <= 0:
             raise ValidationError("runtime_lease_seconds must be a positive integer.")
+        if self.active_strategy_id is not None:
+            active_strategy_id = str(self.active_strategy_id).strip()
+            if active_strategy_id not in _SUPPORTED_ACTIVE_STRATEGY_IDS:
+                raise ValidationError(
+                    "active_strategy_id is not supported by the paper lane."
+                )
+            object.__setattr__(self, "active_strategy_id", active_strategy_id)
         if self.as_of_date is not None:
             _parse_date_text(self.as_of_date, "as_of_date")
         if self.run_date is not None:
@@ -367,14 +384,20 @@ def run_paper_autopilot_loop(
     )
     posture = _autopilot_posture(signal.posture)
     primary_strategy_signal = strategy_signal_from_etf_sma_result(signal)
-    shadow_strategy_signal = strategy_signal_from_spy_rsi_mean_reversion_result(
+    rsi_strategy_signal = strategy_signal_from_spy_rsi_mean_reversion_result(
         evaluate_spy_rsi_mean_reversion_signal(
             bars,
             SPYRsiMeanReversionSignalConfig(
                 as_of=as_of_dt,
                 symbol=resolved.symbol,
             ),
-        )
+        ),
+        promotion_status=(
+            "paper_mutation_candidate"
+            if resolved.active_strategy_id
+            == SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+            else "shadow_only"
+        ),
     )
     vol_scaled_trend_signal = evaluate_spy_vol_scaled_trend_signal(
         bars,
@@ -390,7 +413,7 @@ def run_paper_autopilot_loop(
     route_receipt = route_strategy_signals(
         _strategy_signals(
             primary_strategy_signal,
-            (shadow_strategy_signal,),
+            (rsi_strategy_signal,),
             (
                 vol_scaled_trend_strategy_signal,
                 *_extra_strategy_signals(
@@ -398,7 +421,8 @@ def run_paper_autopilot_loop(
                     field_name="candidate_strategy_signals",
                 ),
             ),
-        )
+        ),
+        selected_strategy_id=resolved.active_strategy_id,
     )
     adapter_resolution = resolve_strategy_route_adapter(
         route_receipt,
@@ -440,7 +464,6 @@ def run_paper_autopilot_loop(
         (*_safety_labels(broker_state["broker_state_observed"] is True), STRATEGY_ROUTER_LABEL)
     )
     intent = _build_intent(
-        posture=posture,
         route_receipt=route_receipt,
         adapter_resolution=adapter_resolution,
         broker_state=broker_state,
@@ -915,7 +938,6 @@ def _preview_strategy_adapter_resolutions(
 
 def _build_intent(
     *,
-    posture: str,
     route_receipt: StrategyRouteReceipt,
     adapter_resolution: StrategyAdapterResolution,
     broker_state: Mapping[str, Any],
@@ -937,12 +959,6 @@ def _build_intent(
             action="blocked",
             reason=_text(broker_state.get("blocker")) or "broker_state_not_observed",
         )
-    if posture == "insufficient_history":
-        return PaperAutopilotExecutionIntent(
-            symbol=_SYMBOL,
-            action="blocked",
-            reason="insufficient_history",
-        )
     if broker_state.get("unexpected_non_spy_positions"):
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
@@ -958,32 +974,44 @@ def _build_intent(
 
     spy_quantity = _optional_decimal(broker_state.get("spy_position_quantity"))
     has_position = spy_quantity is not None and spy_quantity > Decimal("0")
-    if posture == "risk_on" and not has_position:
+    selected_signal = route_receipt.selected_signal
+    selected_action = (
+        route_receipt.route_action
+        if selected_signal is None
+        else selected_signal.intended_action
+    )
+    if selected_action in {"hold", "no_action", "no_action_required"}:
+        return PaperAutopilotExecutionIntent(
+            symbol=_SYMBOL,
+            action="hold",
+            reason="selected_strategy_no_action",
+        )
+    if selected_action == "buy" and not has_position:
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
             action="buy",
             side="buy",
             notional=max_notional,
-            reason="risk_on_no_position_no_open_order",
+            reason="selected_strategy_buy_no_position_no_open_order",
         )
-    if posture == "risk_on" and has_position:
+    if selected_action == "buy" and has_position:
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
             action="hold",
-            reason="risk_on_spy_position_present",
+            reason="selected_strategy_buy_spy_position_present",
         )
-    if posture == "risk_off" and has_position:
+    if selected_action == "sell_close" and has_position:
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
             action="sell_close",
             side="sell",
             quantity=spy_quantity,
-            reason="risk_off_spy_position_present_no_open_order",
+            reason="selected_strategy_sell_spy_position_present_no_open_order",
         )
     return PaperAutopilotExecutionIntent(
         symbol=_SYMBOL,
         action="hold",
-        reason="risk_off_no_position",
+        reason="selected_strategy_sell_no_position",
     )
 
 
@@ -1416,9 +1444,11 @@ def _paper_mutation_readiness_gate(
     unexpected_non_spy_positions = _string_list(
         broker_state.get("unexpected_non_spy_positions")
     )
+    current_data_freshness_status = _normalized_status(
+        daily_cycle.get("daily_cycle_data_freshness_status")
+    )
     current_data_current = (
-        _normalized_status(daily_cycle.get("daily_cycle_data_freshness_status"))
-        == "accepted_data_current"
+        current_data_freshness_status in _CURRENT_DAILY_DATA_STATUSES
         and latest_bar_date == as_of_date
     )
     current_notional_text = _decimal_text(notional) or ""
@@ -1447,17 +1477,19 @@ def _paper_mutation_readiness_gate(
         _text(packet.get("symbol")),
     )
     add_check(
-        "selected_strategy_is_training_wheel",
-        _text(packet.get("selected_strategy_id")) == SMA_TRAINING_WHEEL_STRATEGY_ID
-        and current_selected_strategy == SMA_TRAINING_WHEEL_STRATEGY_ID,
+        "selected_strategy_matches_current_route",
+        bool(current_selected_strategy)
+        and _text(packet.get("selected_strategy_id")) == current_selected_strategy,
         "paper_mutation_readiness_strategy_mismatch",
         _text(packet.get("selected_strategy_id")),
     )
     add_check(
-        "strategy_adapter_is_paper_mutation",
-        _text(packet.get("strategy_adapter_mode")) == "paper_mutation"
+        "strategy_adapter_matches_current_route",
+        bool(adapter_resolution.adapter_id)
+        and _text(packet.get("strategy_adapter_id"))
+        == adapter_resolution.adapter_id
+        and _text(packet.get("strategy_adapter_mode")) == "paper_mutation"
         and adapter_resolution.adapter_mode == "paper_mutation"
-        and adapter_resolution.adapter_id == SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID
         and adapter_resolution.paper_mutation_allowed is True,
         "paper_mutation_readiness_adapter_mismatch",
         _text(packet.get("strategy_adapter_mode")),
@@ -1494,7 +1526,8 @@ def _paper_mutation_readiness_gate(
         "packet_daily_data_matches_current_data",
         _text(packet.get("latest_bar_date")) == latest_bar_date
         and _normalized_status(packet.get("data_freshness_status"))
-        == "accepted_data_current",
+        == current_data_freshness_status
+        and current_data_freshness_status in _CURRENT_DAILY_DATA_STATUSES,
         "paper_mutation_readiness_packet_stale",
         f"packet_latest_bar_date={_text(packet.get('latest_bar_date'))}",
     )
@@ -2201,6 +2234,7 @@ def _build_record(
         "no_submit_mode": plan.no_submit_mode,
         "operating_mode": operating_mode,
         "symbol": config.symbol,
+        "active_strategy_id": config.active_strategy_id or "",
         "as_of_date": as_of_date,
         "data_latest_bar": _first_nonempty_text(
             daily_cycle.get("daily_cycle_latest_bar_date"),
@@ -2446,6 +2480,7 @@ def _pre_broker_daily_cycle_classification(daily_cycle: Mapping[str, Any]) -> st
         "none",
         "no_refresh_required",
         "accepted_data_current",
+        "current_for_daily_bar_lab",
         "fake_daily_cycle_ran",
     }:
         return "pre_broker_daily_cycle_ready"

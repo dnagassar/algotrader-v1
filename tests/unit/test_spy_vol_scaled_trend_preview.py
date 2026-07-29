@@ -14,11 +14,13 @@ from algotrader.execution.paper_autopilot_loop import (
 from algotrader.orchestration.strategy_adapter_registry import (
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
     SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID,
     resolve_strategy_adapter,
 )
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     route_strategy_signals,
@@ -86,10 +88,14 @@ def test_default_registry_resolves_vol_scaled_only_to_preview_mode() -> None:
     assert mutation_resolution.reason == "strategy_adapter_mode_mismatch"
     assert mutation_resolution.paper_mutation_allowed is False
     assert [item.strategy_id for item in mutation_registrations] == [
-        SMA_TRAINING_WHEEL_STRATEGY_ID
+        SMA_TRAINING_WHEEL_STRATEGY_ID,
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
     ]
     assert mutation_registrations[0].adapter_id == (
         SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID
+    )
+    assert mutation_registrations[1].adapter_id == (
+        SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID
     )
 
 

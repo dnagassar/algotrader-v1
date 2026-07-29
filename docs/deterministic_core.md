@@ -411,7 +411,8 @@ Forbidden dependency direction includes:
 
 ## Active Strategy Path
 
-The active supervised paper-lab strategy path is:
+The supervised SPY paper lane supports one explicitly active strategy at a
+time. The installed task defaults to:
 
 - symbol: `SPY`
 - asset class: equity ETF
@@ -424,6 +425,14 @@ The active supervised paper-lab strategy path is:
 - allowlist: `SPY` only
 - paper sizing: tiny notional experiments only unless the operator explicitly
   changes the scope
+- live authorization: none
+
+The second selectable paper strategy is daily RSI(14) mean reversion:
+
+- buy candidate: RSI below `30` with no SPY position
+- close candidate: RSI above `70` with an existing SPY position
+- neutral: hold/no action
+- entry cap: the same fixed `$25.00`
 - live authorization: none
 
 The strategy labels remain:
@@ -439,9 +448,10 @@ Strategy routing:
   paper-mutating plans
 - only `paper_mutation_candidate` signals with required safety labels may route
   toward the paper supervisor
-- conflicting promoted candidates block with operator review required
-- the current SPY SMA 50/200 path is the first router-compatible strategy, not
-  a broad strategy catalog
+- conflicting promoted candidates still block unless a validated
+  `active_strategy_id` explicitly selects one registered adapter
+- the only paper-mutating adapters are the SPY SMA 50/200 training wheel and
+  SPY RSI(14) mean-reversion path; this is not broad universe support
 
 The strategy does not imply:
 
@@ -1465,3 +1475,31 @@ The checked-in Windows task runs at 09:31 local time on weekdays with three
 15-minute retries, `IgnoreNew`, no catch-up execution, a ten-minute process
 limit, and the Python execution-window guard. Deterministic client-order IDs
 and the SQLite order journal remain the final duplicate-submit fence.
+
+## V5.56 Multi-Strategy SPY Paper Lane
+
+V5.56 keeps the V5.55 security boundary and makes the active strategy an
+explicit, immutable input to both the preview and execution passes. Supported
+IDs are:
+
+- `spy_sma_50_200_training_wheel`
+- `spy_rsi_14_mean_reversion_paper`
+
+Only the selected signal may route. An unknown, missing, unregistered, disabled,
+wrong-mode, wrong-symbol, or over-cap adapter fails closed. A selected neutral
+RSI signal is a broker-observed hold, not a routing error. The RSI adapter uses
+the same SPY-only, one-order, `$25.00` entry cap, paper endpoint, readiness
+packet, order journal, reconciliation, and live prohibition as SMA.
+
+Readiness revalidation no longer hard-codes the SMA adapter. It requires the
+packet's strategy ID and adapter ID to exactly match the second pass. The
+current daily-lab freshness contract accepts
+`current_for_daily_bar_lab`; the legacy test/rollup token
+`accepted_data_current` remains compatible only when the latest-bar date also
+matches and both preview and execution packets carry the same status.
+
+The checked-in task names the SMA strategy explicitly. RSI can be exercised
+through the same secure wrapper with `-ActiveStrategyId
+"spy_rsi_14_mean_reversion_paper"`. Running concurrent SMA and RSI mutation
+tasks against the same aggregate SPY position is not supported; one active
+strategy avoids ambiguous position ownership.
