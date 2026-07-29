@@ -1750,7 +1750,63 @@ An actionable RSI result becomes `ready_no_submit` unless
 `-AllowPaperMutation` is also explicit and every V5.55 window, readiness,
 account, cap, journal, and reconciliation gate passes.
 
-Do not register simultaneous SMA and RSI mutation tasks against the same paper
-account. They share one aggregate SPY position. Change the single task's
-`-ActiveStrategyId` only as an intentional strategy-policy change, then verify
-the exact task arguments before the next run.
+## V5.57 Strategy Sleeve Bootstrap and Dual Tasks
+
+The shared paper account now supports simultaneous SMA and RSI policy lanes
+through durable strategy-owned SPY quantity sleeves. Before installing the
+dual tasks, assign any existing aggregate SPY position to its owning strategy
+with one no-submit bootstrap. For the existing SMA-owned position:
+
+```powershell
+.\scripts\run_secure_spy_paper_cycle.ps1 `
+  -ActiveStrategyId "spy_sma_50_200_training_wheel" `
+  -AdoptExistingPositionToActiveSleeve `
+  -Format text
+```
+
+Do not use `-AllowPaperMutation` with the adoption flag. Adoption succeeds only
+for a pristine sleeve ledger and performs broker reads but no submit, cancel,
+replace, close, or other broker mutation. Require:
+
+- `state=healthy_no_action` or `state=ready_no_submit`;
+- `strategy_sleeve_broker_quantity_match=true`;
+- `paper_submit_performed=false`;
+- `broker_mutation_performed=false`; and
+- `live_authorized=false`.
+
+Then verify both strategies independently with mutation disabled:
+
+```powershell
+.\scripts\run_secure_spy_paper_cycle.ps1 `
+  -ActiveStrategyId "spy_sma_50_200_training_wheel" `
+  -Format text
+
+.\scripts\run_secure_spy_paper_cycle.ps1 `
+  -ActiveStrategyId "spy_rsi_14_mean_reversion_paper" `
+  -Format text
+```
+
+Preview and install both exact task definitions:
+
+```powershell
+.\scripts\register_secure_spy_paper_cycle_task.ps1
+.\scripts\register_secure_spy_paper_cycle_task.ps1 -RegisterTask
+```
+
+The SMA task runs at 09:31 ET and the RSI task at 09:38 ET. Both retain three
+15-minute retries, `IgnoreNew`, no catch-up, no on-demand start, the NYSE
+09:30–10:30 mutation window, one order per cycle, `$25.00` entry cap, `$60.00`
+aggregate entry-exposure cap, and two sleeve orders per UTC session day. The
+shared runtime lease serializes overlap.
+
+Inspect both task definitions:
+
+```powershell
+Get-ScheduledTask -TaskName "algo-trader-secure-spy-paper-cycle"
+Get-ScheduledTask -TaskName "algo-trader-secure-spy-rsi-paper-cycle"
+```
+
+Stop on `strategy_sleeve_broker_quantity_mismatch`,
+`strategy_sleeve_intent_pending`, a sleeve reconciliation requirement, or any
+readiness sleeve generation/cap mismatch. Do not edit the SQLite ledger by
+hand or re-run adoption against a non-pristine ledger.

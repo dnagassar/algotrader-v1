@@ -19,7 +19,7 @@ from algotrader.errors import ValidationError
 
 
 PAPER_AUTOPILOT_HISTORY_SCHEMA_VERSION = (
-    "v208_paper_autopilot_operating_history_v1"
+    "v209_paper_autopilot_operating_history_v1"
 )
 PAPER_AUTOPILOT_DEFAULT_LATEST_STATUS_PATH = (
     "runs/paper_autopilot/latest/latest_status.json"
@@ -32,7 +32,7 @@ PAPER_AUTOPILOT_DAILY_AUTONOMY_LEDGER_FILENAME = "daily_autonomy_ledger.jsonl"
 PAPER_AUTOPILOT_LATEST_DAILY_AUTONOMY_FILENAME = "latest_daily_autonomy.json"
 PAPER_AUTOPILOT_DAILY_AUTONOMY_SUMMARY_FILENAME = "daily_autonomy_summary.md"
 PAPER_MUTATION_READINESS_PACKET_SCHEMA_VERSION = (
-    "v4_7_paper_mutation_readiness_packet_v1"
+    "v5_57_strategy_sleeve_readiness_packet_v1"
 )
 PAPER_MUTATION_READINESS_PACKET_FILENAME_PREFIX = (
     "paper_mutation_readiness_packet_"
@@ -83,6 +83,9 @@ _COMPARISON_FIELDS = (
     "data_freshness_status",
     "sma_posture",
     "selected_strategy_id",
+    "strategy_sleeve_generation",
+    "strategy_sleeve_quantity",
+    "strategy_sleeve_total_quantity",
     "strategy_route_action",
     "broker_state_mode",
     "broker_state_observed",
@@ -828,6 +831,33 @@ def build_paper_mutation_readiness_packet(
         "notional": _text(record.get("notional")),
         "quantity": _text(record.get("quantity")),
         "notional_cap": _text(record.get("notional_cap")),
+        "max_portfolio_notional": _text(
+            record.get("max_portfolio_notional")
+        ),
+        "max_sleeve_orders_per_session": _int(
+            record.get("max_sleeve_orders_per_session")
+        ),
+        "strategy_sleeve_enabled": (
+            record.get("strategy_sleeve_enabled") is True
+        ),
+        "strategy_sleeve_strategy_id": _text(
+            record.get("strategy_sleeve_strategy_id")
+        ),
+        "strategy_sleeve_generation": _int(
+            record.get("strategy_sleeve_generation")
+        ),
+        "strategy_sleeve_quantity": _text(
+            record.get("strategy_sleeve_quantity")
+        ),
+        "strategy_sleeve_total_quantity": _text(
+            record.get("strategy_sleeve_total_quantity")
+        ),
+        "strategy_sleeve_broker_quantity_match": (
+            record.get("strategy_sleeve_broker_quantity_match") is True
+        ),
+        "strategy_sleeve_pending_intent_count": _int(
+            record.get("strategy_sleeve_pending_intent_count")
+        ),
         "no_submit_mode": record.get("no_submit_mode") is True,
         "broker_read_performed": record.get("broker_read_performed") is True,
         "broker_state_observed": record.get("broker_state_observed") is True,
@@ -1123,6 +1153,10 @@ def _normalize_status_payload(
     paper_mutation_readiness_gate = _mapping(
         _first_present(paper_mutation_readiness, "gate")
     )
+    strategy_sleeve = _mapping(payload.get("strategy_sleeve"))
+    strategy_sleeve_reconciliation = _mapping(
+        payload.get("strategy_sleeve_reconciliation")
+    )
     generated_at = _text(payload.get("generated_at"))
     paper_profile_run = _bool(preflight.get("APP_PROFILE_is_paper")) or (
         _text(preflight.get("APP_PROFILE")) == "paper"
@@ -1196,6 +1230,48 @@ def _normalize_status_payload(
         "broker_state_observed": broker_state_observed,
         "expected_account_matched": _bool_or_none(expected_account_matched),
         "selected_strategy_id": _text(payload.get("selected_strategy_id")),
+        "strategy_sleeve_enabled": _bool(
+            payload.get("strategy_sleeve_enabled")
+        )
+        or _bool(strategy_sleeve.get("enabled")),
+        "strategy_sleeve_strategy_id": _first_nonempty_text(
+            payload.get("strategy_sleeve_strategy_id"),
+            strategy_sleeve.get("active_strategy_id"),
+        ),
+        "strategy_sleeve_generation": _int(
+            _first_present(
+                payload,
+                "strategy_sleeve_generation",
+            )
+        )
+        or _int(strategy_sleeve.get("generation")),
+        "strategy_sleeve_quantity": _first_nonempty_text(
+            payload.get("strategy_sleeve_quantity"),
+            strategy_sleeve.get("active_quantity"),
+        ),
+        "strategy_sleeve_total_quantity": _first_nonempty_text(
+            payload.get("strategy_sleeve_total_quantity"),
+            strategy_sleeve.get("total_quantity"),
+        ),
+        "strategy_sleeve_broker_quantity_match": _bool(
+            payload.get("strategy_sleeve_broker_quantity_match")
+        )
+        or _bool(strategy_sleeve.get("broker_quantity_match")),
+        "strategy_sleeve_pending_intent_count": _int(
+            payload.get("strategy_sleeve_pending_intent_count")
+        )
+        or _int(strategy_sleeve.get("pending_intent_count")),
+        "strategy_sleeve_reconciliation_status": _first_nonempty_text(
+            payload.get("strategy_sleeve_reconciliation_status"),
+            strategy_sleeve_reconciliation.get("reconciliation_status"),
+        ),
+        "max_portfolio_notional": _first_nonempty_text(
+            payload.get("max_portfolio_notional"),
+            execution_plan.get("max_portfolio_notional"),
+        ),
+        "max_sleeve_orders_per_session": _int(
+            payload.get("max_sleeve_orders_per_session")
+        ),
         "strategy_route_action": _first_nonempty_text(
             payload.get("strategy_route_action"),
             route_receipt.get("route_action"),
@@ -1762,6 +1838,26 @@ def _build_daily_autonomy_ledger_entry(
             _string_list(entry.get("unexpected_non_spy_positions"))
         ),
         "selected_strategy_id": entry.get("selected_strategy_id"),
+        "strategy_sleeve_enabled": entry.get("strategy_sleeve_enabled"),
+        "strategy_sleeve_strategy_id": entry.get(
+            "strategy_sleeve_strategy_id"
+        ),
+        "strategy_sleeve_generation": entry.get(
+            "strategy_sleeve_generation"
+        ),
+        "strategy_sleeve_quantity": entry.get("strategy_sleeve_quantity"),
+        "strategy_sleeve_total_quantity": entry.get(
+            "strategy_sleeve_total_quantity"
+        ),
+        "strategy_sleeve_broker_quantity_match": entry.get(
+            "strategy_sleeve_broker_quantity_match"
+        ),
+        "strategy_sleeve_pending_intent_count": entry.get(
+            "strategy_sleeve_pending_intent_count"
+        ),
+        "strategy_sleeve_reconciliation_status": entry.get(
+            "strategy_sleeve_reconciliation_status"
+        ),
         "strategy_route_action": entry.get("strategy_route_action"),
         "execution_plan_action": entry.get("execution_plan_action"),
         "action_decision": entry.get("action_decision"),
@@ -1924,6 +2020,26 @@ def _build_rollup(
             _string_list(entry.get("unexpected_non_spy_positions"))
         ),
         "selected_strategy_id": entry.get("selected_strategy_id"),
+        "strategy_sleeve_enabled": entry.get("strategy_sleeve_enabled"),
+        "strategy_sleeve_strategy_id": entry.get(
+            "strategy_sleeve_strategy_id"
+        ),
+        "strategy_sleeve_generation": entry.get(
+            "strategy_sleeve_generation"
+        ),
+        "strategy_sleeve_quantity": entry.get("strategy_sleeve_quantity"),
+        "strategy_sleeve_total_quantity": entry.get(
+            "strategy_sleeve_total_quantity"
+        ),
+        "strategy_sleeve_broker_quantity_match": entry.get(
+            "strategy_sleeve_broker_quantity_match"
+        ),
+        "strategy_sleeve_pending_intent_count": entry.get(
+            "strategy_sleeve_pending_intent_count"
+        ),
+        "strategy_sleeve_reconciliation_status": entry.get(
+            "strategy_sleeve_reconciliation_status"
+        ),
         "strategy_route_action": entry.get("strategy_route_action"),
         "strategy_route_paper_mutation_allowed": entry.get(
             "strategy_route_paper_mutation_allowed"
@@ -1955,6 +2071,10 @@ def _build_rollup(
         "notional": entry.get("notional"),
         "quantity": entry.get("quantity"),
         "notional_cap": entry.get("notional_cap"),
+        "max_portfolio_notional": entry.get("max_portfolio_notional"),
+        "max_sleeve_orders_per_session": entry.get(
+            "max_sleeve_orders_per_session"
+        ),
         "no_submit_mode": entry.get("no_submit_mode"),
         "execution_plan_action": entry.get("execution_plan_action"),
         "intended_mutation_action": entry.get("intended_mutation_action"),

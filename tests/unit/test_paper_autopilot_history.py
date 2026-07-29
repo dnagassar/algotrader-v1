@@ -43,6 +43,14 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     assert rollup["unexpected_non_spy_positions_count"] == 0
     assert rollup["unexpected_non_spy_positions"] == []
     assert rollup["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert rollup["strategy_sleeve_enabled"] is True
+    assert rollup["strategy_sleeve_broker_quantity_match"] is True
+    assert rollup["strategy_sleeve_generation"] == 1
+    assert rollup["strategy_sleeve_quantity"] == "0.05"
+    assert rollup["strategy_sleeve_total_quantity"] == "0.05"
+    assert rollup["strategy_sleeve_pending_intent_count"] == 0
+    assert rollup["max_portfolio_notional"] == "60.00"
+    assert rollup["max_sleeve_orders_per_session"] == 2
     assert rollup["strategy_route_action"] == "hold"
     assert rollup["execution_plan_action"] == "hold"
     assert rollup["vol_scaled_preview_visible"] is True
@@ -811,6 +819,18 @@ def _base_status(
         "unexpected_non_spy_positions": [],
         "unexpected_non_spy_positions_observed": 0,
         "selected_strategy_id": "spy_sma_50_200_training_wheel",
+        "strategy_sleeve_enabled": True,
+        "strategy_sleeve_strategy_id": "spy_sma_50_200_training_wheel",
+        "strategy_sleeve_generation": 1,
+        "strategy_sleeve_quantity": "0.05",
+        "strategy_sleeve_total_quantity": "0.05",
+        "strategy_sleeve_broker_quantity_match": True,
+        "strategy_sleeve_pending_intent_count": 0,
+        "strategy_sleeve_reconciliation_status": (
+            "not_required_no_sleeve_intent"
+        ),
+        "max_portfolio_notional": "60.00",
+        "max_sleeve_orders_per_session": 2,
         "strategy_route_action": "hold",
         "strategy_route_paper_mutation_allowed": True,
         "strategy_adapter_resolution_status": "resolved",

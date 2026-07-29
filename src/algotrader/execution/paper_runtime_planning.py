@@ -55,6 +55,7 @@ class PaperRuntimePlanningInput:
     trading_disabled_reason: str
     max_notional: Decimal | str
     client_order_id: str
+    max_portfolio_notional: Decimal | str | None = None
     quantity: Decimal | str | None = None
     currency: str = "USD"
     risk_context: RiskContext | None = None
@@ -188,6 +189,18 @@ def build_canonical_paper_runtime_plan(
     max_notional = decimal_value(planning_input.max_notional, "max_notional")
     if max_notional <= 0:
         raise ValidationError("max_notional must be greater than zero.")
+    max_portfolio_notional = (
+        max_notional
+        if planning_input.max_portfolio_notional is None
+        else decimal_value(
+            planning_input.max_portfolio_notional,
+            "max_portfolio_notional",
+        )
+    )
+    if max_portfolio_notional < max_notional:
+        raise ValidationError(
+            "max_portfolio_notional must be at least max_notional."
+        )
     client_order_id = planning_input.client_order_id.strip()
     if not client_order_id:
         return _blocked_plan(action, "canonical_client_order_id_unavailable")
@@ -206,6 +219,46 @@ def build_canonical_paper_runtime_plan(
         if planning_input.quantity is None:
             return _blocked_plan(action, "canonical_sell_quantity_unavailable")
         quantity = decimal_value(planning_input.quantity, "quantity")
+    order_notional = quantity * latest_bar.close
+    effective_order_notional_cap = (
+        max_notional
+        if action == "buy"
+        else max(max_notional, order_notional)
+    )
+    marked_gross_exposure = sum(
+        (abs(position.quantity) * latest_bar.close for position in planning_input.positions),
+        Decimal("0"),
+    )
+    context_gross_exposure = (
+        Decimal("0")
+        if planning_input.risk_context is None
+        or planning_input.risk_context.gross_exposure is None
+        else planning_input.risk_context.gross_exposure
+    )
+    context_symbol_exposure = (
+        Decimal("0")
+        if planning_input.risk_context is None
+        or planning_input.risk_context.symbol_exposure is None
+        else planning_input.risk_context.symbol_exposure
+    )
+    effective_gross_cap = (
+        max_portfolio_notional
+        if action == "buy"
+        else max(
+            max_portfolio_notional,
+            marked_gross_exposure,
+            context_gross_exposure,
+        )
+    )
+    effective_symbol_cap = (
+        max_portfolio_notional
+        if action == "buy"
+        else max(
+            max_portfolio_notional,
+            marked_gross_exposure,
+            context_symbol_exposure,
+        )
+    )
 
     order = ProposedOrder(
         symbol=symbol,
@@ -225,12 +278,12 @@ def build_canonical_paper_runtime_plan(
     )
     risk = RiskEngine(
         RiskConfig(
-            max_order_notional=max_notional,
+            max_order_notional=effective_order_notional_cap,
             allow_short=False,
             allow_fractional_shares=True,
             max_positions=1,
-            max_gross_exposure=max_notional,
-            max_symbol_exposure=max_notional,
+            max_gross_exposure=effective_gross_cap,
+            max_symbol_exposure=effective_symbol_cap,
         )
     ).check(order, portfolio, quote, planning_input.risk_context)
     risk_evaluation = SignalRiskEvaluation(

@@ -15,14 +15,19 @@ param(
     [string]$OutputRoot = "runs\paper_autopilot\secure_spy_paper_cycle",
     [string]$BarsCsv = "runs\operator_input\m446_spy_daily_tiingo_adjusted_canonical.csv",
     [string]$OrderJournalPath = "runs\paper_autopilot\state\order_journal.sqlite3",
+    [string]$StrategySleeveLedgerPath = "runs\paper_autopilot\state\strategy_sleeves.sqlite3",
     [string]$PaperCredentialReference = "wincred:algotrader/v5.35/alpaca-paper-observation/production",
     [string]$MaxNotional = "25.00",
+    [string]$MaxPortfolioNotional = "60.00",
+    [ValidateRange(1, 2)]
+    [int]$MaxSleeveOrdersPerSession = 2,
     [ValidateSet(
         "spy_sma_50_200_training_wheel",
         "spy_rsi_14_mean_reversion_paper"
     )]
     [string]$ActiveStrategyId = "spy_sma_50_200_training_wheel",
     [switch]$AllowPaperMutation,
+    [switch]$AdoptExistingPositionToActiveSleeve,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
 )
@@ -60,7 +65,10 @@ Write-Host "preflight_paper_endpoint=https://paper-api.alpaca.markets"
 Write-Host "preflight_allow_paper_mutation=$($AllowPaperMutation.IsPresent.ToString().ToLowerInvariant())"
 Write-Host "preflight_max_orders_per_cycle=1"
 Write-Host "preflight_max_order_notional=$MaxNotional"
+Write-Host "preflight_max_portfolio_notional=$MaxPortfolioNotional"
+Write-Host "preflight_max_sleeve_orders_per_session=$MaxSleeveOrdersPerSession"
 Write-Host "preflight_active_strategy_id=$ActiveStrategyId"
+Write-Host "preflight_adopt_existing_position_to_active_sleeve=$($AdoptExistingPositionToActiveSleeve.IsPresent.ToString().ToLowerInvariant())"
 Write-Host "preflight_live_authorized=false"
 
 $CliArgs = @(
@@ -68,14 +76,20 @@ $CliArgs = @(
     "--output-root", $OutputRoot,
     "--bars-csv", $BarsCsv,
     "--order-journal-path", $OrderJournalPath,
+    "--strategy-sleeve-ledger-path", $StrategySleeveLedgerPath,
     "--credential-provider", "windows-credential-manager",
     "--paper-credential-reference", $PaperCredentialReference,
     "--max-notional", $MaxNotional,
+    "--max-portfolio-notional", $MaxPortfolioNotional,
+    "--max-sleeve-orders-per-session", $MaxSleeveOrdersPerSession,
     "--active-strategy-id", $ActiveStrategyId,
     "--format", $Format
 )
 if ($AllowPaperMutation.IsPresent) {
     $CliArgs += "--allow-paper-mutation"
+}
+if ($AdoptExistingPositionToActiveSleeve.IsPresent) {
+    $CliArgs += "--adopt-existing-position-to-active-sleeve"
 }
 
 Push-Location -LiteralPath $RepoRoot

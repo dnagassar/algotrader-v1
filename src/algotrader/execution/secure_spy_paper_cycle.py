@@ -44,12 +44,14 @@ from algotrader.orchestration.strategy_router import (
 )
 
 
-SECURE_SPY_PAPER_CYCLE_SCHEMA_VERSION = "v5_56_secure_spy_paper_cycle_v1"
+SECURE_SPY_PAPER_CYCLE_SCHEMA_VERSION = "v5_57_secure_spy_paper_cycle_v1"
 SECURE_SPY_PAPER_CYCLE_POLICY = "standing_bounded_paper_authority"
 SECURE_SPY_PAPER_CREDENTIAL_REFERENCE = (
     "wincred:algotrader/v5.35/alpaca-paper-observation/production"
 )
 SECURE_SPY_PAPER_MAX_NOTIONAL = Decimal("25.00")
+SECURE_SPY_PAPER_MAX_PORTFOLIO_NOTIONAL = Decimal("60.00")
+SECURE_SPY_PAPER_MAX_SLEEVE_ORDERS_PER_SESSION = 2
 SECURE_SPY_PAPER_EXECUTION_WINDOW_MINUTES = 60
 SECURE_SPY_PAPER_DEFAULT_OUTPUT_ROOT = (
     "runs/paper_autopilot/secure_spy_paper_cycle"
@@ -59,6 +61,9 @@ SECURE_SPY_PAPER_DEFAULT_BARS_CSV = (
 )
 SECURE_SPY_PAPER_DEFAULT_JOURNAL = (
     "runs/paper_autopilot/state/order_journal.sqlite3"
+)
+SECURE_SPY_PAPER_DEFAULT_SLEEVE_LEDGER = (
+    "runs/paper_autopilot/state/strategy_sleeves.sqlite3"
 )
 
 _PAPER_ENDPOINT = DEFAULT_ALPACA_PAPER_BASE_URL.rstrip("/")
@@ -108,11 +113,21 @@ class SecureSpyPaperCycleConfig:
     output_root: Path | str = SECURE_SPY_PAPER_DEFAULT_OUTPUT_ROOT
     bars_csv: Path | str = SECURE_SPY_PAPER_DEFAULT_BARS_CSV
     order_journal_path: Path | str = SECURE_SPY_PAPER_DEFAULT_JOURNAL
+    strategy_sleeve_ledger_path: Path | str = (
+        SECURE_SPY_PAPER_DEFAULT_SLEEVE_LEDGER
+    )
     paper_credential_reference: CredentialReference | str = (
         SECURE_SPY_PAPER_CREDENTIAL_REFERENCE
     )
     max_notional: Decimal | str = SECURE_SPY_PAPER_MAX_NOTIONAL
+    max_portfolio_notional: Decimal | str = (
+        SECURE_SPY_PAPER_MAX_PORTFOLIO_NOTIONAL
+    )
+    max_sleeve_orders_per_session: int = (
+        SECURE_SPY_PAPER_MAX_SLEEVE_ORDERS_PER_SESSION
+    )
     allow_paper_mutation: bool = False
+    adopt_existing_position_to_active_sleeve: bool = False
     execution_window_minutes: int = SECURE_SPY_PAPER_EXECUTION_WINDOW_MINUTES
     symbol: str = "SPY"
     active_strategy_id: str = SMA_TRAINING_WHEEL_STRATEGY_ID
@@ -133,6 +148,14 @@ class SecureSpyPaperCycleConfig:
             "order_journal_path",
             _path(self.order_journal_path, "order_journal_path"),
         )
+        object.__setattr__(
+            self,
+            "strategy_sleeve_ledger_path",
+            _path(
+                self.strategy_sleeve_ledger_path,
+                "strategy_sleeve_ledger_path",
+            ),
+        )
         reference = (
             self.paper_credential_reference
             if isinstance(self.paper_credential_reference, CredentialReference)
@@ -147,8 +170,46 @@ class SecureSpyPaperCycleConfig:
                 f"max_notional cannot exceed {SECURE_SPY_PAPER_MAX_NOTIONAL}."
             )
         object.__setattr__(self, "max_notional", max_notional)
+        max_portfolio_notional = _positive_decimal(
+            self.max_portfolio_notional,
+            "max_portfolio_notional",
+        )
+        if max_portfolio_notional > SECURE_SPY_PAPER_MAX_PORTFOLIO_NOTIONAL:
+            raise ValidationError(
+                "max_portfolio_notional cannot exceed "
+                f"{SECURE_SPY_PAPER_MAX_PORTFOLIO_NOTIONAL}."
+            )
+        if max_portfolio_notional < max_notional:
+            raise ValidationError(
+                "max_portfolio_notional cannot be less than max_notional."
+            )
+        object.__setattr__(
+            self,
+            "max_portfolio_notional",
+            max_portfolio_notional,
+        )
+        if (
+            type(self.max_sleeve_orders_per_session) is not int
+            or not 1
+            <= self.max_sleeve_orders_per_session
+            <= SECURE_SPY_PAPER_MAX_SLEEVE_ORDERS_PER_SESSION
+        ):
+            raise ValidationError(
+                "max_sleeve_orders_per_session must be an integer from 1 to 2."
+            )
         if type(self.allow_paper_mutation) is not bool:
             raise ValidationError("allow_paper_mutation must be a boolean.")
+        if type(self.adopt_existing_position_to_active_sleeve) is not bool:
+            raise ValidationError(
+                "adopt_existing_position_to_active_sleeve must be a boolean."
+            )
+        if (
+            self.adopt_existing_position_to_active_sleeve
+            and self.allow_paper_mutation
+        ):
+            raise ValidationError(
+                "strategy sleeve adoption requires a no-mutation bootstrap cycle."
+            )
         if (
             type(self.execution_window_minutes) is not int
             or not 1 <= self.execution_window_minutes <= 60
@@ -280,9 +341,19 @@ def run_secure_spy_paper_cycle(
             bars_csv=resolved.bars_csv,
             symbol=resolved.symbol,
             max_notional=str(resolved.max_notional),
+            max_portfolio_notional=str(resolved.max_portfolio_notional),
+            max_sleeve_orders_per_session=(
+                resolved.max_sleeve_orders_per_session
+            ),
             no_submit=True,
             order_journal_path=resolved.order_journal_path,
+            strategy_sleeve_ledger_path=(
+                resolved.strategy_sleeve_ledger_path
+            ),
             active_strategy_id=resolved.active_strategy_id,
+            adopt_existing_position_to_active_sleeve=(
+                resolved.adopt_existing_position_to_active_sleeve
+            ),
         )
         preview_result = runner(
             preview_config,
@@ -370,10 +441,18 @@ def run_secure_spy_paper_cycle(
             bars_csv=resolved.bars_csv,
             symbol=resolved.symbol,
             max_notional=str(resolved.max_notional),
+            max_portfolio_notional=str(resolved.max_portfolio_notional),
+            max_sleeve_orders_per_session=(
+                resolved.max_sleeve_orders_per_session
+            ),
             no_submit=False,
             readiness_packet_path=readiness_path,
             order_journal_path=resolved.order_journal_path,
+            strategy_sleeve_ledger_path=(
+                resolved.strategy_sleeve_ledger_path
+            ),
             active_strategy_id=resolved.active_strategy_id,
+            adopt_existing_position_to_active_sleeve=False,
         )
         execution_result = runner(
             execution_config,
@@ -467,10 +546,17 @@ def render_secure_spy_paper_cycle(receipt: Mapping[str, Any]) -> str:
         f"cycle_id={receipt.get('cycle_id', '')}",
         f"allow_paper_mutation={_bool_text(receipt.get('allow_paper_mutation'))}",
         f"max_order_notional={receipt.get('max_order_notional', '')}",
+        f"max_portfolio_notional={receipt.get('max_portfolio_notional', '')}",
+        "max_sleeve_orders_per_session="
+        f"{receipt.get('max_sleeve_orders_per_session', '')}",
         f"active_strategy_id={receipt.get('active_strategy_id', '')}",
         f"preview_classification={preview.get('classification', '')}",
         f"preview_action={preview.get('execution_plan_action', '')}",
         f"selected_strategy_id={preview.get('selected_strategy_id', '')}",
+        "strategy_sleeve_broker_quantity_match="
+        f"{_bool_text(preview.get('strategy_sleeve_broker_quantity_match'))}",
+        "strategy_sleeve_reconciliation_status="
+        f"{execution.get('strategy_sleeve_reconciliation_status', '')}",
         f"execution_classification={execution.get('classification', '')}",
         f"paper_broker_read_performed={_bool_text(receipt.get('paper_broker_read_performed'))}",
         f"paper_submit_performed={_bool_text(receipt.get('paper_submit_performed'))}",
@@ -507,6 +593,16 @@ def _base_receipt(
         "max_orders_per_cycle": 1,
         "max_order_notional": str(config.max_notional),
         "max_entry_position_notional": str(config.max_notional),
+        "max_portfolio_notional": str(config.max_portfolio_notional),
+        "max_sleeve_orders_per_session": (
+            config.max_sleeve_orders_per_session
+        ),
+        "strategy_sleeve_ledger_path": str(
+            config.strategy_sleeve_ledger_path
+        ),
+        "adopt_existing_position_to_active_sleeve": (
+            config.adopt_existing_position_to_active_sleeve
+        ),
         "exposure_reducing_close_may_exceed_entry_cap": True,
         "paper_only": True,
         "live_authorized": False,
@@ -600,6 +696,16 @@ def _safe_operator_summary(summary: Mapping[str, Any]) -> dict[str, object]:
         "symbol",
         "sma_posture",
         "selected_strategy_id",
+        "strategy_sleeve_enabled",
+        "strategy_sleeve_strategy_id",
+        "strategy_sleeve_generation",
+        "strategy_sleeve_quantity",
+        "strategy_sleeve_total_quantity",
+        "strategy_sleeve_broker_quantity_match",
+        "strategy_sleeve_pending_intent_count",
+        "strategy_sleeve_reconciliation_status",
+        "max_portfolio_notional",
+        "max_sleeve_orders_per_session",
         "broker_state_mode",
         "broker_read_performed",
         "broker_state_observed",
@@ -627,6 +733,9 @@ def _preview_is_healthy_no_action(summary: Mapping[str, Any]) -> bool:
         and summary.get("hard_stop") is not True
         and str(summary.get("execution_plan_action") or "")
         in {"", "hold", "no_action"}
+        and summary.get("strategy_sleeve_enabled") is True
+        and summary.get("strategy_sleeve_broker_quantity_match") is True
+        and int(summary.get("strategy_sleeve_pending_intent_count") or 0) == 0
     )
 
 
@@ -642,6 +751,9 @@ def _preview_is_mutation_ready(summary: Mapping[str, Any]) -> bool:
         and summary.get("paper_submit_performed") is not True
         and summary.get("broker_mutation_performed") is not True
         and summary.get("live_mutation_performed") is not True
+        and summary.get("strategy_sleeve_enabled") is True
+        and summary.get("strategy_sleeve_broker_quantity_match") is True
+        and int(summary.get("strategy_sleeve_pending_intent_count") or 0) == 0
     )
 
 
@@ -686,6 +798,11 @@ def _execution_state(summary: Mapping[str, Any]) -> str:
         and summary.get("paper_submit_performed") is True
         and summary.get("broker_mutation_performed") is True
         and summary.get("live_mutation_performed") is not True
+        and str(summary.get("strategy_sleeve_reconciliation_status") or "")
+        in {
+            "strategy_sleeve_reconciled_terminal",
+            "strategy_sleeve_already_reconciled",
+        }
     ):
         return "paper_action_reconciled"
     if _preview_is_healthy_no_action(summary):
@@ -810,6 +927,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=SECURE_SPY_PAPER_DEFAULT_JOURNAL,
     )
     parser.add_argument(
+        "--strategy-sleeve-ledger-path",
+        default=SECURE_SPY_PAPER_DEFAULT_SLEEVE_LEDGER,
+    )
+    parser.add_argument(
         "--credential-provider",
         default=WINDOWS_PROVIDER_NAME,
     )
@@ -822,6 +943,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(SECURE_SPY_PAPER_MAX_NOTIONAL),
     )
     parser.add_argument(
+        "--max-portfolio-notional",
+        default=str(SECURE_SPY_PAPER_MAX_PORTFOLIO_NOTIONAL),
+    )
+    parser.add_argument(
+        "--max-sleeve-orders-per-session",
+        type=int,
+        default=SECURE_SPY_PAPER_MAX_SLEEVE_ORDERS_PER_SESSION,
+    )
+    parser.add_argument(
         "--active-strategy-id",
         default=SMA_TRAINING_WHEEL_STRATEGY_ID,
         choices=(
@@ -830,6 +960,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--allow-paper-mutation", action="store_true")
+    parser.add_argument(
+        "--adopt-existing-position-to-active-sleeve",
+        action="store_true",
+    )
     parser.add_argument("--format", choices=("text", "json"), default="text")
     return parser
 
@@ -843,10 +977,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_root=args.output_root,
                 bars_csv=args.bars_csv,
                 order_journal_path=args.order_journal_path,
+                strategy_sleeve_ledger_path=args.strategy_sleeve_ledger_path,
                 paper_credential_reference=args.paper_credential_reference,
                 max_notional=args.max_notional,
+                max_portfolio_notional=args.max_portfolio_notional,
+                max_sleeve_orders_per_session=(
+                    args.max_sleeve_orders_per_session
+                ),
                 allow_paper_mutation=args.allow_paper_mutation,
                 active_strategy_id=args.active_strategy_id,
+                adopt_existing_position_to_active_sleeve=(
+                    args.adopt_existing_position_to_active_sleeve
+                ),
             ),
             credential_provider=provider,
         )
@@ -874,6 +1016,8 @@ __all__ = [
     "SECURE_SPY_PAPER_CYCLE_SCHEMA_VERSION",
     "SECURE_SPY_PAPER_EXECUTION_WINDOW_MINUTES",
     "SECURE_SPY_PAPER_MAX_NOTIONAL",
+    "SECURE_SPY_PAPER_MAX_PORTFOLIO_NOTIONAL",
+    "SECURE_SPY_PAPER_MAX_SLEEVE_ORDERS_PER_SESSION",
     "SecureSpyPaperCycleConfig",
     "SecureSpyPaperCycleError",
     "main",

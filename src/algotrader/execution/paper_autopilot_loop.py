@@ -47,6 +47,9 @@ from algotrader.execution.paper_runtime_planning import (
     PaperRuntimePlanningInput,
     build_canonical_paper_runtime_plan,
 )
+from algotrader.execution.strategy_sleeve_ledger import (
+    SqliteStrategySleeveLedger,
+)
 from algotrader.execution.stable_file_snapshot import (
     StableFileSnapshot,
     capture_stable_file,
@@ -92,6 +95,8 @@ PAPER_AUTOPILOT_DEFAULT_BARS_CSV = (
     "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv"
 )
 PAPER_AUTOPILOT_MAX_NOTIONAL = Decimal("25.00")
+PAPER_AUTOPILOT_MAX_PORTFOLIO_NOTIONAL = Decimal("60.00")
+PAPER_AUTOPILOT_MAX_SLEEVE_ORDERS_PER_SESSION = 2
 PAPER_AUTOPILOT_SPY_BUY_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-buy-"
 PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-close-"
 PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION = (
@@ -167,10 +172,16 @@ class PaperAutopilotLoopConfig:
     no_submit: bool = False
     readiness_packet_path: Path | str | None = None
     order_journal_path: Path | str | None = None
+    strategy_sleeve_ledger_path: Path | str | None = None
     operator_paused: bool = False
     operator_pause_reason: str = "operator_pause_flag"
     runtime_lease_seconds: int = 900
     active_strategy_id: str | None = None
+    max_portfolio_notional: Decimal | str | None = None
+    max_sleeve_orders_per_session: int = (
+        PAPER_AUTOPILOT_MAX_SLEEVE_ORDERS_PER_SESSION
+    )
+    adopt_existing_position_to_active_sleeve: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _path(self.output_root, "output_root"))
@@ -196,6 +207,35 @@ class PaperAutopilotLoopConfig:
             "max_notional",
             _positive_decimal(self.max_notional, "max_notional"),
         )
+        max_portfolio_notional = (
+            self.max_notional
+            if self.max_portfolio_notional is None
+            else _positive_decimal(
+                self.max_portfolio_notional,
+                "max_portfolio_notional",
+            )
+        )
+        if max_portfolio_notional < self.max_notional:
+            raise ValidationError(
+                "max_portfolio_notional cannot be less than max_notional."
+            )
+        object.__setattr__(
+            self,
+            "max_portfolio_notional",
+            max_portfolio_notional,
+        )
+        object.__setattr__(
+            self,
+            "max_sleeve_orders_per_session",
+            _positive_int(
+                self.max_sleeve_orders_per_session,
+                "max_sleeve_orders_per_session",
+            ),
+        )
+        if type(self.adopt_existing_position_to_active_sleeve) is not bool:
+            raise ValidationError(
+                "adopt_existing_position_to_active_sleeve must be a boolean."
+            )
         if self.policy != PAPER_AUTOPILOT_POLICY:
             raise ValidationError("paper autopilot policy is not authorized.")
         if type(self.no_submit) is not bool:
@@ -231,6 +271,28 @@ class PaperAutopilotLoopConfig:
                 "order_journal_path",
                 _path(self.order_journal_path, "order_journal_path"),
             )
+        if self.strategy_sleeve_ledger_path is not None:
+            object.__setattr__(
+                self,
+                "strategy_sleeve_ledger_path",
+                _path(
+                    self.strategy_sleeve_ledger_path,
+                    "strategy_sleeve_ledger_path",
+                ),
+            )
+            if self.active_strategy_id is None:
+                raise ValidationError(
+                    "active_strategy_id is required when strategy sleeves are enabled."
+                )
+        if self.adopt_existing_position_to_active_sleeve:
+            if self.strategy_sleeve_ledger_path is None:
+                raise ValidationError(
+                    "strategy sleeve adoption requires a sleeve ledger path."
+                )
+            if not self.no_submit:
+                raise ValidationError(
+                    "strategy sleeve adoption is restricted to no-submit mode."
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,9 +323,14 @@ class PaperAutopilotExecutionPlan:
 
     execution_plan_id: str
     symbol: str
+    strategy_id: str
+    strategy_sleeve_generation: int
+    strategy_sleeve_quantity: Decimal
+    strategy_sleeve_total_quantity: Decimal
     action: str
     side: str
     notional_cap: Decimal
+    max_portfolio_notional: Decimal
     notional: Decimal | None
     quantity: Decimal | None
     client_order_id: str
@@ -286,9 +353,16 @@ class PaperAutopilotExecutionPlan:
             "execution_plan_id": self.execution_plan_id,
             "immutable": True,
             "symbol": self.symbol,
+            "strategy_id": self.strategy_id,
+            "strategy_sleeve_generation": self.strategy_sleeve_generation,
+            "strategy_sleeve_quantity": str(self.strategy_sleeve_quantity),
+            "strategy_sleeve_total_quantity": str(
+                self.strategy_sleeve_total_quantity
+            ),
             "action": self.action,
             "side": self.side,
             "notional_cap": str(self.notional_cap),
+            "max_portfolio_notional": str(self.max_portfolio_notional),
             "notional": _decimal_text(self.notional),
             "quantity": _decimal_text(self.quantity),
             "client_order_id": self.client_order_id,
@@ -460,6 +534,12 @@ def run_paper_autopilot_loop(
             secret_values=secret_values,
             broker_client_factory=broker_client_factory,
         )
+    strategy_sleeve_state = _strategy_sleeve_state(
+        config=resolved,
+        route_receipt=route_receipt,
+        broker_state=broker_state,
+        occurred_at=journal_timestamp,
+    )
     safety_labels = _dedupe(
         (*_safety_labels(broker_state["broker_state_observed"] is True), STRATEGY_ROUTER_LABEL)
     )
@@ -468,12 +548,19 @@ def run_paper_autopilot_loop(
         adapter_resolution=adapter_resolution,
         broker_state=broker_state,
         max_notional=resolved.max_notional,
+        strategy_sleeve_state=strategy_sleeve_state,
     )
     client_order_id = paper_autopilot_client_order_id(
         action=intent.action,
         symbol=resolved.symbol,
         as_of_date=as_of_date,
         data_sha256=data_sha256,
+        strategy_id=(
+            ""
+            if strategy_sleeve_state.get("enabled") is not True
+            or route_receipt.selected_signal is None
+            else route_receipt.selected_signal.strategy_id
+        ),
     )
     canonical_runtime_plan = build_canonical_paper_runtime_plan(
         _paper_runtime_planning_input(
@@ -485,6 +572,7 @@ def run_paper_autopilot_loop(
                 default=None,
             ),
             max_notional=resolved.max_notional,
+            max_portfolio_notional=resolved.max_portfolio_notional,
             client_order_id=client_order_id,
             daily_cycle=daily_cycle,
             operator_paused=runtime_control.get("operator_paused") is True,
@@ -504,6 +592,7 @@ def run_paper_autopilot_loop(
         safety_labels=safety_labels,
         canonical_runtime_plan=canonical_runtime_plan,
         paper_mutation_readiness=paper_mutation_readiness,
+        strategy_sleeve_state=strategy_sleeve_state,
         broker_observation_required=(
             route_blocker == "" and runtime_control_blocker == ""
         ),
@@ -513,6 +602,16 @@ def run_paper_autopilot_loop(
         plan=plan,
         broker_state=broker_state,
         run_id=run_id,
+        occurred_at=journal_timestamp,
+    )
+    (
+        plan,
+        strategy_sleeve_ledger,
+        strategy_sleeve_intent_status,
+    ) = _prepare_strategy_sleeve_intent(
+        config=resolved,
+        plan=plan,
+        strategy_sleeve_state=strategy_sleeve_state,
         occurred_at=journal_timestamp,
     )
     broker = broker_state.pop("_broker", None)
@@ -535,7 +634,19 @@ def run_paper_autopilot_loop(
         order_journal=order_journal,
         occurred_at=journal_timestamp,
     )
-    blocker_status = _final_blocker_status(plan, action_result, reconciliation)
+    strategy_sleeve_reconciliation = _reconcile_strategy_sleeve_after_action(
+        plan=plan,
+        action_result=action_result,
+        reconciliation=reconciliation,
+        ledger=strategy_sleeve_ledger,
+        occurred_at=journal_timestamp,
+    )
+    blocker_status = _final_blocker_status(
+        plan,
+        action_result,
+        reconciliation,
+        strategy_sleeve_reconciliation=strategy_sleeve_reconciliation,
+    )
     record = _build_record(
         config=resolved,
         run_id=run_id,
@@ -559,6 +670,9 @@ def run_paper_autopilot_loop(
         order_journal_status=order_journal_status,
         runtime_control=runtime_control,
         runtime_lease=runtime_lease,
+        strategy_sleeve_state=strategy_sleeve_state,
+        strategy_sleeve_intent_status=strategy_sleeve_intent_status,
+        strategy_sleeve_reconciliation=strategy_sleeve_reconciliation,
         blocker_status=blocker_status,
         safety_labels=safety_labels,
         output_root=output_root,
@@ -580,6 +694,8 @@ def paper_autopilot_loop_exit_status(record: Mapping[str, Any]) -> int:
     if record.get("blocker_status") in {
         "blocked/live_safety",
         "blocked/reconciliation_required",
+        "blocked/strategy_sleeve_reconciliation_required",
+        "blocked/strategy_sleeve_broker_quantity_mismatch",
     }:
         return 2
     return 0
@@ -591,6 +707,7 @@ def paper_autopilot_client_order_id(
     symbol: str,
     as_of_date: str,
     data_sha256: str,
+    strategy_id: str = "",
 ) -> str:
     date_part = as_of_date.replace("-", "")
     digest = data_sha256[:12]
@@ -601,7 +718,12 @@ def paper_autopilot_client_order_id(
         prefix = PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX
     else:
         prefix = f"pa-v207-{symbol.lower()}-noop-"
-    return f"{prefix}{date_part}-{digest}"
+    strategy_tag = {
+        SMA_TRAINING_WHEEL_STRATEGY_ID: "sma",
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID: "rsi",
+    }.get(str(strategy_id).strip(), "")
+    tagged_prefix = prefix if not strategy_tag else f"{prefix}{strategy_tag}-"
+    return f"{tagged_prefix}{date_part}-{digest}"
 
 
 def _run_daily_cycle(
@@ -942,6 +1064,7 @@ def _build_intent(
     adapter_resolution: StrategyAdapterResolution,
     broker_state: Mapping[str, Any],
     max_notional: Decimal,
+    strategy_sleeve_state: Mapping[str, Any],
 ) -> PaperAutopilotExecutionIntent:
     route_blocker = _paper_autopilot_route_blocker(
         route_receipt,
@@ -971,8 +1094,20 @@ def _build_intent(
             action="blocked",
             reason="open_order_present",
         )
+    sleeve_enabled = strategy_sleeve_state.get("enabled") is True
+    sleeve_blocker = _text(strategy_sleeve_state.get("blocker"))
+    if sleeve_enabled and sleeve_blocker:
+        return PaperAutopilotExecutionIntent(
+            symbol=_SYMBOL,
+            action="blocked",
+            reason=sleeve_blocker,
+        )
 
-    spy_quantity = _optional_decimal(broker_state.get("spy_position_quantity"))
+    spy_quantity = _optional_decimal(
+        strategy_sleeve_state.get("active_quantity")
+        if sleeve_enabled
+        else broker_state.get("spy_position_quantity")
+    )
     has_position = spy_quantity is not None and spy_quantity > Decimal("0")
     selected_signal = route_receipt.selected_signal
     selected_action = (
@@ -980,6 +1115,21 @@ def _build_intent(
         if selected_signal is None
         else selected_signal.intended_action
     )
+    if (
+        sleeve_enabled
+        and strategy_sleeve_state.get("session_order_cap_reached") is True
+        and (
+            selected_action == "buy"
+            and not has_position
+            or selected_action == "sell_close"
+            and has_position
+        )
+    ):
+        return PaperAutopilotExecutionIntent(
+            symbol=_SYMBOL,
+            action="blocked",
+            reason="strategy_sleeve_session_order_cap_reached",
+        )
     if selected_action in {"hold", "no_action", "no_action_required"}:
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
@@ -1021,6 +1171,7 @@ def _paper_runtime_planning_input(
     broker_state: Mapping[str, Any],
     latest_bar: Bar | None,
     max_notional: Decimal,
+    max_portfolio_notional: Decimal,
     client_order_id: str,
     daily_cycle: Mapping[str, Any],
     operator_paused: bool,
@@ -1092,6 +1243,7 @@ def _paper_runtime_planning_input(
         trading_enabled=not trading_disabled_reason,
         trading_disabled_reason=trading_disabled_reason,
         max_notional=max_notional,
+        max_portfolio_notional=max_portfolio_notional,
         client_order_id=client_order_id,
         quantity=intent.quantity,
         currency=_text(account.get("currency")) or "USD",
@@ -1131,6 +1283,7 @@ def _build_plan(
     safety_labels: Sequence[str],
     canonical_runtime_plan: CanonicalPaperRuntimePlan,
     paper_mutation_readiness: Mapping[str, Any],
+    strategy_sleeve_state: Mapping[str, Any],
     broker_observation_required: bool = True,
 ) -> PaperAutopilotExecutionPlan:
     blockers = list(
@@ -1162,6 +1315,7 @@ def _build_plan(
         preflight=preflight,
         daily_cycle=daily_cycle,
         paper_mutation_readiness=paper_mutation_readiness,
+        strategy_sleeve_state=strategy_sleeve_state,
     )
     blockers.extend(_string_list(readiness_gate.get("blockers")))
     submit_allowed = bool(
@@ -1185,9 +1339,20 @@ def _build_plan(
         submit_allowed = False
     seed = {
         "symbol": config.symbol,
+        "strategy_id": _text(strategy_sleeve_state.get("active_strategy_id")),
+        "strategy_sleeve_generation": _int_value(
+            strategy_sleeve_state.get("generation")
+        ),
+        "strategy_sleeve_quantity": _text(
+            strategy_sleeve_state.get("active_quantity")
+        ),
+        "strategy_sleeve_total_quantity": _text(
+            strategy_sleeve_state.get("total_quantity")
+        ),
         "action": intent.action,
         "side": intent.side,
         "notional_cap": str(config.max_notional),
+        "max_portfolio_notional": str(config.max_portfolio_notional),
         "notional": _decimal_text(intent.notional),
         "quantity": _decimal_text(intent.quantity),
         "client_order_id": client_order_id,
@@ -1212,9 +1377,22 @@ def _build_plan(
     return PaperAutopilotExecutionPlan(
         execution_plan_id=plan_id,
         symbol=config.symbol,
+        strategy_id=_text(strategy_sleeve_state.get("active_strategy_id")),
+        strategy_sleeve_generation=_int_value(
+            strategy_sleeve_state.get("generation")
+        ),
+        strategy_sleeve_quantity=(
+            _optional_decimal(strategy_sleeve_state.get("active_quantity"))
+            or Decimal("0")
+        ),
+        strategy_sleeve_total_quantity=(
+            _optional_decimal(strategy_sleeve_state.get("total_quantity"))
+            or Decimal("0")
+        ),
         action=intent.action,
         side=intent.side,
         notional_cap=config.max_notional,
+        max_portfolio_notional=config.max_portfolio_notional,
         notional=intent.notional,
         quantity=intent.quantity,
         client_order_id=client_order_id,
@@ -1360,6 +1538,7 @@ def _paper_mutation_readiness_gate(
     preflight: Mapping[str, Any],
     daily_cycle: Mapping[str, Any],
     paper_mutation_readiness: Mapping[str, Any],
+    strategy_sleeve_state: Mapping[str, Any],
 ) -> dict[str, object]:
     required = bool(mutation_action and not config.no_submit)
     packet = _mapping(paper_mutation_readiness.get("packet"))
@@ -1396,6 +1575,16 @@ def _paper_mutation_readiness_gate(
         "current_latest_bar_date": latest_bar_date,
         "current_data_freshness_status": _text(
             daily_cycle.get("daily_cycle_data_freshness_status")
+        ),
+        "strategy_sleeve_enabled": strategy_sleeve_state.get("enabled") is True,
+        "current_strategy_sleeve_generation": _int_value(
+            strategy_sleeve_state.get("generation")
+        ),
+        "current_strategy_sleeve_quantity": _text(
+            strategy_sleeve_state.get("active_quantity")
+        ),
+        "current_strategy_sleeve_total_quantity": _text(
+            strategy_sleeve_state.get("total_quantity")
         ),
         "blockers": [],
         "checks": {},
@@ -1593,6 +1782,53 @@ def _paper_mutation_readiness_gate(
         "paper_mutation_readiness_notional_cap_exceeded",
         current_notional_text,
     )
+    if strategy_sleeve_state.get("enabled") is True:
+        add_check(
+            "strategy_sleeve_broker_quantity_matches",
+            strategy_sleeve_state.get("broker_quantity_match") is True,
+            "paper_mutation_readiness_sleeve_broker_quantity_mismatch",
+            _text(strategy_sleeve_state.get("blocker")) or "matched",
+        )
+        add_check(
+            "strategy_sleeve_has_no_pending_intent",
+            _int_value(strategy_sleeve_state.get("pending_intent_count")) == 0,
+            "paper_mutation_readiness_sleeve_pending_intent",
+            _text(strategy_sleeve_state.get("pending_intent_count")),
+        )
+        add_check(
+            "packet_strategy_sleeve_matches_current",
+            packet.get("strategy_sleeve_enabled") is True
+            and _text(packet.get("strategy_sleeve_strategy_id"))
+            == _text(strategy_sleeve_state.get("active_strategy_id"))
+            and _int_value(packet.get("strategy_sleeve_generation"))
+            == _int_value(strategy_sleeve_state.get("generation"))
+            and _text(packet.get("strategy_sleeve_quantity"))
+            == _text(strategy_sleeve_state.get("active_quantity"))
+            and _text(packet.get("strategy_sleeve_total_quantity"))
+            == _text(strategy_sleeve_state.get("total_quantity"))
+            and packet.get("strategy_sleeve_broker_quantity_match") is True
+            and _int_value(
+                packet.get("strategy_sleeve_pending_intent_count")
+            )
+            == 0,
+            "paper_mutation_readiness_sleeve_state_mismatch",
+            (
+                "generation="
+                f"{_text(packet.get('strategy_sleeve_generation'))}"
+            ),
+        )
+        add_check(
+            "packet_strategy_sleeve_caps_match_current",
+            _text(packet.get("max_portfolio_notional"))
+            == str(config.max_portfolio_notional)
+            and _int_value(packet.get("max_sleeve_orders_per_session"))
+            == config.max_sleeve_orders_per_session,
+            "paper_mutation_readiness_sleeve_cap_mismatch",
+            (
+                "max_portfolio_notional="
+                f"{_text(packet.get('max_portfolio_notional'))}"
+            ),
+        )
 
     gate["blockers"] = list(_dedupe(blockers))
     gate["checks"] = checks
@@ -1614,6 +1850,235 @@ def _readiness_status_authorizes_paper_mutation(packet: Mapping[str, Any]) -> bo
             "paper_mutation_would_be_required_no_submit_mode",
         }
     return False
+
+
+def _strategy_sleeve_state(
+    *,
+    config: PaperAutopilotLoopConfig,
+    route_receipt: StrategyRouteReceipt,
+    broker_state: Mapping[str, Any],
+    occurred_at: datetime,
+) -> dict[str, Any]:
+    active_strategy_id = (
+        config.active_strategy_id
+        or (
+            ""
+            if route_receipt.selected_signal is None
+            else route_receipt.selected_signal.strategy_id
+        )
+    )
+    disabled: dict[str, Any] = {
+        "enabled": False,
+        "path": "",
+        "available": True,
+        "active_strategy_id": active_strategy_id,
+        "generation": 0,
+        "active_quantity": "0",
+        "total_quantity": "0",
+        "pending_intent_count": 0,
+        "session_intent_count": 0,
+        "session_order_cap_reached": False,
+        "broker_quantity": _text(broker_state.get("spy_position_quantity")),
+        "broker_quantity_match": True,
+        "adopted_existing_position": False,
+        "startup_reconciled_intent_count": 0,
+        "blocker": "",
+        "error": "",
+    }
+    if config.strategy_sleeve_ledger_path is None:
+        return disabled
+
+    state = {
+        **disabled,
+        "enabled": True,
+        "path": str(config.strategy_sleeve_ledger_path),
+        "available": False,
+        "broker_quantity_match": False,
+    }
+    ledger = SqliteStrategySleeveLedger(config.strategy_sleeve_ledger_path)
+    try:
+        ledger.initialize()
+        startup_reconciled = _reconcile_pending_strategy_sleeve_intents(
+            ledger=ledger,
+            config=config,
+            broker_state=broker_state,
+            occurred_at=occurred_at,
+        )
+        snapshot = ledger.snapshot(active_strategy_id)
+        broker_quantity = (
+            _optional_decimal(broker_state.get("spy_position_quantity"))
+            or Decimal("0")
+        )
+        adopted = False
+        if (
+            config.adopt_existing_position_to_active_sleeve
+            and broker_state.get("broker_state_observed") is True
+            and broker_state.get("open_spy_order_present") is not True
+            and not broker_state.get("unexpected_non_spy_positions")
+            and broker_quantity > 0
+            and snapshot.generation == 0
+            and snapshot.total_quantity == 0
+            and snapshot.pending_intent_count == 0
+        ):
+            snapshot = ledger.adopt_existing_position(
+                strategy_id=active_strategy_id,
+                broker_quantity=broker_quantity,
+                occurred_at=occurred_at,
+            )
+            adopted = True
+        quantity_match = (
+            broker_state.get("broker_state_observed") is True
+            and snapshot.total_quantity == broker_quantity
+        )
+        blocker = ""
+        if broker_state.get("broker_state_observed") is not True:
+            blocker = "strategy_sleeve_broker_state_not_observed"
+        elif snapshot.pending_intent_count:
+            blocker = "strategy_sleeve_intent_pending"
+        elif not quantity_match:
+            blocker = "strategy_sleeve_broker_quantity_mismatch"
+        session_intent_count = ledger.session_intent_count(occurred_at)
+        state.update(
+            {
+                "available": True,
+                "generation": snapshot.generation,
+                "active_quantity": str(snapshot.active_quantity),
+                "total_quantity": str(snapshot.total_quantity),
+                "pending_intent_count": snapshot.pending_intent_count,
+                "session_intent_count": session_intent_count,
+                "session_order_cap_reached": (
+                    session_intent_count
+                    >= config.max_sleeve_orders_per_session
+                ),
+                "broker_quantity": str(broker_quantity),
+                "broker_quantity_match": quantity_match,
+                "adopted_existing_position": adopted,
+                "startup_reconciled_intent_count": startup_reconciled,
+                "blocker": blocker,
+            }
+        )
+    except Exception as exc:
+        state.update(
+            {
+                "error": exc.__class__.__name__,
+                "blocker": "strategy_sleeve_ledger_unavailable",
+            }
+        )
+    return state
+
+
+def _reconcile_pending_strategy_sleeve_intents(
+    *,
+    ledger: SqliteStrategySleeveLedger,
+    config: PaperAutopilotLoopConfig,
+    broker_state: Mapping[str, Any],
+    occurred_at: datetime,
+) -> int:
+    pending = ledger.pending_intents()
+    if not pending:
+        return 0
+    recent_orders = _mapping_items(broker_state.get("recent_orders"))
+    order_journal = SqliteOrderJournal(_order_journal_path(config))
+    order_journal.initialize()
+    reconciled = 0
+    for sleeve_intent in pending:
+        durable = order_journal.get(sleeve_intent.client_order_id)
+        terminal_status = ""
+        filled_quantity: Decimal | str | None = None
+        if durable is not None and durable.terminal:
+            terminal_status = durable.broker_status or durable.state.value
+            filled_quantity = durable.filled_quantity
+        else:
+            matches = [
+                order
+                for order in recent_orders
+                if _text(order.get("client_order_id"))
+                == sleeve_intent.client_order_id
+            ]
+            if len(matches) > 1:
+                raise ValidationError(
+                    "strategy sleeve recovery found multiple matching orders."
+                )
+            if len(matches) == 1:
+                candidate_status = _normalized_status(matches[0].get("status"))
+                if candidate_status in _TERMINAL_ORDER_STATUSES:
+                    terminal_status = candidate_status
+                    filled_quantity = matches[0].get("filled_quantity")
+        if terminal_status:
+            parsed_filled_quantity = _optional_decimal(filled_quantity)
+            if terminal_status == "filled" and (
+                parsed_filled_quantity is None
+                or parsed_filled_quantity <= 0
+            ):
+                raise ValidationError(
+                    "strategy sleeve recovery requires a positive filled quantity."
+                )
+            ledger.reconcile_intent(
+                sleeve_intent.client_order_id,
+                terminal_status=terminal_status,
+                filled_quantity=parsed_filled_quantity,
+                occurred_at=occurred_at,
+            )
+            reconciled += 1
+    return reconciled
+
+
+def _prepare_strategy_sleeve_intent(
+    *,
+    config: PaperAutopilotLoopConfig,
+    plan: PaperAutopilotExecutionPlan,
+    strategy_sleeve_state: Mapping[str, Any],
+    occurred_at: datetime,
+) -> tuple[
+    PaperAutopilotExecutionPlan,
+    SqliteStrategySleeveLedger | None,
+    dict[str, Any],
+]:
+    status: dict[str, Any] = {
+        "enabled": strategy_sleeve_state.get("enabled") is True,
+        "reservation_status": "not_required",
+        "reservation_acquired": False,
+        "error": "",
+    }
+    if strategy_sleeve_state.get("enabled") is not True:
+        return plan, None, status
+    ledger = SqliteStrategySleeveLedger(config.strategy_sleeve_ledger_path)
+    if not plan.submit_allowed or plan.action not in {"buy", "sell_close"}:
+        return plan, ledger, status
+    try:
+        intent = ledger.reserve_intent(
+            client_order_id=plan.client_order_id,
+            strategy_id=plan.strategy_id,
+            side=plan.side,
+            requested_quantity=plan.quantity,
+            requested_notional=plan.notional,
+            expected_quantity_before=plan.strategy_sleeve_quantity,
+            occurred_at=occurred_at,
+            max_orders_per_session=config.max_sleeve_orders_per_session,
+        )
+    except Exception as exc:
+        status.update(
+            {
+                "reservation_status": "blocked",
+                "error": exc.__class__.__name__,
+            }
+        )
+        blocked = replace(
+            plan,
+            paper_submit_authorized=False,
+            submit_allowed=False,
+            blockers=tuple(
+                _dedupe((*plan.blockers, "strategy_sleeve_intent_unavailable"))
+            ),
+        )
+        return blocked, ledger, status
+    status.update(
+        {
+            "reservation_status": "reserved",
+            "reservation_acquired": intent.pending,
+        }
+    )
+    return plan, ledger, status
 
 
 def _prepare_order_journal(
@@ -2122,6 +2587,98 @@ def _post_submit_reconciliation_status(
     return "reconciled_nonterminal_order_observed"
 
 
+def _reconcile_strategy_sleeve_after_action(
+    *,
+    plan: PaperAutopilotExecutionPlan,
+    action_result: Mapping[str, Any],
+    reconciliation: Mapping[str, Any],
+    ledger: SqliteStrategySleeveLedger | None,
+    occurred_at: datetime,
+) -> dict[str, Any]:
+    if ledger is None:
+        return {
+            "reconciliation_status": "not_required_strategy_sleeves_disabled",
+            "reconciliation_required": False,
+            "intent_present": False,
+        }
+    try:
+        sleeve_intent = ledger.get_intent(plan.client_order_id)
+    except Exception as exc:
+        return {
+            "reconciliation_status": "strategy_sleeve_ledger_unavailable",
+            "reconciliation_required": True,
+            "intent_present": False,
+            "error": exc.__class__.__name__,
+        }
+    if sleeve_intent is None:
+        return {
+            "reconciliation_status": "not_required_no_sleeve_intent",
+            "reconciliation_required": False,
+            "intent_present": False,
+        }
+    if not sleeve_intent.pending:
+        snapshot = ledger.snapshot(plan.strategy_id)
+        return {
+            "reconciliation_status": "strategy_sleeve_already_reconciled",
+            "reconciliation_required": False,
+            "intent_present": True,
+            "terminal_status": sleeve_intent.terminal_status,
+            "filled_quantity": str(sleeve_intent.filled_quantity),
+            "generation": snapshot.generation,
+            "active_quantity": str(snapshot.active_quantity),
+            "total_quantity": str(snapshot.total_quantity),
+        }
+    if (
+        action_result.get("broker_mutation_performed") is not True
+        or reconciliation.get("reconciliation_required") is True
+        or reconciliation.get("terminal_order_observed") is not True
+    ):
+        return {
+            "reconciliation_status": "strategy_sleeve_reconciliation_required",
+            "reconciliation_required": True,
+            "intent_present": True,
+        }
+    terminal_status = _normalized_status(
+        reconciliation.get("terminal_order_status")
+    )
+    filled_quantity = _optional_decimal(
+        reconciliation.get("observed_filled_quantity")
+    )
+    if terminal_status == "filled" and (
+        filled_quantity is None or filled_quantity <= 0
+    ):
+        return {
+            "reconciliation_status": "strategy_sleeve_fill_quantity_missing",
+            "reconciliation_required": True,
+            "intent_present": True,
+        }
+    try:
+        reconciled = ledger.reconcile_intent(
+            plan.client_order_id,
+            terminal_status=terminal_status,
+            filled_quantity=filled_quantity,
+            occurred_at=occurred_at,
+        )
+        snapshot = ledger.snapshot(plan.strategy_id)
+    except Exception as exc:
+        return {
+            "reconciliation_status": "strategy_sleeve_reconciliation_failed",
+            "reconciliation_required": True,
+            "intent_present": True,
+            "error": exc.__class__.__name__,
+        }
+    return {
+        "reconciliation_status": "strategy_sleeve_reconciled_terminal",
+        "reconciliation_required": False,
+        "intent_present": True,
+        "terminal_status": reconciled.terminal_status,
+        "filled_quantity": str(reconciled.filled_quantity),
+        "generation": snapshot.generation,
+        "active_quantity": str(snapshot.active_quantity),
+        "total_quantity": str(snapshot.total_quantity),
+    }
+
+
 def _build_record(
     *,
     config: PaperAutopilotLoopConfig,
@@ -2146,6 +2703,9 @@ def _build_record(
     order_journal_status: Mapping[str, Any],
     runtime_control: Mapping[str, Any],
     runtime_lease: Mapping[str, Any],
+    strategy_sleeve_state: Mapping[str, Any],
+    strategy_sleeve_intent_status: Mapping[str, Any],
+    strategy_sleeve_reconciliation: Mapping[str, Any],
     blocker_status: str,
     safety_labels: Sequence[str],
     output_root: Path,
@@ -2235,6 +2795,40 @@ def _build_record(
         "operating_mode": operating_mode,
         "symbol": config.symbol,
         "active_strategy_id": config.active_strategy_id or "",
+        "strategy_sleeve_enabled": (
+            strategy_sleeve_state.get("enabled") is True
+        ),
+        "strategy_sleeve": dict(strategy_sleeve_state),
+        "strategy_sleeve_strategy_id": _text(
+            strategy_sleeve_state.get("active_strategy_id")
+        ),
+        "strategy_sleeve_generation": _int_value(
+            strategy_sleeve_state.get("generation")
+        ),
+        "strategy_sleeve_quantity": _text(
+            strategy_sleeve_state.get("active_quantity")
+        ),
+        "strategy_sleeve_total_quantity": _text(
+            strategy_sleeve_state.get("total_quantity")
+        ),
+        "strategy_sleeve_broker_quantity_match": (
+            strategy_sleeve_state.get("broker_quantity_match") is True
+        ),
+        "strategy_sleeve_pending_intent_count": _int_value(
+            strategy_sleeve_state.get("pending_intent_count")
+        ),
+        "strategy_sleeve_intent": dict(strategy_sleeve_intent_status),
+        "strategy_sleeve_reconciliation": dict(
+            strategy_sleeve_reconciliation
+        ),
+        "strategy_sleeve_reconciliation_status": _text(
+            strategy_sleeve_reconciliation.get("reconciliation_status")
+        ),
+        "max_order_notional": str(config.max_notional),
+        "max_portfolio_notional": str(config.max_portfolio_notional),
+        "max_sleeve_orders_per_session": (
+            config.max_sleeve_orders_per_session
+        ),
         "as_of_date": as_of_date,
         "data_latest_bar": _first_nonempty_text(
             daily_cycle.get("daily_cycle_latest_bar_date"),
@@ -2800,7 +3394,11 @@ def _final_blocker_status(
     plan: PaperAutopilotExecutionPlan,
     action_result: Mapping[str, Any],
     reconciliation: Mapping[str, Any],
+    *,
+    strategy_sleeve_reconciliation: Mapping[str, Any],
 ) -> str:
+    if strategy_sleeve_reconciliation.get("reconciliation_required") is True:
+        return "blocked/strategy_sleeve_reconciliation_required"
     if reconciliation.get("reconciliation_required") is True:
         return "blocked/reconciliation_required"
     if plan.blockers:

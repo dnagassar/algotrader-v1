@@ -2,12 +2,12 @@
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>Operator</Author>
-    <Description>Weekday SMA sleeve SPY paper cycle; one order maximum, $25 entry cap, and $60 aggregate portfolio cap.</Description>
-    <URI>\algo-trader-secure-spy-paper-cycle</URI>
+    <Description>Weekday RSI sleeve SPY paper cycle; one order maximum, $25 entry cap, and $60 aggregate portfolio cap.</Description>
+    <URI>\algo-trader-secure-spy-rsi-paper-cycle</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-07-29T09:31:00</StartBoundary>
+      <StartBoundary>2026-07-29T09:38:00</StartBoundary>
       <Enabled>true</Enabled>
       <Repetition>
         <Interval>PT15M</Interval>
@@ -52,7 +52,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_secure_spy_paper_cycle.ps1" -AllowPaperMutation -MaxNotional "25.00" -MaxPortfolioNotional "60.00" -MaxSleeveOrdersPerSession 2 -ActiveStrategyId "spy_sma_50_200_training_wheel" -Format text</Arguments>
+      <Arguments>-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_secure_spy_paper_cycle.ps1" -AllowPaperMutation -MaxNotional "25.00" -MaxPortfolioNotional "60.00" -MaxSleeveOrdersPerSession 2 -ActiveStrategyId "spy_rsi_14_mean_reversion_paper" -Format text</Arguments>
       <WorkingDirectory>%REPO_ROOT%</WorkingDirectory>
     </Exec>
   </Actions>

@@ -19,6 +19,9 @@ from algotrader.orchestration.strategy_adapter_registry import (
     SPY_RSI_MEAN_REVERSION_PAPER_MUTATION_ADAPTER_ID,
     StrategyAdapterRegistration,
 )
+from algotrader.execution.strategy_sleeve_ledger import (
+    SqliteStrategySleeveLedger,
+)
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
@@ -1534,6 +1537,235 @@ def test_paper_autopilot_stop_requested_blocks_submit(
     assert broker.submitted_requests == []
 
 
+def test_strategy_sleeve_terminal_buy_fill_is_attributed_to_active_strategy(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    sleeve_path = tmp_path / "strategy_sleeves.sqlite3"
+    journal_path = tmp_path / "order_journal.sqlite3"
+    broker = FakeAutopilotBroker(
+        submit_status="filled",
+        submit_filled_quantity=Decimal("0.04"),
+    )
+
+    preview = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        active_strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        no_submit=True,
+        order_journal_path=journal_path,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+    execution = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=_preview_readiness_packet(preview),
+        active_strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        order_journal_path=journal_path,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+    snapshot = SqliteStrategySleeveLedger(sleeve_path).snapshot(
+        SMA_TRAINING_WHEEL_STRATEGY_ID
+    )
+
+    assert preview["blocker_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
+    assert execution["paper_submit_performed"] is True
+    assert execution["reconciliation"]["terminal_order_status"] == "filled"
+    assert execution["strategy_sleeve_reconciliation_status"] == (
+        "strategy_sleeve_reconciled_terminal"
+    )
+    assert execution["blocker_status"] == "action/submitted"
+    assert snapshot.active_quantity == Decimal("0.04")
+    assert snapshot.total_quantity == Decimal("0.04")
+    assert snapshot.generation == 1
+
+
+def test_rsi_cannot_close_quantity_owned_by_sma_sleeve(tmp_path: Path) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    sleeve_path = tmp_path / "strategy_sleeves.sqlite3"
+    SqliteStrategySleeveLedger(sleeve_path).adopt_existing_position(
+        strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        broker_quantity="0.04",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+    )
+    broker = FakeAutopilotBroker(
+        positions=(
+            {"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},
+        )
+    )
+
+    record = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+
+    assert record["strategy_route_action"] == "sell_close"
+    assert record["execution_plan_action"] == "hold"
+    assert record["execution_intent"]["reason"] == (
+        "selected_strategy_sell_no_position"
+    )
+    assert record["strategy_sleeve_quantity"] == "0"
+    assert record["strategy_sleeve_total_quantity"] == "0.04"
+    assert record["strategy_sleeve_broker_quantity_match"] is True
+    assert record["blocker_status"] == "none"
+    assert broker.submitted_requests == []
+
+
+def test_rsi_can_add_its_own_sleeve_while_sma_owns_existing_spy(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_off")
+    sleeve_path = tmp_path / "strategy_sleeves.sqlite3"
+    journal_path = tmp_path / "order_journal.sqlite3"
+    ledger = SqliteStrategySleeveLedger(sleeve_path)
+    ledger.adopt_existing_position(
+        strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        broker_quantity="0.04",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+    )
+    broker = FakeAutopilotBroker(
+        positions=(
+            {"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},
+        ),
+        submit_status="filled",
+        submit_filled_quantity=Decimal("0.04"),
+    )
+
+    preview = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        no_submit=True,
+        order_journal_path=journal_path,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+    execution = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=_preview_readiness_packet(preview),
+        active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        order_journal_path=journal_path,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+    rsi_snapshot = ledger.snapshot(
+        SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID
+    )
+
+    assert preview["execution_plan_action"] == "buy"
+    assert execution["paper_submit_performed"] is True
+    assert execution["canonical_risk_allowed"] is True
+    assert execution["max_portfolio_notional"] == "60.00"
+    assert rsi_snapshot.active_quantity == Decimal("0.04")
+    assert rsi_snapshot.total_quantity == Decimal("0.08")
+    assert dict(rsi_snapshot.sleeves)[
+        SMA_TRAINING_WHEEL_STRATEGY_ID
+    ] == Decimal("0.04")
+
+
+def test_strategy_sleeve_broker_quantity_mismatch_blocks_before_submit(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker(
+        positions=(
+            {"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},
+        )
+    )
+
+    record = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        active_strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        strategy_sleeve_ledger_path=tmp_path / "strategy_sleeves.sqlite3",
+    )
+
+    assert record["blocker_status"] == (
+        "blocked/strategy_sleeve_broker_quantity_mismatch"
+    )
+    assert record["strategy_sleeve_broker_quantity_match"] is False
+    assert record["paper_submit_performed"] is False
+    assert broker.submitted_requests == []
+
+
+def test_strategy_sleeve_adoption_is_no_submit_and_audited(tmp_path: Path) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    sleeve_path = tmp_path / "strategy_sleeves.sqlite3"
+    broker = FakeAutopilotBroker(
+        positions=(
+            {"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},
+        )
+    )
+
+    record = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        active_strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        no_submit=True,
+        strategy_sleeve_ledger_path=sleeve_path,
+        adopt_existing_position_to_active_sleeve=True,
+    )
+
+    assert record["strategy_sleeve"]["adopted_existing_position"] is True
+    assert record["strategy_sleeve_generation"] == 1
+    assert record["strategy_sleeve_quantity"] == "0.04"
+    assert record["strategy_sleeve_broker_quantity_match"] is True
+    assert record["execution_plan_action"] == "hold"
+    assert record["paper_submit_performed"] is False
+
+
+def test_readiness_packet_blocks_when_sleeve_generation_changes(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_off")
+    sleeve_path = tmp_path / "strategy_sleeves.sqlite3"
+    journal_path = tmp_path / "order_journal.sqlite3"
+    broker = FakeAutopilotBroker()
+    preview = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        no_submit=True,
+        order_journal_path=journal_path,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+    SqliteStrategySleeveLedger(sleeve_path).adopt_existing_position(
+        strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        broker_quantity="0.04",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+    )
+    broker.positions = (
+        {"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},
+    )
+
+    execution = _run(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=_preview_readiness_packet(preview),
+        active_strategy_id=SPY_RSI_MEAN_REVERSION_PAPER_STRATEGY_ID,
+        order_journal_path=journal_path,
+        strategy_sleeve_ledger_path=sleeve_path,
+    )
+
+    assert execution["blocker_status"] == (
+        "blocked/paper_mutation_readiness_sleeve_state_mismatch"
+    )
+    assert execution["paper_submit_performed"] is False
+    assert broker.submitted_requests == []
+
+
 def test_runs_artifacts_remain_gitignored() -> None:
     assert "runs/" in Path(".gitignore").read_text(encoding="utf-8")
 
@@ -1546,11 +1778,15 @@ class FakeAutopilotBroker:
         open_orders: tuple[dict[str, object], ...] = (),
         recent_orders: tuple[dict[str, object], ...] = (),
         raise_on_submit: bool = False,
+        submit_status: str = "accepted",
+        submit_filled_quantity: Decimal = Decimal("0"),
     ) -> None:
         self.positions = positions
         self.open_orders = list(open_orders)
         self.recent_orders = list(recent_orders)
         self.raise_on_submit = raise_on_submit
+        self.submit_status = submit_status
+        self.submit_filled_quantity = submit_filled_quantity
         self.submitted_requests = []
         self.calls: list[str] = []
 
@@ -1592,12 +1828,12 @@ class FakeAutopilotBroker:
             "client_order_id": request.client_order_id,
             "symbol": request.symbol,
             "side": request.side,
-            "status": "accepted",
+            "status": self.submit_status,
             "type": request.order_type,
             "time_in_force": request.time_in_force,
             "notional": request.notional,
             "qty": request.qty,
-            "filled_qty": Decimal("0"),
+            "filled_qty": self.submit_filled_quantity,
             "submitted_at": GENERATED_AT,
         }
         self.recent_orders.append(order)
@@ -1612,6 +1848,10 @@ def _run(
     readiness_packet_path: Path | None = None,
     daily_lab_runner=None,
     active_strategy_id: str | None = None,
+    no_submit: bool = False,
+    order_journal_path: Path | None = None,
+    strategy_sleeve_ledger_path: Path | None = None,
+    adopt_existing_position_to_active_sleeve: bool = False,
 ) -> dict[str, object]:
     return run_paper_autopilot_loop(
         PaperAutopilotLoopConfig(
@@ -1619,6 +1859,14 @@ def _run(
             bars_csv=bars_csv,
             readiness_packet_path=readiness_packet_path,
             active_strategy_id=active_strategy_id,
+            no_submit=no_submit,
+            order_journal_path=order_journal_path,
+            strategy_sleeve_ledger_path=strategy_sleeve_ledger_path,
+            max_portfolio_notional="60.00",
+            max_sleeve_orders_per_session=2,
+            adopt_existing_position_to_active_sleeve=(
+                adopt_existing_position_to_active_sleeve
+            ),
         ),
         env=_paper_env(),
         broker_client_factory=_factory(broker),
@@ -1709,6 +1957,17 @@ def _write_readiness_packet(
         newline="\n",
     )
     return path
+
+
+def _preview_readiness_packet(record: dict[str, object]) -> Path:
+    history_root = Path(
+        record["artifact_paths"]["operating_history"]
+    ).parent
+    matches = tuple(
+        history_root.glob("paper_mutation_readiness_packet_*.json")
+    )
+    assert len(matches) == 1
+    return matches[0]
 
 
 def _paper_env() -> dict[str, str]:

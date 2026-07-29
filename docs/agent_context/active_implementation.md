@@ -3,139 +3,143 @@
 ## Ownership
 
 - Writer: Codex orchestrator, sole writer for this working tree.
-- Branch: `codex/v5.56-multi-strategy-paper-lane`.
-- Base HEAD: `a1682d96c8f6f7c6c604e89a5dfde14360f8057a`, the committed
-  V5.55 secure unattended SPY paper cycle.
-- Yield target: one coherent V5.56 commit with no dirty-file owner.
+- Branch: `codex/v5.57-strategy-paper-sleeves`.
+- Base HEAD: `49e4fdbe286a87b75b662b66059bd6cc7e86e0e9`, the
+  committed V5.56 selectable RSI paper lane.
+- V5.57 is a coherent local feature commit; no dirty-file owner remains after
+  yield.
 - The separate V5.51 worktree at
   `.claude/worktrees/v551-readonly-market-data-contract` was not modified.
 
 ## Takeover and stale-claim audit
 
-- Takeover inspection found the V5.55 branch clean with empty staged,
+- Takeover inspection found the V5.56 branch clean with empty staged,
   unstaged, and untracked sets.
-- The V5.55 handoff correctly required the first eligible task receipt.
-- The installed task attempted its bounded cycle and failed closed before
-  submission because the daily-lab producer emitted
-  `current_for_daily_bar_lab` while the readiness consumer recognized only the
-  legacy `accepted_data_current` token.
-- This was a contract defect rather than genuinely stale data: the latest bar,
-  as-of date, and producer freshness decision matched.
-- V5.56 repairs that operational boundary and adds executable strategy choice;
-  it does not add another review packet, backtest artifact, or hardening-only
-  milestone.
+- The inherited handoff correctly stated that concurrent SMA and RSI mutation
+  was unsafe against one aggregate SPY position. Its branch and ownership
+  section became stale after V5.57 branched from the clean V5.56 commit.
+- Recent V5.55 and V5.56 work produced real operational capabilities: a
+  secure unattended paper cycle and selectable RSI strategy. V5.57 therefore
+  did not add another review packet, research artifact, or hardening-only
+  milestone. It removes the remaining single-strategy operating constraint.
 
 ## New operational capability
 
-The secure SPY paper lane now supports exactly one explicit active strategy:
+The shared paper account now has durable strategy-owned virtual SPY quantity
+sleeves for:
 
-- `spy_sma_50_200_training_wheel`; or
+- `spy_sma_50_200_training_wheel`; and
 - `spy_rsi_14_mean_reversion_paper`.
 
-Both use the same paper endpoint, one-order-per-cycle bound, `$25.00` entry cap,
-two-pass readiness protocol, immutable execution plan, durable order journal,
-reconciliation, and live prohibition.
+The broker remains authoritative for the physical paper position. Before
+planning, its aggregate SPY quantity must exactly equal the sum of both
+sleeves. The active strategy uses only its owned quantity for buy/hold/close
+decisions, and a close cannot exceed that sleeve. This prevents either
+strategy from closing the other's SPY exposure.
 
-The active strategy ID is validated and bound through the wrapper, secure
-cycle, operator, loop, router, adapter registry, readiness packet, and second
-pass. The RSI strategy uses oversold buy, overbought full-close, and neutral
-hold behavior. An explicit selection may choose one of multiple promoted
-signals; absent an explicit selection, the existing conflict behavior remains
-fail-closed. Concurrent mutation tasks against the same aggregate SPY position
-remain unsupported.
+The SQLite sleeve ledger records generation, ownership, durable mutation
+intent, session-order count, terminal status, and exact filled quantity. A
+terminal fill must have positive filled quantity. Missing, ambiguous,
+nonterminal, conflicting, or cross-sleeve evidence fails closed and leaves
+later mutation blocked until reconciliation.
 
-The readiness gate now requires the packet strategy ID and adapter ID to
-exactly match the current route. It accepts both current freshness tokens only
-when the latest-bar date equals the as-of date and the packet status matches
-the second pass.
+The no-submit readiness packet and second pass bind the strategy ID, sleeve
+generation, active and aggregate quantities, broker-match result, and finite
+caps. Strategy-specific client-order IDs remove SMA/RSI identity collision.
+The canonical risk path supports a second sleeve entry only inside the
+aggregate entry-exposure cap while still allowing an exposure-reducing close
+up to the active sleeve's exact owned quantity.
+
+Effective finite bounds are:
+
+- one broker order per secure cycle;
+- `$25.00` maximum entry-order notional;
+- `$60.00` maximum aggregate marked SPY exposure for a new entry; and
+- two sleeve order intents per UTC session day.
 
 ## Observable paper evidence
 
-- The first scheduled V5.55 attempts performed paper-broker reads but submitted
-  nothing and failed closed on the freshness-token mismatch.
-- After the focused fix passed, one authorized direct SMA retry during the
-  actual NYSE execution window:
-  - used one secure credential lease;
-  - submitted exactly one paper-only SPY entry within the `$25.00` cap;
-  - reached terminal filled reconciliation;
-  - performed no live access or live mutation.
-- A subsequent real paper-broker RSI visibility cycle:
-  - selected `spy_rsi_14_mean_reversion_paper`;
-  - produced a healthy hold/no-action plan;
-  - performed no submit or broker mutation;
-  - kept live authorization false.
-- An exact-value scan covered 97 generated files from those two cycles and
+- One secure paper-only bootstrap opened the account-bound credential lease,
+  observed the matched paper account, and assigned the existing aggregate SPY
+  position to the SMA sleeve locally. The first wrapper receipt failed closed
+  because the loop's true broker-match evidence was omitted from the operator
+  rollup. No broker submit or mutation occurred.
+- The rollup propagation defect was fixed and covered by a regression test.
+- A subsequent real SMA cycle returned `healthy_no_action`, selected SMA,
+  proved exact sleeve/broker equality, and performed no submit or mutation.
+- A subsequent real RSI cycle returned `healthy_no_action`, selected RSI,
+  proved the same exact aggregate equality, and performed no submit or
+  mutation.
+- An exact-value scan covered 454 generated secure-cycle and state files and
   found zero credential or account-value matches.
 
-No credential value, account identifier, order identifier, quantity, price, or
-raw broker payload is recorded in this handoff.
+No credential value, account identifier, order identifier, quantity, price,
+or raw broker payload is recorded in this handoff.
 
 ## Host task commissioning
 
-The exact checked-in task is registered and ready:
+Both exact checked-in least-privilege tasks are installed and `Ready`:
 
-- active strategy:
-  `spy_sma_50_200_training_wheel`;
-- weekdays at 09:31 local with three 15-minute retries;
-- one order maximum and `$25.00` entry cap;
-- limited privilege, network required, `IgnoreNew`;
-- no missed-trigger catch-up and no on-demand start;
-- ten-minute process limit;
-- next run observed: `2026-07-30T09:31:00-04:00`.
+- SMA: weekdays at 09:31 ET with three 15-minute retries; next run observed
+  `2026-07-30T09:31:00-04:00`.
+- RSI: weekdays at 09:38 ET with three 15-minute retries; next run observed
+  `2026-07-30T09:38:00-04:00`.
 
-Windows retains historical result `0x800710E0` from the prior task state. The
-task is not running, its current state is `Ready`, and the next-run action and
-safety settings match the checked-in V5.56 XML.
+Both tasks use `IgnoreNew`, network-required execution, no catch-up, no
+on-demand start, a ten-minute process limit, explicit strategy IDs, the same
+runtime lease/order journal/sleeve ledger, and the finite caps above. The SMA
+task retains its historical prior result; the new RSI task has not yet reached
+its first scheduled trigger.
 
 ## Verification
 
 - Default-test preflights found no paper profile, broker credential alias,
-  Tiingo credential alias, or network-test flag loaded.
-- Focused production-token and secure-cycle tests: 13 passed.
-- Affected strategy/adapter/loop/operator/secure suites: 92 passed.
-- Broader paper history/control/dependency/import surface: 212 passed.
+  network-test flag, or paper-integration flag loaded.
+- Affected implementation and safety suites: 145 passed.
+- Post-proof history/operator/secure regression suite: 44 passed.
 - Repository offline verification: 109 safety guards passed.
-- Exact-node full suite:
-  - 10,132 canonical nodes across 501 files;
+- Final exact-node full suite:
+  - 10,148 canonical nodes across 502 files;
   - collection equivalence passed;
   - execution equivalence passed;
-  - 10,128 passed and 4 skipped;
-  - zero failures and zero errors;
-  - all four shards exited zero without timeout.
+  - 10,144 passed and 4 skipped;
+  - zero failures, zero errors, and zero shard timeouts.
 - `git diff --check` passed before final staging.
 
 ## Files
 
-Execution and routing:
+Execution and durable state:
 
-- `src/algotrader/execution/paper_autopilot_history.py`
+- `src/algotrader/execution/strategy_sleeve_ledger.py`
+- `src/algotrader/execution/paper_runtime_planning.py`
 - `src/algotrader/execution/paper_autopilot_loop.py`
+- `src/algotrader/execution/paper_autopilot_history.py`
 - `src/algotrader/execution/paper_autopilot_operator.py`
 - `src/algotrader/execution/secure_spy_paper_cycle.py`
-- `src/algotrader/orchestration/strategy_adapter_registry.py`
-- `src/algotrader/orchestration/strategy_router.py`
 
 Host operations and documentation:
 
 - `scripts/run_secure_spy_paper_cycle.ps1`
 - `scripts/register_secure_spy_paper_cycle_task.ps1`
 - `docs/design/secure_spy_paper_cycle_task.xml`
+- `docs/design/secure_spy_rsi_paper_cycle_task.xml`
 - `docs/deterministic_core.md`
 - `docs/OPERATOR_RUNBOOK.md`
 - this sole mutable handoff.
 
 Verification:
 
+- `tests/unit/test_strategy_sleeve_ledger.py`
+- `tests/unit/test_paper_runtime_planning.py`
 - `tests/unit/test_paper_autopilot_loop.py`
+- `tests/unit/test_paper_autopilot_history.py`
 - `tests/unit/test_secure_spy_paper_cycle.py`
-- `tests/unit/test_spy_vol_scaled_trend_preview.py`
-- `tests/unit/test_strategy_adapter_registry.py`
-- `tests/unit/test_strategy_router.py`
 
 ## Next action
 
-Observe the next scheduled SMA cycle and require `healthy_no_action`,
-`paper_action_reconciled`, or `revalidated_no_action`. Before running SMA and
-RSI concurrently, add explicit strategy-owned paper sleeves or separate paper
-accounts so one strategy cannot close another strategy's aggregate SPY
-position.
+Observe both first scheduled V5.57 cycles on `2026-07-30`. Require each task
+to end in `healthy_no_action`, `paper_action_reconciled`, or
+`revalidated_no_action`; exact sleeve/broker equality; no pending sleeve
+intent; terminal broker and sleeve reconciliation after any paper submit; and
+all live flags false. Stop on any mismatch rather than editing the sleeve
+ledger or bypassing readiness.

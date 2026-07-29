@@ -39,6 +39,9 @@ REGISTER_SCRIPT = (
 TASK_XML = (
     PROJECT_ROOT / "docs" / "design" / "secure_spy_paper_cycle_task.xml"
 )
+RSI_TASK_XML = (
+    PROJECT_ROOT / "docs" / "design" / "secure_spy_rsi_paper_cycle_task.xml"
+)
 REFERENCE = CredentialReference(
     "wincred:algotrader/v5.35/alpaca-paper-observation/offline-test"
 )
@@ -100,6 +103,7 @@ class TwoPhaseOperator:
         if self.preview_kind == "hold":
             return {
                 "operator_summary": {
+                    **_sleeve_summary(config),
                     "classification": "healthy_hold_noop",
                     "hard_stop": False,
                     "attention_required": False,
@@ -108,7 +112,7 @@ class TwoPhaseOperator:
                     "broker_read_performed": True,
                     "broker_state_observed": True,
                     "expected_account_matched": True,
-                    "selected_strategy_id": "etf_sma_training_wheel",
+                    "selected_strategy_id": config.active_strategy_id,
                     "paper_submit_performed": False,
                     "broker_mutation_performed": False,
                     "live_mutation_performed": False,
@@ -117,6 +121,7 @@ class TwoPhaseOperator:
         if self.preview_kind == "blocked":
             return {
                 "operator_summary": {
+                    **_sleeve_summary(config),
                     "classification": "data_freshness_blocked",
                     "hard_stop": False,
                     "attention_required": True,
@@ -136,6 +141,7 @@ class TwoPhaseOperator:
         packet_path.write_text('{"ready":true}\n', encoding="utf-8")
         return {
             "operator_summary": {
+                **_sleeve_summary(config),
                 "classification": "mutation_would_be_required_no_submit_mode",
                 "autonomy_status": (
                     "paper_mutation_would_be_required_no_submit_mode"
@@ -153,7 +159,7 @@ class TwoPhaseOperator:
                 "broker_read_performed": True,
                 "broker_state_observed": True,
                 "expected_account_matched": True,
-                "selected_strategy_id": "etf_sma_training_wheel",
+                "selected_strategy_id": config.active_strategy_id,
                 "paper_submit_performed": False,
                 "broker_mutation_performed": False,
                 "live_mutation_performed": False,
@@ -165,6 +171,7 @@ class TwoPhaseOperator:
         if self.execution_kind == "revalidated_hold":
             return {
                 "operator_summary": {
+                    **_sleeve_summary(config),
                     "classification": "healthy_hold_noop",
                     "hard_stop": False,
                     "attention_required": False,
@@ -181,6 +188,7 @@ class TwoPhaseOperator:
         if self.execution_kind == "unreconciled":
             return {
                 "operator_summary": {
+                    **_sleeve_summary(config),
                     "classification": "reconciliation_required",
                     "hard_stop": False,
                     "attention_required": True,
@@ -198,6 +206,12 @@ class TwoPhaseOperator:
             }
         return {
             "operator_summary": {
+                **_sleeve_summary(
+                    config,
+                    reconciliation_status=(
+                        "strategy_sleeve_reconciled_terminal"
+                    ),
+                ),
                 "classification": "healthy_paper_action_reconciled",
                 "hard_stop": False,
                 "attention_required": False,
@@ -230,11 +244,31 @@ def _config(
         output_root=tmp_path / "out",
         bars_csv=bars_csv,
         order_journal_path=tmp_path / "journal.sqlite3",
+        strategy_sleeve_ledger_path=tmp_path / "sleeves.sqlite3",
         paper_credential_reference=REFERENCE,
         max_notional="25.00",
         allow_paper_mutation=allow_paper_mutation,
         active_strategy_id=active_strategy_id,
     )
+
+
+def _sleeve_summary(
+    config,
+    *,
+    reconciliation_status: str = "not_required_no_sleeve_intent",
+) -> dict[str, object]:
+    return {
+        "strategy_sleeve_enabled": True,
+        "strategy_sleeve_strategy_id": config.active_strategy_id,
+        "strategy_sleeve_generation": 0,
+        "strategy_sleeve_quantity": "0",
+        "strategy_sleeve_total_quantity": "0",
+        "strategy_sleeve_broker_quantity_match": True,
+        "strategy_sleeve_pending_intent_count": 0,
+        "strategy_sleeve_reconciliation_status": reconciliation_status,
+        "max_portfolio_notional": "60.00",
+        "max_sleeve_orders_per_session": 2,
+    }
 
 
 def test_config_enforces_fixed_spy_and_finite_25_dollar_cap(tmp_path: Path) -> None:
@@ -261,6 +295,25 @@ def test_config_enforces_fixed_spy_and_finite_25_dollar_cap(tmp_path: Path) -> N
             order_journal_path=tmp_path / "journal.sqlite3",
             paper_credential_reference=REFERENCE,
             symbol="AAPL",
+        )
+    with pytest.raises(ValidationError, match="cannot exceed 60.00"):
+        SecureSpyPaperCycleConfig(
+            output_root=tmp_path,
+            bars_csv=tmp_path / "bars.csv",
+            order_journal_path=tmp_path / "journal.sqlite3",
+            strategy_sleeve_ledger_path=tmp_path / "sleeves.sqlite3",
+            paper_credential_reference=REFERENCE,
+            max_portfolio_notional="60.01",
+        )
+    with pytest.raises(ValidationError, match="no-mutation bootstrap"):
+        SecureSpyPaperCycleConfig(
+            output_root=tmp_path,
+            bars_csv=tmp_path / "bars.csv",
+            order_journal_path=tmp_path / "journal.sqlite3",
+            strategy_sleeve_ledger_path=tmp_path / "sleeves.sqlite3",
+            paper_credential_reference=REFERENCE,
+            allow_paper_mutation=True,
+            adopt_existing_position_to_active_sleeve=True,
         )
 
 
@@ -362,6 +415,13 @@ def test_explicit_mutation_runs_two_phase_reobservation_and_reconciliation(
     assert operator.calls[1].no_submit is False
     assert receipt["max_orders_per_cycle"] == 1
     assert receipt["max_order_notional"] == "25.00"
+    assert receipt["max_portfolio_notional"] == "60.00"
+    assert receipt["max_sleeve_orders_per_session"] == 2
+    assert all(
+        config.strategy_sleeve_ledger_path
+        == operator.calls[0].strategy_sleeve_ledger_path
+        for config in operator.calls
+    )
     assert receipt["paper_submit_performed"] is True
     assert receipt["broker_mutation_performed"] is True
     assert receipt["reconciliation_status"] == "reconciled_terminal_filled"
@@ -473,9 +533,13 @@ def test_runner_script_contract_and_argument_forwarding(tmp_path: Path) -> None:
         "windows-credential-manager",
         "alpaca-paper-observation/production",
         "[switch]$AllowPaperMutation",
+        "[switch]$AdoptExistingPositionToActiveSleeve",
         "[string]$ActiveStrategyId",
         "--allow-paper-mutation",
         "--active-strategy-id",
+        "--strategy-sleeve-ledger-path",
+        "--max-portfolio-notional",
+        "--max-sleeve-orders-per-session",
         "preflight_max_orders_per_cycle=1",
         "preflight_live_authorized=false",
     ):
@@ -529,6 +593,8 @@ def test_runner_script_contract_and_argument_forwarding(tmp_path: Path) -> None:
     assert "-m algotrader.execution.secure_spy_paper_cycle" in args
     assert "--allow-paper-mutation" in args
     assert "--max-notional 25.00" in args
+    assert "--max-portfolio-notional 60.00" in args
+    assert "--max-sleeve-orders-per-session 2" in args
     assert (
         "--active-strategy-id spy_sma_50_200_training_wheel"
         in args
@@ -554,12 +620,24 @@ def test_task_template_is_bounded_next_open_paper_only() -> None:
     assert "run_secure_spy_paper_cycle.ps1" in arguments
     assert "-AllowPaperMutation" in arguments
     assert '-MaxNotional "25.00"' in arguments
+    assert '-MaxPortfolioNotional "60.00"' in arguments
+    assert "-MaxSleeveOrdersPerSession 2" in arguments
     assert (
         '-ActiveStrategyId "spy_sma_50_200_training_wheel"'
         in arguments
     )
     assert "ALPACA_API_KEY" not in arguments
     assert "ALPACA_SECRET_KEY" not in arguments
+
+    rsi_root = ET.parse(RSI_TASK_XML).getroot()
+    assert _xml_text(rsi_root, ".//task:StartBoundary").endswith("09:38:00")
+    rsi_arguments = _xml_text(rsi_root, ".//task:Arguments")
+    assert '-ActiveStrategyId "spy_rsi_14_mean_reversion_paper"' in rsi_arguments
+    assert '-MaxPortfolioNotional "60.00"' in rsi_arguments
+    assert _xml_text(
+        rsi_root,
+        ".//task:MultipleInstancesPolicy",
+    ) == "IgnoreNew"
 
 
 def test_registration_helper_defaults_to_non_mutating_preview() -> None:
@@ -584,6 +662,10 @@ def test_registration_helper_defaults_to_non_mutating_preview() -> None:
     assert "task_system_mutation_performed=false" in result.stdout
     assert "task_max_orders_per_cycle=1" in result.stdout
     assert "task_active_strategy_id=spy_sma_50_200_training_wheel" in result.stdout
+    assert "rsi_task_active_strategy_id=spy_rsi_14_mean_reversion_paper" in (
+        result.stdout
+    )
+    assert "task_max_portfolio_notional=60.00" in result.stdout
     assert "task_live_authorized=false" in result.stdout
 
 

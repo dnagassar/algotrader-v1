@@ -1503,3 +1503,49 @@ through the same secure wrapper with `-ActiveStrategyId
 "spy_rsi_14_mean_reversion_paper"`. Running concurrent SMA and RSI mutation
 tasks against the same aggregate SPY position is not supported; one active
 strategy avoids ambiguous position ownership.
+
+## V5.57 Strategy-Owned Paper Sleeves
+
+V5.57 removes that single-strategy operating constraint without requiring a
+second external paper account. A durable SQLite ledger owns the aggregate SPY
+quantity as two virtual sleeves:
+
+- `spy_sma_50_200_training_wheel`; and
+- `spy_rsi_14_mean_reversion_paper`.
+
+The broker remains authoritative for the physical paper position. Before
+planning, the sum of both sleeve quantities must exactly equal the observed
+broker SPY quantity. A mismatch, pending sleeve intent, unavailable ledger, or
+session-order-cap breach fails closed before broker submit. Buys inspect only
+the active sleeve when deciding whether that strategy is already positioned.
+Closes are quantity orders limited to the active strategy's owned sleeve, so
+RSI cannot close SMA-owned SPY and SMA cannot close RSI-owned SPY.
+
+Every mutation reserves both the existing durable order identity and a
+strategy-owned sleeve intent. A terminal broker observation applies the exact
+filled quantity to only that strategy. Missing, ambiguous, or nonterminal
+reconciliation leaves the sleeve intent pending and blocks later mutation.
+The readiness packet binds the active strategy, sleeve generation, active and
+aggregate quantities, broker-match result, `$60.00` portfolio cap, and
+two-orders-per-UTC-session cap across both passes.
+
+Finite limits are:
+
+- one broker order per secure cycle;
+- `$25.00` maximum entry order notional;
+- `$60.00` maximum marked aggregate SPY exposure for a new entry; and
+- two sleeve order intents per UTC session day.
+
+An exposure-reducing close may exceed the entry and marked-entry caps only up
+to the active sleeve's exact owned quantity. It remains paper-only, durable,
+and terminally reconciled.
+
+Existing aggregate SPY may be assigned once to a sleeve only through the
+explicit no-submit bootstrap flag. Adoption requires a pristine zero ledger,
+observed paper broker state, no open SPY order, no unexpected position, and
+cannot be combined with mutation in the secure cycle.
+
+The checked-in least-privilege tasks run SMA at 09:31 ET and RSI at 09:38 ET,
+each with the existing three 15-minute retries. They share the runtime lease,
+order journal, and sleeve ledger; overlap is serialized and never creates
+parallel broker mutation.

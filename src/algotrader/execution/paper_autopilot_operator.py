@@ -53,6 +53,16 @@ _SUMMARY_FIELDS = (
     "symbol",
     "sma_posture",
     "selected_strategy_id",
+    "strategy_sleeve_enabled",
+    "strategy_sleeve_strategy_id",
+    "strategy_sleeve_generation",
+    "strategy_sleeve_quantity",
+    "strategy_sleeve_total_quantity",
+    "strategy_sleeve_broker_quantity_match",
+    "strategy_sleeve_pending_intent_count",
+    "strategy_sleeve_reconciliation_status",
+    "max_portfolio_notional",
+    "max_sleeve_orders_per_session",
     "operating_mode",
     "no_submit_mode",
     "broker_state_mode",
@@ -109,9 +119,13 @@ class PaperAutopilotOperatorConfig:
     no_submit: bool = False
     readiness_packet_path: Path | str | None = None
     order_journal_path: Path | str | None = None
+    strategy_sleeve_ledger_path: Path | str | None = None
     operator_paused: bool = False
     runtime_lease_seconds: int = 900
     active_strategy_id: str | None = None
+    max_portfolio_notional: str | None = None
+    max_sleeve_orders_per_session: int = 2
+    adopt_existing_position_to_active_sleeve: bool = False
 
     def __post_init__(self) -> None:
         loop_config = self.to_loop_config()
@@ -136,9 +150,15 @@ class PaperAutopilotOperatorConfig:
             no_submit=self.no_submit,
             readiness_packet_path=self.readiness_packet_path,
             order_journal_path=self.order_journal_path,
+            strategy_sleeve_ledger_path=self.strategy_sleeve_ledger_path,
             operator_paused=self.operator_paused,
             runtime_lease_seconds=self.runtime_lease_seconds,
             active_strategy_id=self.active_strategy_id,
+            max_portfolio_notional=self.max_portfolio_notional,
+            max_sleeve_orders_per_session=self.max_sleeve_orders_per_session,
+            adopt_existing_position_to_active_sleeve=(
+                self.adopt_existing_position_to_active_sleeve
+            ),
         )
 
 
@@ -258,6 +278,36 @@ def build_paper_autopilot_operator_summary(
         "symbol": _text(rollup.get("symbol")),
         "sma_posture": _text(rollup.get("sma_posture")),
         "selected_strategy_id": _text(rollup.get("selected_strategy_id")),
+        "strategy_sleeve_enabled": (
+            rollup.get("strategy_sleeve_enabled") is True
+        ),
+        "strategy_sleeve_strategy_id": _text(
+            rollup.get("strategy_sleeve_strategy_id")
+        ),
+        "strategy_sleeve_generation": (
+            rollup.get("strategy_sleeve_generation") or 0
+        ),
+        "strategy_sleeve_quantity": _text(
+            rollup.get("strategy_sleeve_quantity")
+        ),
+        "strategy_sleeve_total_quantity": _text(
+            rollup.get("strategy_sleeve_total_quantity")
+        ),
+        "strategy_sleeve_broker_quantity_match": (
+            rollup.get("strategy_sleeve_broker_quantity_match") is True
+        ),
+        "strategy_sleeve_pending_intent_count": (
+            rollup.get("strategy_sleeve_pending_intent_count") or 0
+        ),
+        "strategy_sleeve_reconciliation_status": _text(
+            rollup.get("strategy_sleeve_reconciliation_status")
+        ),
+        "max_portfolio_notional": _text(
+            rollup.get("max_portfolio_notional")
+        ),
+        "max_sleeve_orders_per_session": (
+            rollup.get("max_sleeve_orders_per_session") or 0
+        ),
         "operating_mode": _text(rollup.get("operating_mode")),
         "no_submit_mode": rollup.get("no_submit_mode") is True,
         "broker_state_mode": _text(rollup.get("broker_state_mode")),
