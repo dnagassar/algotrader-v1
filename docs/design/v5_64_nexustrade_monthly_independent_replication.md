@@ -235,8 +235,8 @@ The cost gate passes only if, under `moderate_friction`:
 
 - full OOS total return is positive;
 - full OOS total-return delta versus the same-cost SPY baseline is positive;
-- the full OOS edge versus the SPY baseline is not positive under
-  `source_fee_only` and nonpositive under `moderate_friction`; and
+- the full OOS edge versus the SPY baseline does not change from positive under
+  `source_fee_only` to nonpositive under `moderate_friction`; and
 - the candidate's total-return degradation from `source_fee_only` to
   `moderate_friction` is less than `0.02`.
 
