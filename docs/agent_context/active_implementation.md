@@ -1,166 +1,234 @@
 # Active Implementation
 
-## Ownership
+## Ownership and takeover
 
 - Writer: Codex, sole implementation writer for this working tree.
-- Branch: `codex/v5.59-nexustrade-authentic-composite`.
-- Expected V5.58 base:
-  `021b55c10d17757d8ec865bf37de2e39f91da8e1`.
-- Current pre-handoff HEAD:
-  `8fc9c9d4d27c39f745f7a60f51e7f0a85ffafc73`.
-- V5.59 reached a demonstrated authenticated-source hard gate. No production
-  code, test, safety-contract, or paper-runtime file was changed.
+- Branch: `codex/v5.60-nexustrade-monthly-adapter-gates`.
+- Required V5.59 branch:
+  `codex/v5.59-nexustrade-authentic-composite`.
+- Required and observed takeover commit:
+  `44571a75b9097a85b9643f78dfecc97e251c488e`.
+- The worktree opened detached at the required commit. The required V5.59
+  branch ref pointed to the same commit.
+- Staged, unstaged, and untracked sets were empty. The prior handoff was read
+  before any change. No reset, clean, stash, restore, rebase, or takeover
+  branch switch occurred.
+- After the clean takeover was proven, the new V5.60 feature branch was
+  created from the exact required commit.
+- Codex remained the only writer. Three bounded subagents performed read-only
+  source, data-contract, and lineage reviews; none edited files or Git state.
 
-## Takeover and authentication state
+## Decision
 
-- The original checkout began detached at the exact expected V5.58 commit.
-- Staged, unstaged, and untracked sets were empty before the feature branch was
-  created.
-- After the desktop restart that activated the provider, takeover was repeated:
-  the branch and pre-handoff HEAD matched the values above, and staged,
-  unstaged, and untracked sets were empty.
-- The remote NexusTrade MCP OAuth connection is authenticated: `true`.
-- A raw NexusTrade bearer-token environment variable is configured: `false`.
-- `APP_PROFILE` is loaded: `false`; `APP_PROFILE=paper`: `false`.
-- All checked Alpaca and NexusTrade credential aliases are loaded: `false`.
-- Only boolean presence was inspected. No credential value, token, API key, or
-  account identifier was requested, printed, copied, persisted, or returned.
+V5.60 reached a demonstrated hard gate. Do not implement the monthly
+cross-sectional family adapter or a paired composite from this state.
 
-## Authenticated read-only discovery
+Both exact source-evidence fields remain absent, the current worktree has no
+canonical bars, and the approved adjusted-data provider cannot acquire the
+eleven-stock universe. The final V5.58 intake therefore has four blockers,
+not solely `needs_local_adapter`. Per the implementation gate, no production
+adapter, date-window evaluator, composite, fake replay, or metadata-only pair
+was created.
 
-Safe read-only discovery through the OAuth provider covered:
+## Authenticated NexusTrade evidence
 
-- the authenticated draft portfolio list;
-- deployed paper/live portfolio metadata without positions;
-- bookmarks;
-- the de-identified backtest corpus;
-- public portfolios and creator profiles; and
-- authoritative NexusTrade articles and their source screenshots.
+- NexusTrade OAuth MCP authenticated: `true`.
+- Raw NexusTrade bearer/API-key environment alias loaded: `false`.
+- Exact founder-authored article:
+  `https://nexustrade.io/blog/this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`.
+- Authenticated `search_articles` identified article ID
+  `this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`,
+  short ID `rbXUPvf9o`, author Austin Starks, and publication timestamp
+  `2025-03-29T08:54:48.906Z`.
+- Authenticated `get_article` returned the full article and the exact
+  standalone universe/rules, source periods, source metrics, linked
+  conversation, and linked public portfolio.
+- One bounded exact-article extractor request returned provider HTTP 500. It
+  was not retried or worked around.
+- The linked conversation and public portfolio are client-rendered. No
+  browser session was available for further visual inspection.
+- Current generic NexusTrade backtesting documentation distinguishes
+  `OHLC (Daily)` from minute-level `Intraday`, but does not identify the mode
+  used by this exact March 2025 run.
+- Current generic troubleshooting documentation says backtests assume exact
+  execution price, which is consistent with no modeled slippage, but it is
+  neither candidate-specific nor contemporaneous proof of this exact run.
+- Final exact-source fields:
+  - underlying bar/data mode: absent and unverified;
+  - slippage assumption for this candidate/backtest: absent and unverified.
+- Monthly cadence and day-based indicators were not treated as authority to
+  infer `daily_ohlc`; current generic exact-price documentation was not used
+  to invent `slippage_bps=0`.
+- Provider anonymization, obfuscation, client-rendering, and retrieval
+  boundaries were respected without retry or workaround.
 
-The authenticated draft, deployed, and bookmarked portfolio lists contained no
-candidate. A precise corpus search and a broader TQQQ corpus search found exact
-rules and reported metrics, but the corpus records omitted at least cost
-assumptions or explicit untouched-OOS evidence. One request for an exact
-materialized corpus portfolio was rejected by the provider's anonymization
-boundary; the rejection was accepted without retry or workaround.
+No NexusTrade create, build, backtest, deploy, apply-corpus, fork, subscribe,
+purchase, portfolio mutation, paper mutation, broker, order, or live action
+occurred.
 
-No NexusTrade create, build, backtest, deploy, paper mutation, subscription,
-purchase, write, broker, order, or live action occurred.
+## Authentic candidate and source-metric trust
 
-## Strongest authentic candidate
-
-The strongest authoritative source is the founder-authored article:
-
-`https://nexustrade.io/blog/this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`
-
-Its fixed universe is AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM,
-BRK-B, and COST. At an equal-weight monthly rebalance, each stock qualifies only
-when exactly one or two of these conditions are true:
+The source candidate remains the fixed AAPL, MSFT, GOOGL, AMZN, META, NVDA,
+TSLA, GS, JPM, BRK-B, and COST universe. At an equal-weight monthly
+rebalance, a stock qualifies only when exactly one or two of these conditions
+are true:
 
 1. price is above its 30-day SMA;
-2. price divided by its 365-day minimum price is at most 1.05; or
-3. the stock's 14-day RSI is below 28 while SPY's 14-day RSI is above 33.
+2. price divided by its 365-day minimum price is at most `1.05`; or
+3. the stock's 14-day RSI is below `28` while SPY's 14-day RSI is above `33`.
 
-The source strategy screenshot also records:
+The source screenshot evidence also records constant-1 descending sort and an
+at-least-30-days-since-last-filled-buy OR filled-sell condition across the
+universe. That stateful source rule is not equivalent to the current local
+factory's first-session-of-a-new-calendar-month helper.
 
-- sorting by constant 1 descending;
-- at least 30 days since the last filled buy for any universe stock OR at
-  least 30 days since the last filled sell for any universe stock;
-- a `$10,000` starting value; and
-- SPY as the baseline.
+The source training period is `2021-12-31` through `2024-03-24`; the untouched
+holdout is `2024-03-24` through `2025-03-28`. Source stock fee `0.01%` is
+normalized to 1 bp. Source performance remains
+`untrusted_external_evidence`; it was not used for ranking or promotion.
 
-The training backtest is `2021-12-31` through `2024-03-24`. Its screenshot
-reports portfolio/baseline return `37.59%/13.06%`, Sharpe `0.50/0.27`,
-Sortino `0.75/0.40`, maximum drawdown `35.19%/26.29%`, average drawdown
-`13.30%/10.46%`, and 154 portfolio trades.
+The holdout source table reports `29.64%`, while its chart displays
+`+$2,946.31 (29.41%)`. The discrepancy remains unresolved and reinforces that
+source-reported performance cannot control any local decision.
 
-The untouched holdout is `2024-03-24` through `2025-03-28`. Its screenshot
-reports portfolio/baseline return `29.64%/10.48%`, Sharpe `0.99/0.54`,
-Sortino `1.11/0.62`, maximum drawdown `15.85%/10.04%`, average drawdown
-`2.81%/1.87%`, and 54 portfolio trades. The same screenshot's chart displays
-`+$2,946.31 (29.41%)`, conflicting with the `29.64%` metrics table. The intake
-capture preserves the table metric and this handoff records the discrepancy;
-all source performance remains untrusted.
+Authenticated public-portfolio/profile discovery found the linked shared
+portfolio with one strategy and obfuscated internals. The article names no
+parent or ancestor. Therefore no authentic parent was claimed. A real
+composite would need an explicit signal/rebalance rule that changes target
+weights; `parent_strategy_ids` and `pairing_role` alone are metadata and were
+not treated as a paired result.
 
-The advanced-settings screenshot reports stock trading fee value `0.01` with
-type `Percentage of Trade`, normalized in the intake as 1 bp. It does not
-report a slippage assumption. Neither the article nor its screenshots
-explicitly identify the underlying backtest bar mode. Day-based indicators do
-not authorize inventing `daily_ohlc`.
+## V5.58 offline intake
 
-## Machine-demonstrated intake gate
+Generated capture:
 
-Ignored generated capture:
+`runs/v5_60_nexustrade_monthly_adapter_gate/authenticated_monthly_dynamic_stock_filter_capture.json`
 
-`runs/v5_59_nexustrade_authentic_candidate_gate/authenticated_monthly_dynamic_stock_filter_capture.json`
+- SHA-256:
+  `6ed15b6faadd58c5c67e26d19781ffd9fbd6e1014bd95e1726ddda9edba62935`.
+- `source_backtest.data_mode=null`.
+- `source_backtest.slippage_bps=null`.
+- Source fee is 1 bp; source metrics remain untrusted.
 
-Credential-free V5.58 report:
+Generated final report:
 
-`runs/v5_59_nexustrade_authentic_candidate_gate/authenticated_intake/nexustrade_intake_report.json`
+`runs/v5_60_nexustrade_monthly_adapter_gate/authenticated_intake/nexustrade_intake_report.json`
 
-The input SHA-256 is
-`8cb555ec7412fe71340154b91f528663f08308b51cddc959ef3edde4af47df4b`.
-The wrapper completed with:
-
-- `eligible_candidate_count=0`;
-- `local_replay_status=not_run_no_eligible_candidates`;
-- route `repair_intake_blockers`;
-- source metrics used for ranking: `false`;
-- source metrics used for promotion: `false`;
-- paper promotion allowed: `false`; and
-- broker access, broker mutation, network access from the offline intake, and
-  live mutation all `false`.
+- SHA-256:
+  `531bc5c165912143e005561b6321d33d01f2313903d1b987e04e724d38c7822a`.
+- `eligible_candidate_count=0`.
+- `local_replay.status=not_run_no_eligible_candidates`.
+- route `repair_intake_blockers`.
+- source metrics used for ranking: `false`.
+- source metrics used for promotion: `false`.
+- paper promotion allowed: `false`.
+- offline-intake network, broker access, broker mutation, and live mutation:
+  all `false`.
 
 Exact blockers:
 
 - `source_data_mode_missing`;
-- `source_cost_assumptions_missing` because source slippage is absent;
+- `source_cost_assumptions_missing`;
 - `local_timeframe_adapter_required`; and
 - `local_strategy_family_adapter_required`.
 
-The configured canonical input
-`runs/operator_input/multi_etf_adjusted_daily_canonical.csv` is absent. No
-current canonical bars are available for the eleven-stock universe plus SPY.
+One earlier wrapper invocation failed closed before classification because the
+transport grouping label contained an underscore disallowed by the existing
+symbol syntax. The final capture uses the schema-valid grouping label
+`STOCKBASKET`; the exact eleven-symbol universe remains explicit and
+unchanged. No replay occurred in either invocation.
 
-The candidate is not blocked solely by `needs_local_adapter`, so the V5.59
-implementation rule prohibits a new family adapter. With no eligible
-standalone candidate and no canonical data, an actual paired/lineage composite
-cannot be replayed under identical chronological OOS, walk-forward,
-cost-sensitivity, baseline, and cross-asset gates. No metadata-only pairing,
-synthetic fills, invented costs, inferred bar mode, or fabricated performance
-was created.
+## Canonical data gate
 
-## Safety and unchanged operating contract
+- The new worktree initially contained no `runs/` or `.data/` directory.
+- The configured
+  `runs/operator_input/multi_etf_adjusted_daily_canonical.csv` is absent.
+- Consequently, the current worktree has zero canonical rows for AAPL, MSFT,
+  GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, or SPY.
+- All twelve symbols are missing across training
+  `2021-12-31`–`2024-03-24` and untouched OOS
+  `2024-03-24`–`2025-03-28`.
+- Pre-training warm-up is also wholly absent. The source does not establish
+  whether the 365-day minimum means calendar days or 365 underlying bars, so
+  the authentic earliest warm-up boundary cannot be invented.
+- The canonical loader requires exact local columns
+  `symbol,date,open,high,low,close,adjusted_close,volume`, ISO dates, positive
+  Decimal prices, coherent OHLC, nonnegative integer volume, no duplicate
+  symbol/date rows, and no extra columns.
+- The existing manifest adds SHA-256, earliest/latest dates, freshness, and
+  the `adjusted_close_price_return` basis, but both manifest and refresh
+  contracts are restricted to SPY, QQQ, IWM, TLT, and GLD.
+- The only repository-approved adjusted-data provider is the fixed-host,
+  HTTPS Tiingo GET path. It maps provider `adjClose` to canonical
+  `adjusted_close`, uses only `TIINGO_API_KEY`, and is isolated from broker
+  access.
+- That approved path rejects all eleven candidate stocks. BRK-B provider
+  identifier normalization is also not established.
+- `TIINGO_API_KEY` loaded: `false`. No market-data credential was requested
+  or connected, and no market-data fetch was attempted.
+- The available Alpaca connector exposes historical OHLCV but no explicit
+  adjusted-close/adjustment selection in its callable contract. It was not
+  used to fabricate canonical adjusted data.
+- No non-approved vendor, hand normalization, synthetic corporate action,
+  or cross-worktree generated artifact was used.
 
-- Offline repository research only.
-- OAuth NexusTrade network reads were read-only acquisition actions.
-- The repository intake attempted no network access.
-- No broker or broker credential provider was accessed.
-- No paper submit, cancel, replace, close, liquidate, or other mutation
-  occurred; receipt status is not applicable and no reconciliation event was
-  required.
-- V5.57 sleeve ownership, reconciliation, auditing, and finite limits remain
-  unchanged: `$25.00` maximum entry-order notional, `$60.00` maximum aggregate
-  marked SPY entry exposure, one broker order per secure cycle, and two sleeve
-  intents per UTC session day.
-- No third paper sleeve was added.
-- Live mode, live broker access, live orders, and live capital remain
-  prohibited and unauthorized.
+Even if a generic combined CSV appeared, the current challenger factory's
+half-sample later-test and three equal index folds cannot express the exact
+source training and untouched-OOS boundaries. Exact date-window and
+warm-up-support contracts would be part of the future gated adapter slice,
+not evidence that the present gate is clear.
+
+## Pairing and replay outcome
+
+- Standalone local replay: not run.
+- Composite local replay: not run.
+- SPY baseline, exact chronological OOS, walk-forward, cost sensitivity, and
+  cross-asset gates: not run because there was no eligible candidate or
+  canonical data.
 - No `preview_review` route was produced.
+- No later no-submit shadow design is recommended from this result.
+- No metadata-only pairing, synthetic fills, invented costs, fabricated
+  metrics, or fake lineage was created.
+
+## Credential, network, broker, and safety state
+
+- `APP_PROFILE` loaded: `false`; `APP_PROFILE=paper`: `false`.
+- Alpaca credential aliases loaded: `false`.
+- Alpaca endpoint/account-identity aliases loaded: `false`.
+- Tiingo credential alias loaded: `false`.
+- raw NexusTrade credential aliases loaded: `false`.
+- paper-integration test flag loaded: `false`.
+- Only boolean presence was inspected. No credential value, token, API key,
+  account identifier, response payload, or broker data was requested,
+  printed, copied, persisted, or returned.
+- Network reads: authenticated NexusTrade article/profile/public metadata and
+  authoritative public NexusTrade article/docs only.
+- Repository offline intake network access: `false`.
+- Broker or broker credential provider access: `false`.
+- Paper submit/cancel/replace/close/liquidate or other mutation: none.
+- Receipt status: not applicable.
+- Reconciliation status: not required; no broker operation occurred.
+- Live-authorized state: `false`; live broker, live orders, and live capital
+  remain prohibited.
+- V5.57 sleeve ownership, reconciliation, auditing, and limits are unchanged:
+  `$25.00` maximum entry-order notional, `$60.00` maximum aggregate marked
+  SPY entry exposure, one broker order per secure cycle, and two sleeve
+  intents per UTC day.
+- No third paper sleeve was added.
 
 ## Verification
 
-The production tree is unchanged from the tree verified for this milestone:
-
-- focused V5.58 intake suite: 19 passed;
-- dependency-direction suite: 44 passed;
-- mandatory `scripts/verify_offline.ps1`: 109 passed; result `PASS`;
-- full default suite, required because the script skipped it: 10,162 passed
-  and 5 skipped in 3,026.01 seconds; zero failures and zero errors;
-- verification was credential-free, network-free, and broker-free;
-- `git diff --check`: passed;
-- `git diff --name-only HEAD -- src`: empty; and
-- `git ls-files --others --exclude-standard src tests`: empty.
+- Focused intake/challenger/local-bars/dependency suites:
+  93 passed in 68.25 seconds.
+- Mandatory `scripts/verify_offline.ps1`:
+  109 passed in 103.64 seconds; result `PASS`.
+- The mandatory script skipped the full suite.
+- Full default suite:
+  10,162 passed and 5 skipped in 2,518.04 seconds; zero failures and zero
+  errors.
+- Verification was credential-free, network-free, and broker-free.
+- Final `git diff --check`, status, exact `src` diff, and untracked
+  `src/tests` hygiene are run after this handoff update and before commit.
 
 ## Files and generated state
 
@@ -170,24 +238,27 @@ Tracked change:
 
 Ignored generated evidence:
 
-- `runs/v5_59_nexustrade_authentic_candidate_gate/`.
+- `runs/v5_60_nexustrade_monthly_adapter_gate/`.
 
-There are no production `src` changes and no untracked `src` or `tests` files.
+There are no production `src` changes, no test changes, and no untracked
+`src` or `tests` files.
 
 ## Next milestone
 
-Resume V5.59 execution only after both exact missing inputs are available
-without credential disclosure:
+Resume this exact milestone only after both gates are supplied without
+credential disclosure:
 
-1. authoritative NexusTrade evidence identifying the source bar mode and
-   slippage assumption for this exact candidate; and
-2. current canonical adjusted daily bars covering AAPL, MSFT, GOOGL, AMZN,
-   META, NVDA, TSLA, GS, JPM, BRK-B, COST, and SPY across the required
-   training, untouched-OOS, walk-forward, and warm-up windows.
+1. candidate-specific authoritative NexusTrade evidence for the historical
+   run's bar/data mode and slippage assumption; and
+2. an approved deterministic adjusted-daily acquisition/normalization path
+   for AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, and
+   SPY with explicit provider symbol mapping, adjustment semantics, hashes,
+   complete source-period coverage, and authenticated warm-up semantics.
 
-Re-run V5.58 first. Implement the smallest monthly cross-sectional family
-adapter only if the authentic candidate is then blocked solely by
-`needs_local_adapter`. The paired variant must combine the candidate with its
-lineage or parent as an actual composite signal and be evaluated under the
-same local gates. Only a locally produced `preview_review` route may proceed
-to a later no-submit shadow design.
+Then rerun V5.58. Implement the smallest operational adapter only when the
+authentic candidate is blocked solely by local adapter requirements. The
+implementation must preserve the exact 30-day stateful rebalance rule and
+exact source train/OOS dates, add meaningful portfolio-level cross-asset
+gating, and replay standalone plus a preregistered real composite under
+identical local assumptions. Only a locally produced `preview_review` route
+may support a later no-submit shadow design.
