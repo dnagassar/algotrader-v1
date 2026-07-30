@@ -80,6 +80,14 @@ No parameter fitting, threshold search, ranking, or selection is allowed.
   `d296138a95a86546bdc92678af479e8c8e204b138e2db43f54979a19921c9575`.
 - Required V5.63 manifest SHA-256:
   `e204a8a1824e5b49ce4d457f12884bfc284d52f99ad3ba07072c978d7223d8e1`.
+- Frozen V5.64 protocol:
+  `docs/design/v5_64_nexustrade_monthly_independent_replication.md`.
+- Required frozen V5.64 protocol SHA-256:
+  `f24c98daa03462fccd0e73163abfe42f597ab601db83b331ecd4b487e31f4ee0`.
+- Frozen V5.64 engine:
+  `src/algotrader/research/nexustrade_monthly_independent_replication.py`.
+- Required frozen V5.64 engine SHA-256:
+  `66d73e4e0cd6160c8f07febe3a80b90eb4eebdd1ea7375b7fb3b23cadeef87f5`.
 
 ## Fixed chronological boundaries
 
