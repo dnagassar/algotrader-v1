@@ -3,244 +3,158 @@
 ## Ownership and takeover
 
 - Writer: Codex, sole implementation writer for this working tree.
-- New branch: `codex/v5.61-nexustrade-monthly-exact-gates`.
-- Required base branch:
-  `codex/v5.60-nexustrade-monthly-adapter-gates`.
+- Branch: `codex/v5.62-nexustrade-source-data-unblock`.
+- Required and observed base branch:
+  `codex/v5.61-nexustrade-monthly-exact-gates`.
 - Required and observed base commit:
-  `7b988a805b0fb0f7406857c1a163e2e401f1f80a`.
-- The checkout opened detached at the required commit. The required V5.60
-  branch ref existed and pointed to that exact commit.
-- Before any change, staged, unstaged, and untracked sets were empty, and this
-  handoff matched `HEAD`.
+  `10f50bac6612eb714d9e52fcfa54888b0ae4b11e`.
+- Before any change, the branch, HEAD, staged diff, unstaged diff, untracked
+  files, and this handoff were inspected.
+- The takeover was clean: staged, unstaged, and untracked sets were empty.
 - No reset, clean, stash, restore, rebase, or takeover branch switch occurred.
-- After the clean takeover and exact branch ref were proven, the new V5.61
-  branch was created directly from the required commit.
+- The V5.62 branch was created only after the accepted V5.61 state was proven
+  clean.
 - Codex remained the only writer. No subagent edited or inspected the working
   tree.
 - Dirty tracked-file owner before commit: Codex owns only this handoff update.
-  Ignored `runs/` evidence is generated state, not an implementation writer.
 - After the local handoff commit, no dirty tracked, staged, or untracked
   `src/tests` work should remain.
 
 ## Decision
 
-V5.61 reached a demonstrated hard gate. Do not implement the monthly
-strategy-family adapter, rerun V5.58, or preregister/replay a paired composite
-from this state.
+V5.62 reached a true external hard gate.
 
-The authenticated exact article, its candidate-specific advanced-settings
-screenshot, the exact linked shared conversation, and the exact linked public
-portfolio still do not state the historical run's underlying bar/data mode or
-slippage assumption. The current worktree also has no canonical bars, no
-eligible adjusted-data acquisition credential, no established `BRK-B` provider
-mapping, and no authentic indicator warm-up boundary.
+The operator's acceptance, approval, and authorization validly expanded the
+task into the next milestone. It did not supply or replace the two
+candidate-specific historical backtest facts, an approved data credential or
+import, canonical adjusted bars, deterministic `BRK-B` mapping, or authentic
+indicator warm-up semantics.
 
-The objective authorizes the V5.58 rerun and operational adapter/replay only
-after every source and data gate clears. Those gates did not clear, so no local
-adapter, fake replay, metadata-only pair, synthetic bars, or invented
-assumption was created.
+One bounded authenticated refresh of the exact NexusTrade article was
+performed. The article identity and candidate evidence were unchanged. It
+still states the strategy rules, training/OOS narrative, dates, baseline, and
+fee evidence accepted in V5.61, but does not state the historical run's
+underlying bar/data mode or slippage assumption.
 
-## Authenticated NexusTrade source evidence
+Local canonical-data and credential-presence checks also remained unchanged:
+the required combined CSV and related SPY/Tiingo inputs are absent, and the
+Tiingo credential alias is not loaded.
 
-- NexusTrade OAuth read-only provider authenticated: `true`.
-- Raw NexusTrade bearer/API-key environment alias loaded: `false`.
-- Exact founder-authored article:
+The V5.58 rerun and monthly adapter/composite implementation remain
+unauthorized by the accepted factual gates. No value, dataset, warm-up,
+symbol mapping, fill model, or performance result was inferred or fabricated.
+
+## Source unblock audit
+
+- Authenticated NexusTrade OAuth read-only provider: `true`.
+- Raw NexusTrade credential alias loaded: `false`.
+- Exact article:
   `https://nexustrade.io/blog/this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`.
-- Authenticated `search_articles` and `get_article` identified:
-  - article ID:
-    `this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`;
-  - short ID: `rbXUPvf9o`;
-  - author: Austin Starks;
-  - published timestamp: `2025-03-29T08:54:48.906Z`.
-- The authenticated article text was retrieved successfully.
-- The exact embedded advanced-settings screenshot was visually inspected:
-  `https://miro.medium.com/v2/resize:fit:1400/1*7WvMV_UXMia6SaLOC1IPHQ.png`.
-- That screenshot explicitly shows:
-  - start date `12/31/2021`;
-  - end date `03/24/2024`;
-  - SPY stock baseline; and
-  - stock fee `0.01` as a percentage of trade, normalized locally to 1 bp.
-- The advanced-settings screenshot contains no bar/data-mode field and no
-  slippage field.
-- The exact linked shared conversation was read at
-  `https://nexustrade.io/share/67e766ef84bd219ef060a689`.
-  It exposes the prompts, description, and a failed initial Rebalance result,
-  but no additional historical backtest mode or slippage configuration.
-- The exact linked public portfolio was read at
-  `https://nexustrade.io/shared-portfolio/67e7a4ad84bd219ef0619baf`.
-  Its current public page marks exact rules and holdings as subscriber-only.
-  No subscribe, purchase, copy, fork, or other workaround was attempted.
-- The exact OOS result screenshot was visually inspected:
-  `https://miro.medium.com/v2/resize:fit:1400/1*Iw4DlXOz2GYDyoN8Y-l2qQ.png`.
-- Current generic NexusTrade backtesting documentation distinguishes
-  `OHLC (Daily)` from minute-level `Intraday`:
-  `https://nexustrade.io/docs/features/backtesting`.
-- Current generic troubleshooting documentation says backtests assume exact
-  execution price:
-  `https://nexustrade.io/docs/faq/troubleshooting`.
-- The generic current documentation is corroboration only. It is neither
-  candidate-specific nor contemporaneous proof of the March 2025 run.
-- Final candidate-specific source fields:
-  - underlying bar/data mode: absent and unverified;
-  - slippage assumption: absent and unverified.
-- Monthly cadence, daily-looking indicators, generic current docs, and the
-  absence of a slippage input in one screenshot were not used to infer
-  `daily_ohlc` or `slippage_bps=0`.
-- Client-rendering, subscriber-only obfuscation, and provider boundaries were
-  respected without retry, purchase, or workaround.
+- Exact article ID remained:
+  `this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`.
+- One authenticated `get_article` refresh succeeded.
+- Article identity changed: `false`.
+- Candidate-specific historical bar/data mode: absent and unverified.
+- Candidate-specific historical slippage assumption: absent and unverified.
+- The accepted V5.61 visual/article/conversation/public-portfolio evidence was
+  reused.
+- Subscriber-only and client-rendered paths were not retried or worked around.
+- No purchase, subscribe, copy, fork, create, build, backtest, deploy, apply,
+  portfolio mutation, paper mutation, broker, order, or live NexusTrade tool
+  was called.
+- Raw authenticated provider output was not persisted, copied into the
+  handoff, or returned.
 
-No NexusTrade create, build, backtest, deploy, apply, fork, subscribe,
-purchase, portfolio mutation, paper mutation, broker, order, or live tool was
-called.
+The operator's authorization is recorded as scope authorization only. It is
+not treated as candidate-specific source authority for facts that were not
+stated.
 
-## Authentic candidate contract
+## Canonical adjusted-data unblock audit
 
-- Strategy family: `Monthly Equal-Weight Dynamic Stock Filter`.
-- Fixed universe:
-  `AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST`.
-- Equal-weight only the stocks for which at least one and at most two of these
-  source conditions are true:
-  1. price is greater than its 30-day SMA;
-  2. price divided by its 365-day minimum price is at most `1.05`; or
-  3. the stock's 14-day RSI is below `28` while SPY's 14-day RSI is above
-     `33`.
-- The result screenshot also records constant-1 descending sort.
-- The source state rule is:
-  - at least 30 days since the last filled buy order across the universe; OR
-  - at least 30 days since the last filled sell order across the universe.
-- That filled-order state rule is not the current local factory's
-  first-session-of-a-new-calendar-month helper and must not be substituted.
-- Source training window: `2021-12-31` through `2024-03-24`.
-- Untouched chronological OOS: `2024-03-24` through `2025-03-28`.
-- Authentic warm-up semantics remain unverified. The source presents a
-  52-week-low narrative and a 365-day minimum-price rule but does not establish
-  whether that indicator uses calendar days or underlying bars. The absent
-  historical bar mode prevents an authentic earliest warm-up boundary.
-- The article and linked evidence name no authentic parent or ancestor.
-
-## Source-metric trust
-
-All external performance remains `untrusted_external_evidence`. It was not
-used for local ranking or promotion.
-
-The source training table displays:
-
-- total return `37.59%`;
-- Sharpe ratio `0.50`; and
-- max drawdown `35.19%`.
-
-The source OOS table displays:
-
-- total return `29.64%`;
-- Sharpe ratio `0.99`;
-- Sortino ratio `1.11`;
-- max drawdown `15.85%`;
-- average drawdown `2.81%`; and
-- 54 trades.
-
-The same OOS screenshot's chart displays portfolio value `$12,963.80` but gain
-`+$2,946.31 (29.41%)`. The `29.64%` table versus `29.41%` chart discrepancy
-is preserved and unresolved. No external metric controlled a local outcome.
-
-## Normalized generated evidence
-
-Ignored evidence artifact:
-
-`runs/v5_61_nexustrade_monthly_exact_gate/evidence_ledger.json`
-
-- JSON schema version: `1`.
-- Size: 7,271 bytes.
-- SHA-256:
-  `34729e0d6f140f9d8dddb4c8899de7f2f0998a9e76751350727f83650aea6cfe`.
-- The ledger contains normalized public source facts and boolean capability
-  state only. It contains no credential value, account identifier, broker
-  payload, or raw authenticated provider response.
-
-## Canonical adjusted-data gate
-
-- The new worktree initially contained no `runs/` or `.data/` directory.
-- Required combined canonical CSV:
+- Required combined path:
   `runs/operator_input/multi_etf_adjusted_daily_canonical.csv`.
-- That file is absent.
-- The SPY-only Tiingo canonical path and latest normalized operator-input path
-  are also absent.
-- Zero canonical rows are available for:
+- Combined path present: `false`.
+- SPY-only Tiingo canonical path present: `false`.
+- Latest normalized Tiingo operator-input path present: `false`.
+- `.data/` directory present: `false`.
+- Required symbols with canonical data: none.
+- Missing required symbols:
   `AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, SPY`.
-- All twelve symbols are missing across:
-  - source training `2021-12-31`–`2024-03-24`;
-  - untouched OOS `2024-03-24`–`2025-03-28`; and
-  - the still-unverified authentic warm-up window.
-- Therefore no coverage/session validation, local import, or canonical artifact
-  hash can be produced.
-- The local canonical loader requires exact columns
-  `symbol,date,open,high,low,close,adjusted_close,volume`, ISO dates, positive
-  Decimal prices, coherent OHLC, nonnegative integer volume, no duplicates,
-  and no extra columns.
-- The repository-approved adjusted provider path is the fixed-host HTTPS
-  Tiingo GET adapter. It maps provider `adjClose` to canonical
-  `adjusted_close`, loads only `TIINGO_API_KEY`, and is isolated from broker
-  access.
-- The local Tiingo adapter and multi-symbol manifest are intentionally limited
-  to `SPY, QQQ, IWM, TLT, GLD`.
-- The eleven candidate stocks are not accepted by that local adapter.
-- Deterministic Tiingo mapping for `BRK-B` is not established.
+- Missing source training coverage:
+  `2021-12-31` through `2024-03-24`.
+- Missing untouched OOS coverage:
+  `2024-03-24` through `2025-03-28`.
+- Authentic warm-up boundary: absent and unverified.
+- Deterministic provider mapping for `BRK-B`: not established.
 - `TIINGO_API_KEY` loaded: `false`.
 - No market-data credential was requested, exposed, connected, or placed in a
   command or artifact.
-- No Tiingo fetch was attempted.
-- The available Alpaca historical stock-bars connector contract was inspected.
-  It exposes OHLCV, timeframe, dates, feed, currency, sort, and as-of fields,
-  but no explicit split/dividend/all adjustment-selection parameter and no
-  adjusted-close field.
-- No Alpaca data call, broker call, order call, account call, or credential
-  connection occurred.
-- No unapproved vendor, synthetic corporate action, hand normalization, or
-  cross-worktree generated artifact was used.
+- No Tiingo or Alpaca market-data fetch was attempted.
+- No local import, coverage validation, session validation, or canonical
+  artifact hash could be produced.
+- No unapproved vendor, broker market data, synthetic corporate action,
+  hand-normalized bar, or cross-worktree artifact was used.
+
+The accepted V5.61 evidence remains:
+
+- path:
+  `runs/v5_61_nexustrade_monthly_exact_gate/evidence_ledger.json`;
+- SHA-256:
+  `34729e0d6f140f9d8dddb4c8899de7f2f0998a9e76751350727f83650aea6cfe`;
+- hash reverified: `true`.
+
+## V5.62 generated unblock audit
+
+Ignored generated artifact:
+
+`runs/v5_62_nexustrade_source_data_unblock/unblock_audit.json`
+
+- Schema version: `1`.
+- Size: 3,179 bytes.
+- SHA-256:
+  `06b49081ac14c9a4bb91c14eeb282211c975ce14c1eeea7d2bd7d8499462cd7f`.
+- It records normalized boolean/factual gate state only.
+- It contains no credential value, account identifier, broker data, or raw
+  authenticated provider payload.
+
+Exact hard gates:
+
+1. `candidate_specific_source_data_mode_missing`;
+2. `candidate_specific_source_slippage_assumption_missing`;
+3. `canonical_adjusted_daily_data_missing`;
+4. `authentic_indicator_warmup_semantics_missing`; and
+5. `approved_data_acquisition_credential_or_import_not_supplied`.
 
 ## V5.58, adapter, and pairing outcome
 
 - V5.58 rerun: not performed.
-- Reason: the objective permits rerun only after all source and data gates
-  clear; both exact source fields and canonical data remain blocked.
 - Monthly strategy-family adapter: not implemented.
-- Exact source-window/warm-up adapter: not implemented.
-- Standalone local replay: not run.
-- Composite preregistration: not performed because the preregistration gate
-  did not open.
-- Composite local replay: not run.
+- Exact source train/OOS/warm-up adapter: not implemented.
+- Standalone replay: not run.
+- Composite preregistration: not performed.
+- Composite replay: not run.
 - SPY baseline, exact chronological OOS, walk-forward, cost-sensitivity, and
   portfolio-level cross-asset gates: not run.
-- No `preview_review` route was produced.
-- No later no-submit shadow design is supported by this result.
-- No parent metadata, pairing role, synthetic fills, invented costs,
-  fabricated metrics, or fake lineage was represented as a composite.
-
-If the gates later clear, the allowed preregistration remains a real
-repository-supported composite such as parent
-`spy_sma_50_200_baseline`, role `risk_regime_filter`, in which the exact source
-eligible equal-weight stock set is held only while SPY SMA50 is above SMA200
-and otherwise cash. It must change target weights and be replayed under the
-same exact periods, costs, baseline, and portfolio-level cross-asset gates as
-the standalone candidate.
+- `preview_review` route: not produced.
+- Paper/no-submit shadow design: not supported from this result.
+- Source metrics remain `untrusted_external_evidence`.
+- The accepted `29.64%` table versus `29.41%` chart discrepancy remains
+  preserved and did not control a local decision.
 
 ## Credential, network, broker, and safety state
 
 - `APP_PROFILE` loaded: `false`.
 - `APP_PROFILE=paper`: `false`.
-- Alpaca credential aliases loaded: `false`.
-- Alpaca endpoint/account aliases loaded: `false`.
+- Broker credential aliases loaded: `false`.
+- Broker endpoint/account aliases loaded: `false`.
 - Tiingo credential alias loaded: `false`.
 - Raw NexusTrade credential aliases loaded: `false`.
-- Paper integration flag loaded: `false`.
+- Paper integration flags loaded: `false`.
 - Only boolean presence was inspected. No credential value, token, API key,
-  account identifier, broker data, or response payload was requested, printed,
-  copied, persisted, or returned.
-- Network reads:
-  - authenticated NexusTrade article discovery and article retrieval;
-  - exact public article, embedded candidate screenshots, shared conversation,
-    and public portfolio;
-  - current official NexusTrade generic documentation; and
-  - read-only Alpaca connector schema discovery.
+  account identifier, broker data, or raw response payload was requested,
+  printed, persisted, or returned.
+- Network reads: one authenticated read-only refresh of the exact NexusTrade
+  article.
 - Repository tests and offline verification network access: `false`.
 - Broker or broker credential-provider access: `false`.
 - Paper submit/cancel/replace/close/liquidate or other mutation: none.
@@ -263,25 +177,23 @@ Credential/profile preflight before offline work:
 - broker credentials: `false`;
 - Tiingo credential: `false`;
 - raw NexusTrade credential: `false`;
-- paper integration flag: `false`.
+- paper integration flags: `false`.
 
 Focused command:
 
-`python -m pytest tests/unit/test_nexustrade_strategy_intake.py tests/unit/test_strategy_challenger_factory.py tests/unit/test_etf_sma_local_bars_canonicalization.py tests/unit/test_spy_adjusted_data_refresh.py tests/unit/test_multi_etf_adjusted_data_manifest.py tests/unit/test_dependency_direction.py`
+`python -m pytest tests/unit/test_nexustrade_strategy_intake.py tests/unit/test_etf_sma_local_bars_canonicalization.py tests/unit/test_spy_adjusted_data_refresh.py tests/unit/test_multi_etf_adjusted_data_manifest.py tests/unit/test_dependency_direction.py`
 
-- 152 passed in 82.34 seconds.
-- One initial short process-launch timeout produced no test result; the exact
-  command was restarted once under a bounded resumable invocation and passed.
+- 127 passed in 64.04 seconds.
 
 Mandatory `scripts/verify_offline.ps1`:
 
-- 109 passed in 95.10 seconds.
+- 109 passed in 123.27 seconds.
 - Result: `PASS`.
 - The script explicitly skipped the full default suite.
 
 Full default `python -m pytest`:
 
-- 10,162 passed and 5 skipped in 2,312.02 seconds.
+- 10,162 passed and 5 skipped in 2,622.97 seconds.
 - Zero failures and zero errors.
 - The five skips are credential-gated paper integration tests.
 
@@ -298,6 +210,10 @@ Tracked change:
 
 Ignored generated evidence:
 
+- `runs/v5_62_nexustrade_source_data_unblock/unblock_audit.json`.
+
+Accepted ignored prior evidence:
+
 - `runs/v5_61_nexustrade_monthly_exact_gate/evidence_ledger.json`.
 
 There are no production `src` changes, no test changes, and no untracked
@@ -305,20 +221,23 @@ There are no production `src` changes, no test changes, and no untracked
 
 ## Next milestone
 
-Resume this exact milestone only after both classes of gates are supplied
-without credential disclosure:
+Do not re-authorize the same state as a substitute for evidence. Resume this
+milestone only when at least one concrete unblock artifact is available:
 
-1. candidate-specific authoritative NexusTrade evidence for the March 2025
-   historical run's explicit bar/data mode and explicit slippage assumption;
-2. an approved deterministic adjusted-daily acquisition/import path for
-   AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, and SPY
-   with provider-documented adjustment semantics, deterministic symbol mapping
-   (especially `BRK-B`), complete source/OOS/authentic-warm-up coverage,
-   session validation, and reproducible hashes.
+1. candidate-specific authoritative NexusTrade material explicitly stating
+   the March 2025 historical run's bar/data mode and slippage assumption; and
+2. an approved secure provider credential boundary or a local canonical import
+   containing AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST,
+   and SPY adjusted daily bars with authoritative adjustment semantics,
+   deterministic symbol mapping, authentic warm-up coverage, source/OOS
+   coverage, session validation, and reproducible hashes.
 
-Then rerun V5.58. Implement the smallest operational adapter only when the
-candidate is blocked solely by local adapter requirements. Preserve the exact
-filled-order 30-day state rule, exact train/OOS windows, and authentic warm-up.
-Preregister and replay a genuine target-weight-changing composite under
-identical local assumptions. Only a locally produced `preview_review` route
-may support a later no-submit shadow design.
+Credential values must not be sent in chat or commands. An approved secure
+provider may expose presence only, or a canonical local file may be supplied
+without exposing credentials.
+
+When both factual gates clear, rerun V5.58. Implement the smallest operational
+adapter only if the candidate is then blocked solely by local adapter
+requirements. Preserve the exact filled-order 30-day state rule, exact
+train/OOS windows, authentic warm-up, and source cost semantics. Preregister
+and replay a real target-weight-changing composite under identical gates.
