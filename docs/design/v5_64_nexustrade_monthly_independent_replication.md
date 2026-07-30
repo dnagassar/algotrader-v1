@@ -291,8 +291,10 @@ The implementation must write deterministic, secret-free ignored artifacts:
 - `manifest.json`.
 
 The preregistration artifact must include this tracked document's SHA-256 and
-must be written before the result artifact. The manifest must hash all four
-artifacts plus the canonical input and provenance manifest.
+must be written before the result artifact. The manifest must hash the other
+three output artifacts plus the canonical input and provenance manifest. The
+manifest's own SHA-256 is computed and reported externally after it is written;
+the manifest does not contain a self-referential hash.
 
 Every artifact must state:
 
