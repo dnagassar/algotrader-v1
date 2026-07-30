@@ -14,6 +14,7 @@ import pytest
 from algotrader.errors import ValidationError
 from algotrader.execution import etf_sma_adjusted_spy_data_refresh as refresh
 from algotrader.execution.etf_sma_adjusted_spy_data_refresh import (
+    APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS,
     SPYAdjustedDataRefreshConfig,
     run_spy_adjusted_data_refresh,
 )
@@ -28,7 +29,11 @@ def test_refresh_script_contract_defaults_to_dry_run_and_requires_live_flag() ->
     script = REFRESH_SCRIPT.read_text(encoding="utf-8")
 
     assert "[ValidateSet(\"offline_fixture\", \"dry_run\", \"live_market_data_fetch\")]" in script
-    assert "[ValidateSet(\"SPY\", \"QQQ\", \"IWM\", \"TLT\", \"GLD\")]" in script
+    assert (
+        '[ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "AAPL", "MSFT", '
+        '"GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]'
+        in script
+    )
     assert "[string]$Mode = \"dry_run\"" in script
     assert "[switch]$LiveMarketDataFetchAuthorized" in script
     assert "[string]$StartDate = \"auto\"" in script
@@ -82,8 +87,10 @@ def test_dry_run_builds_tiingo_request_without_network(tmp_path: Path) -> None:
     assert run_log.exists()
 
 
+@pytest.mark.parametrize("symbol", ("QQQ", "BRK-B"))
 def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
     tmp_path: Path,
+    symbol: str,
 ) -> None:
     payload = run_spy_adjusted_data_refresh(
         SPYAdjustedDataRefreshConfig(
@@ -92,7 +99,7 @@ def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
             output_csv=tmp_path / "operator_input.csv",
             canonical_csv=tmp_path / "canonical.csv",
             run_log=tmp_path / "manifest.jsonl",
-            symbol="QQQ",
+            symbol=symbol,
             mode="dry_run",
         ),
         token_lookup=_raise_token_lookup,
@@ -100,10 +107,34 @@ def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
     )
 
     assert payload["refresh_state"] == "dry_run_refresh_plan_built"
-    assert payload["symbol"] == "QQQ"
-    assert "api.tiingo.com/tiingo/daily/QQQ/prices" in payload["provider_request"]["url"]
+    assert payload["symbol"] == symbol
+    assert (
+        f"api.tiingo.com/tiingo/daily/{symbol}/prices"
+        in payload["provider_request"]["url"]
+    )
+    assert payload["provider_request"]["provider_symbol"] == symbol
+    assert payload["provider_request"]["provider_symbol_mapping"] == (
+        f"{symbol}->{symbol}"
+    )
     assert payload["network_access_attempted"] is False
     assert payload["market_data_token_access_attempted"] is False
+
+
+def test_nexustrade_monthly_symbol_contract_includes_exact_universe() -> None:
+    assert APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS == (
+        "AAPL",
+        "MSFT",
+        "GOOGL",
+        "AMZN",
+        "META",
+        "NVDA",
+        "TSLA",
+        "GS",
+        "JPM",
+        "BRK-B",
+        "COST",
+        "SPY",
+    )
 
 
 def test_offline_fixture_refresh_normalizes_provider_data_into_canonical_schema(

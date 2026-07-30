@@ -1,14 +1,15 @@
 <#
 .SYNOPSIS
-Plans or runs an explicitly gated adjusted ETF daily-bars refresh.
+Plans or runs an explicitly gated adjusted EOD daily-bars refresh.
 
 .DESCRIPTION
-Builds a deterministic Tiingo adjusted ETF refresh plan, optionally normalizes
-an offline fixture, or executes an exact-destination HTTPS GET only when the live
-mode and explicit authorization switch are both supplied.  The default mode is
-dry_run.  Paper profile and broker variables may coexist, but only TIINGO_API_KEY
-can be loaded or sent.  This script does not read broker state, mutate broker
-state, submit paper orders, authorize live trading, or print/write token values.
+Builds a deterministic Tiingo adjusted ETF or approved-equity refresh plan,
+optionally normalizes an offline fixture, or executes an exact-destination
+HTTPS GET only when the live mode and explicit authorization switch are both
+supplied.  The default mode is dry_run.  Paper profile and broker variables may
+coexist, but only TIINGO_API_KEY can be loaded or sent. This script does not read broker state,
+mutate broker state, submit paper orders, authorize live trading, or print/write
+token values.
 #>
 
 [CmdletBinding()]
@@ -26,7 +27,7 @@ param(
     [string]$SoakReport,
     [ValidateRange(1, 20)]
     [int]$SoakRequiredSessions = 5,
-    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD")]
+    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]
     [string]$Symbol = "SPY",
     [ValidateSet("offline_fixture", "dry_run", "live_market_data_fetch")]
     [string]$Mode = "dry_run",

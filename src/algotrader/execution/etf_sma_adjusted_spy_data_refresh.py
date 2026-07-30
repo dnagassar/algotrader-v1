@@ -1,8 +1,8 @@
-"""Explicitly gated adjusted ETF market-data refresh adapter.
+"""Explicitly gated adjusted EOD market-data refresh adapter.
 
 This module plans and, when explicitly authorized, executes a Tiingo adjusted
-ETF daily-bar refresh before handing the normalized CSV to the existing M446
-intake/canonicalization path.
+ETF or approved equity daily-bar refresh before handing the normalized CSV to
+the existing M446 intake/canonicalization path.
 
 Default and test modes are network-free, credential-free, broker-free, and
 deterministic.  The live provider path is implemented but requires both the
@@ -32,10 +32,13 @@ from algotrader.execution.etf_sma_market_data_soak import (
 
 
 __all__ = [
+    "APPROVED_ADJUSTED_EOD_SYMBOLS",
     "APPROVED_ADJUSTED_ETF_SYMBOLS",
+    "APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS",
     "ETFAdjustedDataRefreshConfig",
     "MarketDataFetchError",
     "SPYAdjustedDataRefreshConfig",
+    "TIINGO_PROVIDER_SYMBOL_BY_CANONICAL",
     "build_tiingo_adjusted_etf_request",
     "build_tiingo_adjusted_spy_request",
     "load_tiingo_api_key_from_dotenv",
@@ -50,6 +53,28 @@ _RECORD_TYPE = "automatic_adjusted_spy_data_refresh"
 _MILESTONE = "v1.78"
 _PROVIDER = "tiingo"
 APPROVED_ADJUSTED_ETF_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "NVDA",
+    "TSLA",
+    "GS",
+    "JPM",
+    "BRK-B",
+    "COST",
+    "SPY",
+)
+APPROVED_ADJUSTED_EOD_SYMBOLS = tuple(
+    dict.fromkeys(
+        (*APPROVED_ADJUSTED_ETF_SYMBOLS, *APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS)
+    )
+)
+TIINGO_PROVIDER_SYMBOL_BY_CANONICAL = {
+    symbol: symbol for symbol in APPROVED_ADJUSTED_EOD_SYMBOLS
+}
 _SYMBOL = "SPY"
 _DRY_RUN = "dry_run"
 _OFFLINE_FIXTURE = "offline_fixture"
@@ -117,7 +142,8 @@ _KNOWN_TIINGO_FIELDS = frozenset(
 )
 _VALIDATION_CONTRACT = (
     "known_tiingo_provider_columns_only",
-    "symbol_scope_approved_etf_only",
+    "symbol_scope_approved_eod_only",
+    "deterministic_canonical_to_tiingo_symbol_mapping",
     "deterministic_date_parse",
     "ascending_canonical_date_sort",
     "duplicate_dates_rejected",
@@ -335,16 +361,19 @@ def build_tiingo_adjusted_etf_request(
         }
     )
     symbol = checked_config.symbol
+    provider_symbol = _tiingo_provider_symbol(symbol)
     return {
         "method": "GET",
         "url": f"{_tiingo_url(symbol)}?{query}",
         "scheme": "https",
         "destination_host": _TIINGO_DESTINATION_HOST,
-        "destination_path": f"/tiingo/daily/{symbol}/prices",
+        "destination_path": f"/tiingo/daily/{provider_symbol}/prices",
         "destination_allowlist_match": True,
         "headers": {"Authorization": "Token <redacted>"},
         "token_env_var": checked_config.token_env_var,
         "symbol": symbol,
+        "provider_symbol": provider_symbol,
+        "provider_symbol_mapping": f"{symbol}->{provider_symbol}",
         "provider_adjusted_close_field": "adjClose",
         "request_start_date": request_start_date,
         "request_end_date": request_end_date,
@@ -870,7 +899,11 @@ def _manifest(
         "run_id": config.run_id,
         "provider": config.provider,
         "symbol": config.symbol,
-        "approved_symbols": list(APPROVED_ADJUSTED_ETF_SYMBOLS),
+        "approved_symbols": list(APPROVED_ADJUSTED_EOD_SYMBOLS),
+        "approved_etf_symbols": list(APPROVED_ADJUSTED_ETF_SYMBOLS),
+        "approved_nexustrade_monthly_symbols": list(
+            APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS
+        ),
         "mode": config.mode,
         "refresh_mode": config.mode,
         "refresh_authorized": (
@@ -930,7 +963,8 @@ def _manifest(
         "broker_credential_lookup_attempted": False,
         "provider_column_mapping": {
             "symbol": (
-                f"constant {config.symbol} unless provider symbol/ticker is present"
+                f"canonical {config.symbol}; Tiingo provider symbol "
+                f"{_tiingo_provider_symbol(config.symbol)}"
             ),
             "date": "date",
             "open": "open",
@@ -1431,6 +1465,7 @@ def _record_value(record: Mapping[str, object], canonical_field: str) -> object:
 
 def _parse_symbol(record: Mapping[str, object], requested_symbol: str) -> str:
     checked_symbol = _approved_symbol(requested_symbol)
+    provider_symbol = _tiingo_provider_symbol(checked_symbol)
     symbol_value = None
     for alias in _PROVIDER_FIELD_ALIASES["symbol"]:
         if alias in record:
@@ -1438,7 +1473,7 @@ def _parse_symbol(record: Mapping[str, object], requested_symbol: str) -> str:
             break
     if symbol_value in (None, ""):
         return checked_symbol
-    if str(symbol_value).strip().upper() != checked_symbol:
+    if str(symbol_value).strip().upper() != provider_symbol:
         raise ValidationError(f"symbol_scope_must_be_{checked_symbol.lower()}")
     return checked_symbol
 
@@ -1540,7 +1575,12 @@ def _config(value: object) -> SPYAdjustedDataRefreshConfig:
 
 
 def _tiingo_url(symbol: str) -> str:
-    return f"{_TIINGO_URL_PREFIX}/{_approved_symbol(symbol)}/prices"
+    return f"{_TIINGO_URL_PREFIX}/{_tiingo_provider_symbol(symbol)}/prices"
+
+
+def _tiingo_provider_symbol(value: object) -> str:
+    symbol = _approved_symbol(value)
+    return TIINGO_PROVIDER_SYMBOL_BY_CANONICAL[symbol]
 
 
 def _required_string(value: object, field_name: str) -> str:
@@ -1554,10 +1594,10 @@ def _required_string(value: object, field_name: str) -> str:
 
 def _approved_symbol(value: object) -> str:
     text = _required_string(value, "symbol").upper()
-    if text not in APPROVED_ADJUSTED_ETF_SYMBOLS:
+    if text not in APPROVED_ADJUSTED_EOD_SYMBOLS:
         raise ValidationError(
             "symbol must be one of "
-            + ",".join(APPROVED_ADJUSTED_ETF_SYMBOLS)
+            + ",".join(APPROVED_ADJUSTED_EOD_SYMBOLS)
             + "."
         )
     return text
@@ -1650,7 +1690,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-csv", required=True)
     parser.add_argument("--canonical-csv", required=True)
     parser.add_argument("--run-log", required=True)
-    parser.add_argument("--symbol", choices=APPROVED_ADJUSTED_ETF_SYMBOLS, default=_SYMBOL)
+    parser.add_argument("--symbol", choices=APPROVED_ADJUSTED_EOD_SYMBOLS, default=_SYMBOL)
     parser.add_argument("--soak-ledger", default=None)
     parser.add_argument("--soak-report", default=None)
     parser.add_argument(

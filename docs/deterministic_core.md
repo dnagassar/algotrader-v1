@@ -595,6 +595,34 @@ Read-only market-data command contract:
 - HTTP failures, invalid JSON, invalid bars, stale provider data, or scope
   violations preserve the previous canonical file and fail closed
 
+The five ETF symbols remain the default SPY/ETF operating scope. The bounded
+Tiingo adapter also has one explicit research-only EOD allowlist for the
+NexusTrade monthly candidate:
+`AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, SPY`.
+`BRK-B` maps deterministically to the Tiingo `BRK-B` path; dotted or inferred
+aliases are not accepted.
+
+`scripts/refresh_nexustrade_monthly_adjusted_data.ps1` composes twelve
+sequential uses of the same exact-host adapter. Its defaults are dry-run,
+`2019-01-02` through `2025-03-28`, and no credential lookup. The authorized
+mode may point `-DotenvPath` at an existing untracked dotenv in another
+checkout; the file is not copied or exported, and the scoped loader retrieves
+only `TIINGO_API_KEY`.
+
+After successful acquisition,
+`algotrader.research.nexustrade_monthly_adjusted_data_manifest` remains
+offline and credential-free. It hashes every canonical input, verifies the
+source train/OOS boundaries and conservative pretraining coverage, requires
+every symbol to match the observed Tiingo SPY EOD date set, and writes the
+combined local canonical CSV only when all twelve symbols pass. Tiingo's
+documented EOD `adjClose` follows its CRSP-standard split-and-dividend
+adjustment method. Raw `open`, `high`, `low`, `close`, and `volume` are
+preserved separately; the manifest does not claim adjusted OHLCV.
+
+This data contract does not infer the NexusTrade historical run's daily versus
+intraday mode, slippage assumption, or whether its 365-day minimum is calendar
+days or sessions. Those source facts remain independent hard gates.
+
 The isolated Task Scheduler template
 `docs/design/spy_eod_market_data_refresh_scheduled_task.xml` runs at 20:10
 host-local New York time on weekdays, after Tiingo’s stated 20:00 correction

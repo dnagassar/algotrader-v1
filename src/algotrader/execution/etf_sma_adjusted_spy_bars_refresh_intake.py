@@ -24,7 +24,9 @@ from typing import Any
 from algotrader.errors import ValidationError
 
 __all__ = [
+    "APPROVED_ADJUSTED_EOD_SYMBOLS",
     "APPROVED_ADJUSTED_ETF_SYMBOLS",
+    "APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS",
     "EtfSmaAdjustedSpyBarsRefreshIntakeConfig",
     "build_etf_sma_adjusted_spy_bars_refresh_intake",
     "render_etf_sma_adjusted_spy_bars_refresh_intake_json",
@@ -37,6 +39,25 @@ _MILESTONE = "M446"
 _RECORD_TYPE = "etf_sma_adjusted_spy_bars_refresh_manifest"
 _COMMAND = "etf-sma-adjusted-spy-bars-refresh-intake"
 APPROVED_ADJUSTED_ETF_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "NVDA",
+    "TSLA",
+    "GS",
+    "JPM",
+    "BRK-B",
+    "COST",
+    "SPY",
+)
+APPROVED_ADJUSTED_EOD_SYMBOLS = tuple(
+    dict.fromkeys(
+        (*APPROVED_ADJUSTED_ETF_SYMBOLS, *APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS)
+    )
+)
 _DEFAULT_SYMBOL = "SPY"
 
 _REQUIRED_COLUMNS = ("date", "open", "high", "low", "close", "volume")
@@ -424,10 +445,10 @@ def _required_string(value: object, field_name: str) -> str:
 
 def _approved_symbol(value: object) -> str:
     text = _required_string(value, "symbol").upper()
-    if text not in APPROVED_ADJUSTED_ETF_SYMBOLS:
+    if text not in APPROVED_ADJUSTED_EOD_SYMBOLS:
         raise ValidationError(
             "symbol must be one of "
-            + ",".join(APPROVED_ADJUSTED_ETF_SYMBOLS)
+            + ",".join(APPROVED_ADJUSTED_EOD_SYMBOLS)
             + "."
         )
     return text

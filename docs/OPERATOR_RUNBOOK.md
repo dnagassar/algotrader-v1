@@ -304,6 +304,42 @@ the explicit authorization switch:
   -Format json
 ```
 
+### NexusTrade monthly universe historical acquisition
+
+The exact twelve-symbol research universe can be planned without reading the
+credential or using the network:
+
+```powershell
+.\scripts\refresh_nexustrade_monthly_adjusted_data.ps1 `
+  -Mode dry_run `
+  -DotenvPath "C:\path\to\existing\untracked\.env"
+```
+
+With explicit read-only market-data authorization, use the same wrapper:
+
+```powershell
+.\scripts\refresh_nexustrade_monthly_adjusted_data.ps1 `
+  -Mode live_market_data_fetch `
+  -DotenvPath "C:\path\to\existing\untracked\.env" `
+  -LiveMarketDataFetchAuthorized
+```
+
+The wrapper never copies the dotenv file and loads only `TIINGO_API_KEY`
+inside each bounded child fetch. It performs one exact-host GET for each of
+`AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, SPY`.
+The default fixed interval is `2019-01-02` through `2025-03-28`.
+
+On success it writes per-symbol canonical files under `runs/operator_input`,
+the combined
+`runs/operator_input/multi_etf_adjusted_daily_canonical.csv`, and the
+secret-free coverage/provenance manifest under
+`runs/v5_63_nexustrade_canonical_data/canonical_data_manifest.json`.
+The manifest requires every symbol to match Tiingo SPY's observed EOD dates,
+records input and combined SHA-256 hashes, and confirms coverage for both a
+365-calendar-day and 365-observed-session warm-up. It deliberately leaves the
+candidate's authentic warm-up clock, bar mode, and slippage unresolved unless
+candidate-specific source material explicitly states them.
+
 Register the isolated task from the checked-in template only after reviewing
 its absolute repository path:
 
