@@ -1604,3 +1604,29 @@ OOS, walk-forward, cost-sensitivity, baseline-comparison, and cross-asset
 gates. The resulting route may request more research, reject, or enter preview
 review. Intake never grants paper promotion, creates an execution intent,
 accesses a broker, or authorizes live activity.
+
+## V5.64 NexusTrade Monthly Independent Replication
+
+V5.64 is intentionally separate from the authentic-source V5.58 intake. It
+does not fill missing NexusTrade facts or claim the March 2025 historical
+lineage. The outcome-blind protocol is committed at
+`docs/design/v5_64_nexustrade_monthly_independent_replication.md`.
+
+`algotrader.research.nexustrade_monthly_independent_replication` validates the
+tracked protocol hash, the V5.63 provenance manifest hash, and the combined
+canonical CSV hash before replay. It imports no network, credential, broker,
+execution, risk, or orchestration module.
+
+The standalone preserves the source stock conditions and the stateful
+30-calendar-day-since-last-filled-buy OR last-filled-sell rule. Disclosed local
+assumptions use adjusted daily close, a 365-observed-session minimum, the
+repository simple RSI-14 convention, and next-session-close fills. The
+composite applies the real `spy_sma_50_200_baseline` risk-regime filter to
+target weights and moves the stock portfolio to cash when the parent is
+risk-off.
+
+Both candidates and both comparators share exact source-aligned training/OOS
+dates, three fixed chronological OOS folds, continuous state, and four
+identical cost cases. Preview review requires all preregistered SPY baseline,
+cost, portfolio-level cross-asset, and composite-integrity/value gates. This
+lane is offline research only; it never permits paper promotion or submission.

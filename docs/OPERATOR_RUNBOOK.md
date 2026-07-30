@@ -1891,3 +1891,30 @@ one of these candidate routes:
 
 Only `preview_review` advances to a separate no-submit design review. Never use
 NexusTrade's deploy control or connect broker credentials through this lane.
+
+## V5.64 Independent Monthly Replication
+
+This command runs the separately preregistered independent replication. It is
+not an authentic replay of the March 2025 NexusTrade run:
+
+```powershell
+.\scripts\run_nexustrade_monthly_independent_replication.ps1
+```
+
+The wrapper fails closed when `APP_PROFILE` is paper/live or any broker,
+NexusTrade, or Tiingo credential alias is loaded. It uses only the committed
+protocol, the V5.63 canonical-data manifest, and the local combined adjusted
+daily CSV. Credential values are never printed.
+
+Expected ignored outputs under
+`runs/v5_64_nexustrade_monthly_independent_replication` are:
+
+- `preregistration.json`;
+- `replication_results.json`;
+- `replication_summary.md`; and
+- `manifest.json`.
+
+Inspect each candidate's `route` and gate details. Only `preview_review` can
+support a later separately authorized no-submit shadow design.
+`continue_local_research` and `reject` cannot advance. No result grants paper
+promotion, broker access, order submission, or live authority.

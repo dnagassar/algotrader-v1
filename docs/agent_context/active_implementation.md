@@ -7,71 +7,110 @@
   `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
 - Takeover HEAD:
-  `4e3112bc10ef78c948d37fcac9115f36a13f34a8`.
-- The branch, HEAD, status, staged diff, unstaged diff, untracked files, and
-  this handoff were inspected before any change.
+  `f9a1a4c7e7c0c2dabd56463ea47834df2c8f64d9`.
+- The branch, HEAD, status, staged diff, unstaged diff, untracked files, and this
+  handoff were inspected before any change.
 - Takeover was clean: staged, unstaged, and untracked sets were empty.
 - No reset, clean, stash, restore, rebase, branch switch, new branch, or new
   worktree occurred.
 - Codex remained the only writer. No subagent was used.
 - Dirty-file owner before the final local commit: Codex owns exactly the files
   listed under "Tracked implementation slice."
-- Next action after this handoff update: final hygiene inspection, stage the
+- Next action after this handoff update: run final hygiene checks, stage the
   coherent slice, commit locally, and verify a clean status.
 
 ## Decision
 
-The deterministic canonical adjusted-daily data gate is cleared. The authentic
-NexusTrade historical replay remains at a demonstrated source-evidence hard
-gate.
+V5.64 implemented and replayed an explicitly independent, assumption-disclosed
+replication of the NexusTrade Monthly Equal-Weight Dynamic Stock Filter. It is
+not an authentic replay of the March 2025 NexusTrade historical run and does
+not inherit the source's metrics or lineage.
 
-An existing ignored dotenv in the primary checkout supplied the already
-configured Tiingo credential through the repository's scoped `--dotenv-path`
-loader. The dotenv and key were not copied, printed, returned, persisted in an
-artifact, or exported to the implementation or test process.
+Both the standalone and genuine SPY SMA50/200 risk-regime composite route to
+`continue_local_research`. Neither cleared every preregistered baseline,
+walk-forward, portfolio, and drawdown gate. No `preview_review` route or
+no-submit shadow design was produced.
 
-Twelve exact-host read-only Tiingo EOD requests completed for:
+The authentic V5.58 route remains at the demonstrated source-evidence hard
+gate: candidate-specific material still does not state the historical
+bar/data mode, slippage assumption, or whether the 365-day minimum uses
+calendar days or observed trading sessions.
 
-`AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, SPY`.
+## Preregistration and claim boundary
 
-All symbols have deterministic provider mappings, complete coverage, identical
-observed SPY EOD sessions, authoritative documented adjustment semantics,
-input hashes, and one deterministic combined local CSV.
+- Protocol:
+  `v5_64_nexustrade_monthly_independent_replication_v1`.
+- Tracked protocol:
+  `docs/design/v5_64_nexustrade_monthly_independent_replication.md`.
+- Final tracked protocol SHA-256:
+  `f24c98daa03462fccd0e73163abfe42f597ab601db83b331ecd4b487e31f4ee0`.
+- Outcome-blind preregistration commits:
+  - `787d22f` - preregister independent replication;
+  - `97893f5` - clarify the self-referential manifest-hash contract;
+  - `1229383a7bb8302ef38fd475f12cf7b802c19b47` - correct contradictory
+    cost-gate wording.
+- All three commits preceded outcome computation.
 
-The exact NexusTrade article and candidate-specific evidence still do not state:
+Preserved source rules:
 
-1. the historical run's underlying bar/data mode;
-2. the historical run's slippage assumption; or
-3. whether the stated 365-day minimum uses calendar days or trading sessions.
+- Stock universe:
+  `AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST`.
+- Equal weights among eligible stocks.
+- A stock is eligible when at least one and at most two conditions are true:
+  - adjusted close is above SMA30;
+  - adjusted close divided by its 365-session rolling minimum is at most
+    `1.05`;
+  - stock RSI14 is below `28` and SPY RSI14 is above `33`.
+- Constant sort value `1`, descending; it does not alter the eligible set.
+- Rebalance eligibility preserves the stateful condition of at least 30
+  calendar days since the last filled buy OR last filled sell. It does not use
+  the repository's first-session-of-calendar-month helper.
 
-Generic NexusTrade daily/intraday and exact-price-fill documentation cannot
-substitute for candidate-specific authority. No values were inferred. Therefore
-V5.58, the monthly strategy-family adapter, standalone replay, and real paired
-composite remain intentionally unrun.
+Disclosed independent assumptions:
 
-## Source evidence
+- Tiingo daily `adjusted_close` is the sole price field.
+- "365 day minimum" is interpreted as 365 observed sessions.
+- RSI14 uses the repository-consistent simple rolling gain/loss arithmetic.
+- Signals use information through a session's close and fill at the next
+  observed session's adjusted close.
+- A missing prior filled buy or sell satisfies its elapsed-time condition.
+- Weights drift between filled rebalance events.
+- Source fee assumption: `1` basis point per traded notional.
+- Independent base slippage assumption: `0` basis points.
+- Cost scenarios:
+  - zero: `0` fee / `0` slippage basis points;
+  - source-fee-only: `1` / `0`;
+  - low: `1` / `1`;
+  - moderate: `1` / `4`.
+- Initial equity is frozen at `$10,000`.
 
-- Exact article:
-  `https://nexustrade.io/blog/this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`.
-- Public candidate configuration image:
-  `https://miro.medium.com/v2/resize:fit:1400/1*7WvMV_UXMia6SaLOC1IPHQ.png`.
-- The public configuration confirms the source training dates and stock trading
-  fee of `0.01% of trade`.
-- Other accepted article screenshots confirm the candidate rules, source/OOS
-  dates, and the stateful condition of at least 30 days since the last filled
-  buy OR filled sell.
-- Candidate-specific historical bar/data mode: absent and unverified.
-- Candidate-specific historical slippage assumption: absent and unverified.
-- Authentic 365-day warm-up clock: absent and unverified.
-- A bounded structured search of available anonymized zero-cost NexusTrade
-  material produced no exact candidate match.
-- Subscriber-only, refused, anonymized, obfuscated, and client-rendered paths
-  were not retried or worked around.
-- No author contact, purchase, subscription, copy, fork, create, build,
-  backtest, deploy, apply, or portfolio mutation occurred.
-- External source metrics remain `untrusted_external_evidence`.
-- The `29.64%` table versus `29.41%` chart discrepancy remains preserved.
-- External metrics were not used for ranking, promotion, or local decisions.
+Chronology:
+
+- Source training interval:
+  `2021-12-31` through `2024-03-24`.
+- Untouched OOS interval:
+  `2024-03-24` through `2025-03-28`.
+- First observed OOS session: `2024-03-25`.
+- OOS sessions: `254`.
+- Walk-forward windows, with no state reset at their boundaries:
+  - `2024-03-25` through `2024-07-24`: `84` sessions;
+  - `2024-07-25` through `2024-11-21`: `85` sessions;
+  - `2024-11-22` through `2025-03-28`: `85` sessions.
+
+Comparators and composite:
+
+- SPY comparator: repository-supported `spy_sma_50_200_baseline`.
+- Cross-asset comparator: static equal-weight buy-and-hold of the eleven-stock
+  universe.
+- Genuine composite:
+  `nexustrade_monthly_independent_spy_sma_50_200_regime_filter`.
+- Parent: `spy_sma_50_200_baseline`.
+- Role: `risk_regime_filter`.
+- The exact standalone eligible set is held only while SPY SMA50 is above
+  SMA200 and is otherwise cash.
+- Overlay-induced fills affect the composite's own filled-event state.
+- OOS target weights differed from the standalone on `238` sessions, from
+  `2024-03-25` through `2025-03-28`; parent-metadata-only is `false`.
 
 ## Canonical adjusted-data evidence
 
@@ -89,200 +128,243 @@ Provider and adjustment contract:
 - Raw provider `open`, `high`, `low`, `close`, and `volume` are preserved.
 - Adjusted OHLCV claimed: `false`.
 - `BRK-B` canonical-to-provider mapping: `BRK-B->BRK-B`.
-- Session reference: observed Tiingo SPY EOD dates; this is not represented as
-  an independent official exchange calendar.
+- Session reference: observed Tiingo SPY EOD dates, not an independently
+  represented official exchange calendar.
 
-Exact chronological contract:
+Exact input contract:
 
-- Acquisition and warm-up coverage:
+- Coverage and warm-up:
   `2019-01-02` through `2025-03-28`.
-- Source training:
-  `2021-12-31` through `2024-03-24`.
-- Untouched OOS:
-  `2024-03-24` through `2025-03-28`.
-- Observed contract sessions per symbol: `1,569`.
+- Symbols: all eleven stocks plus SPY.
+- Observed sessions per symbol: `1,569`.
 - Pretraining sessions per symbol: `756`.
 - Training sessions per symbol: `559`.
 - OOS sessions per symbol: `254`.
-- All twelve symbols match the observed SPY EOD session set.
+- All symbols match the observed SPY session set.
 - Missing or unexpected sessions: none.
 - Weekend rows: none.
-- Coverage supports both at least 365 calendar days and at least 365 observed
-  sessions before source training.
-- Authentic source interpretation of 365 days remains unresolved.
-
-Generated ignored artifacts:
-
-- Manifest:
-  `runs/v5_63_nexustrade_canonical_data/canonical_data_manifest.json`.
-- Manifest size: `12,314` bytes.
-- Manifest SHA-256:
-  `e204a8a1824e5b49ce4d457f12884bfc284d52f99ad3ba07072c978d7223d8e1`.
-- Combined CSV:
+- Combined local CSV:
   `runs/operator_input/multi_etf_adjusted_daily_canonical.csv`.
-- Combined size: `1,234,759` bytes.
 - Combined rows: `18,828`.
-- Combined SHA-256:
+- Combined CSV SHA-256:
   `d296138a95a86546bdc92678af479e8c8e204b138e2db43f54979a19921c9575`.
-- Canonical data ready: `true`.
-- Valid symbols: all twelve.
-- Blocked symbols: none.
+- V5.63 data manifest:
+  `runs/v5_63_nexustrade_canonical_data/canonical_data_manifest.json`.
+- V5.63 manifest SHA-256:
+  `e204a8a1824e5b49ce4d457f12884bfc284d52f99ad3ba07072c978d7223d8e1`.
+- V5.64 validates both hashes and the final tracked protocol hash before
+  computing any result.
 
-Per-symbol canonical SHA-256:
+No network acquisition was needed in V5.64. The canonical input was the
+previously acquired deterministic local Tiingo artifact.
 
-- AAPL:
-  `dad21d2c16f29dee23499649e7c2f59bba8ac4ce4649fb695cdaccd902da59f4`.
-- MSFT:
-  `50c6629e173b55effa6f0ef889c0fc32e65df7af28a3e0aa958e2067196e2568`.
-- GOOGL:
-  `52bf16d74f7854978d3cc23340c8759894aa75956244950ae2e6ec8875bd3475`.
-- AMZN:
-  `881680fe05f846696a77d2ade097082ece4bef0ffc02e1ede7e3200b94f54515`.
-- META:
-  `5751c91728886f24f66789e1c490acac4ea651c3cecb91638f42925a106de012`.
-- NVDA:
-  `7523c2d3a9f305e33b9b634381e7fc512de92e55bb7c14b5bc756a5342ec5fb4`.
-- TSLA:
-  `0a75fc4000d45ba2de13fcdea55d6ebaeaaae75d77ab8b6112822f6281ddca4e`.
-- GS:
-  `43cd4220a5efd6632d96a6bdf606a9e1b480c52fc1bcc6a726f32945275383e6`.
-- JPM:
-  `74a1422d433b6d97fc85e3f4352ca50090d5878a2c54d64f1ba2cb796dbe49b1`.
-- BRK-B:
-  `e373de0c85cfbd0a95690df70ed27e4eff8a43e8857e0e33a4fe28c5e123d683`.
-- COST:
-  `ff9a6e7f552de8b016293dd19647c9e5c920d96f52265ee2f08c93eeb135cf1d`.
-- SPY:
-  `8db8e1c6215120e96c616ad795ccc6c4051f5b78b784833e6ea5f3a3ded8e608`.
+## Replay outcomes
 
-## Credential and acquisition audit
+Standalone:
+`nexustrade_monthly_independent_daily_close_365_session`.
 
-- Current worktree `.env` present: `false`.
-- Primary checkout ignored `.env` present: `true`.
-- Primary checkout `TIINGO_API_KEY` declaration present: `true`.
-- Primary checkout `TIINGO_API_KEY` nonempty: `true`.
-- Credential value inspected, printed, returned, or persisted: `false`.
-- Credential copied into this worktree: `false`.
-- Credential exported into the implementation shell: `false`.
-- Acquisition-child Tiingo token lookup attempted: `true`.
-- Acquisition-child Tiingo token loaded: `true`.
-- Acquisition-child token printed or written: `false`.
-- Tiingo token loaded in offline verification/default pytest process: `false`.
-- Market-data network requests: twelve read-only exact-host Tiingo EOD GETs.
-- Fetch retries after the local manifest CLI defect: none. All data requests
-  had completed; the manifest defect was fixed and replayed offline.
-- Broker credential provider access: `false`.
-- Broker account/order/position access: `false`.
-- Broker mutation: none.
-- Paper mutation: none.
-- Live authorization: `false`.
+- Source-fee-only training:
+  - total return `0.290512330640418985960933144`;
+  - maximum drawdown `0.3877013774011843371759739934`;
+  - Sharpe `0.4358980959593545253496739767`;
+  - trades `248`;
+  - turnover `28.05158773908067965579651043`.
+- Source-fee-only OOS:
+  - total return `0.157936481260720201747758286`;
+  - maximum drawdown `0.1369641692255930030752423095`;
+  - Sharpe `0.8295698321507958917284069448`;
+  - trades `125`;
+  - turnover `8.645265315858123645596831452`.
+- Source-fee-only fold returns:
+  `0.066660182883622713991724952`,
+  `0.098282714893710126692817777`,
+  `-0.0115732177508758881450909113`.
+- Moderate-cost OOS:
+  - total return `0.15393809547224208128327251`;
+  - maximum drawdown `0.1372230993945879997990740272`;
+  - Sharpe `0.8089943227069184619212207479`.
+- Moderate-cost fold returns:
+  `0.065852640117436223202258853`,
+  `0.096794786931809247221311157`,
+  `-0.0129026902469634218061178671`.
+- Cost gate: passed.
+- Source-fee-only SPY return edge: `0.078307787347870890176243613`.
+- Moderate-cost SPY return edge: `0.074309401559392769711757837`.
+- Cost degradation: `0.003998385788478120464485776`.
+- SPY baseline gate: failed in all four required windows. Representative
+  failures include full-OOS drawdown delta `0.03661` above the allowed `0.01`,
+  fold-two return delta `-0.00198`, and fold-two Sharpe delta `-0.68196`.
+- Cross-asset gate: failed. Moderate OOS return was
+  `0.15393809547224208128327251` versus static equal-weight
+  `0.185406109534062356979258751`; folds one and two also lost to the static
+  basket.
+- Breadth/concentration subgates passed: `11` symbols held, `9` positive
+  contributors, maximum absolute contribution share approximately `0.2002`.
+- Route: `continue_local_research`.
 
-## V5.58, adapter, and pairing outcome
+Composite:
+`nexustrade_monthly_independent_spy_sma_50_200_regime_filter`.
 
-- V5.58 rerun: not performed because source gates remain.
-- Monthly equal-weight dynamic stock-filter adapter: not implemented.
-- Source train/OOS/warm-up replay: not run.
-- Standalone replay: not run.
-- Composite preregistration: not performed.
-- Composite replay: not run.
-- SPY baseline, chronological OOS, walk-forward, cost sensitivity, and
-  cross-asset portfolio gates: not run.
-- `preview_review` route: not produced.
-- No-submit shadow design: not supported by this result.
-- No source rule, cost, fill, date, trade count, metric, or lineage was
-  manufactured.
+- Source-fee-only training:
+  - total return `0.59476307025619301464245999`;
+  - maximum drawdown `0.1943764886074641993354466680`;
+  - Sharpe `1.326145026728890315954027233`;
+  - trades `193`;
+  - turnover `13.74206322626763735778694624`.
+- Source-fee-only OOS:
+  - total return `0.221802803022493191164357381`;
+  - maximum drawdown `0.1538286550596086030202139121`;
+  - Sharpe `1.041384072176297492978233560`;
+  - trades `117`;
+  - turnover `11.72946592903657074232868409`.
+- Source-fee-only fold returns:
+  `0.141097709462859849909448836`,
+  `0.157895363036824477726733459`,
+  `-0.0752827295335290642152499261`.
+- Moderate-cost OOS:
+  - total return `0.216081928040488296986127071`;
+  - maximum drawdown `0.1542831596611372101415857540`;
+  - Sharpe `1.014004230219840814526456983`.
+- Moderate-cost fold returns:
+  `0.139010185844455840847480965`,
+  `0.156941101972361738937882036`,
+  `-0.0771651722541292969480332419`.
+- Cost gate: passed.
+- Source-fee-only SPY return edge: `0.142174109109643879592842708`.
+- Moderate-cost SPY return edge: `0.136453234127638985414612398`.
+- Cost degradation: `0.005720874982004894178230310`.
+- SPY baseline gate: failed in all four required windows. Full-OOS drawdown
+  delta was `0.05347`; fold-one and fold-two drawdown deltas were `0.04886`
+  and `0.02699`; fold-three return delta was `-0.01719`.
+- Cross-asset gate: failed only in fold two, where composite return
+  `0.156941101972361738937882036` was below static equal-weight
+  `0.16925` (rounded).
+- Breadth/concentration subgates passed: `11` symbols held, `8` positive
+  contributors, maximum absolute contribution share approximately `0.373`.
+- Composite-value gate: failed. OOS moderate-cost return and Sharpe improved
+  over standalone by approximately `0.06214` and `0.205`, but maximum
+  drawdown worsened by `0.01706`, above the allowed `0.01`.
+- Route: `continue_local_research`.
 
-## Safety state
+Comparator OOS metrics:
+
+- SPY SMA50/200 baseline, source-fee-only and moderate:
+  - total return `0.079628693912849311571514673`;
+  - maximum drawdown `0.1003540371658083083740175581`;
+  - Sharpe `0.5708824619318484630556141473`.
+- Static equal-weight eleven-stock basket, moderate:
+  - total return `0.185406109534062356979258751`;
+  - maximum drawdown `0.1581265630478511304556469519`;
+  - Sharpe `0.8047084327666832178980889690`.
+
+## Generated artifact evidence
+
+Ignored output root:
+`runs/v5_64_nexustrade_monthly_independent_replication`.
+
+- `preregistration.json` SHA-256:
+  `4c54d6c14de2579d1671a8257be6750bd49a586296d041fea95a3fe40e376e3c`.
+- `replication_results.json` SHA-256:
+  `ca9f0177b0b42a3ec888b13799fdd3d39c5c5ae9caacedd2245a0292b42396da`.
+- `replication_summary.md` SHA-256:
+  `af3b527db055c4568db7125047dad97ba9492fa55d5bbf2c3a6b6cc9002f41df`.
+- `manifest.json` SHA-256:
+  `96338ea291f40ea7d9a1ea4a0d45dd17ed5a60c856333150655701f64841dcf6`.
+- Two final offline replays were byte-identical for all four artifacts.
+
+The preregistration artifact is written before price loading or result
+computation. External performance remains `untrusted_external_evidence`; the
+source's `29.64%` table versus `29.41%` chart discrepancy is preserved and no
+external metric controls ranking, gates, or routing.
+
+## Credential and safety audit
 
 - Preflight before offline verification:
   - `APP_PROFILE` loaded: `false`;
   - `APP_PROFILE=paper`: `false`;
+  - `APP_PROFILE=live`: `false`;
   - broker credential/endpoint aliases loaded: `false`;
   - process `TIINGO_API_KEY` loaded: `false`.
-- Repository tests and offline verification network access: `false`.
-- Broker and paper access during implementation and verification: `false`.
+- V5.64 wrapper sensitive-variable preflight: all aliases `false`.
+- Tiingo credential read or loaded in V5.64: `false`.
+- Credential value inspected, printed, returned, copied, or persisted:
+  `false`.
+- Market-data network access in V5.64: `false`.
+- NexusTrade network or mutation access in V5.64: `false`.
+- Broker account/order/position access: `false`.
+- Broker mutation: none.
+- Paper mutation: none.
 - Receipt status: not applicable.
 - Reconciliation status: not required; no broker operation occurred.
-- Live broker, live orders, live trading, and live capital remain prohibited.
+- Paper promotion: `false`.
+- Live authorization: `false`.
+- Live broker, orders, trading, and capital remain prohibited.
 - V5.57 sleeve ownership, reconciliation, auditing, and caps are unchanged:
   - `$25.00` maximum entry-order notional;
   - `$60.00` maximum aggregate marked SPY entry exposure;
-  - one broker order per secure cycle; and
+  - one broker order per secure cycle;
   - two sleeve intents per UTC day.
 - No third sleeve was added.
 
 ## Verification
 
-Acquisition/determinism checks:
+Focused implementation, dependency, and import verification:
 
-- Twelve-symbol dry-run: passed; credential and network access both `false`.
-- Twelve-symbol authorized read-only acquisition: all twelve requests and
-  canonical intakes succeeded.
-- Offline manifest replay after CLI fix:
-  `nexustrade_monthly_adjusted_data_manifest_status=ready`.
+`python -m pytest tests\unit\test_nexustrade_monthly_independent_replication.py tests\unit\test_dependency_direction.py tests\unit\test_import_safety.py`
 
-Focused and dependency/import verification:
+- `58 passed` in `57.04s`.
 
-`python -m pytest tests\unit\test_import_safety.py tests\unit\test_dependency_direction.py tests\unit\test_nexustrade_strategy_intake.py tests\unit\test_etf_sma_local_bars_canonicalization.py tests\unit\test_multi_etf_adjusted_data_manifest.py tests\unit\test_spy_adjusted_data_refresh.py tests\unit\test_etf_sma_adjusted_spy_bars_refresh_intake.py tests\unit\test_nexustrade_monthly_adjusted_data_manifest.py`
+Broader NexusTrade and routing regression verification:
 
-- `158 passed` in `52.93s`.
+`python -m pytest tests\unit\test_nexustrade_monthly_independent_replication.py tests\unit\test_nexustrade_monthly_adjusted_data_manifest.py tests\unit\test_nexustrade_strategy_intake.py tests\unit\test_strategy_challenger_factory.py tests\unit\test_preview_candidate_review.py tests\unit\test_dependency_direction.py tests\unit\test_import_safety.py`
+
+- `123 passed` in `101.50s`.
 
 Mandatory offline verification:
 
-- `.\scripts\verify_offline.ps1`
-- `109 passed` in `127.47s`.
+- `.\scripts\verify_offline.ps1`.
 - Result: `PASS`.
+- `109 passed` in `116.26s`.
 - The script explicitly skipped the full default suite.
 
 Full default verification:
 
-- First `python -m pytest`: `10,170 passed`, `5 skipped`, `1 failed` in
-  `2,339.94s`; the failure was an exact safety-comment substring split across
-  lines.
-- Focused correction check:
-  `python -m pytest tests\unit\test_spy_adjusted_data_refresh.py`.
-- Focused correction result: `45 passed` in `2.14s`.
-- Clean full rerun `python -m pytest`:
-  `10,171 passed`, `5 skipped` in `2,311.02s`.
-- Final failures and errors: zero.
+- `python -m pytest`.
+- `10,180 passed`, `5 skipped` in `3,396.80s` (`56:36`).
+- Exit code: `0`.
 - The five skips are credential-gated paper integration tests.
 
 Final `git diff --check`, `git status --short`,
 `git diff --name-only HEAD -- src`, and
-`git ls-files --others --exclude-standard src tests` are run after this
-handoff update and immediately before staging/commit.
+`git ls-files --others --exclude-standard src tests` run after this handoff
+update and immediately before staging/commit.
 
 ## Tracked implementation slice
 
 - `docs/OPERATOR_RUNBOOK.md`
 - `docs/agent_context/active_implementation.md`
 - `docs/deterministic_core.md`
-- `scripts/refresh_nexustrade_monthly_adjusted_data.ps1`
-- `scripts/refresh_spy_adjusted_data.ps1`
-- `src/algotrader/execution/etf_sma_adjusted_spy_bars_refresh_intake.py`
-- `src/algotrader/execution/etf_sma_adjusted_spy_data_refresh.py`
-- `src/algotrader/research/nexustrade_monthly_adjusted_data_manifest.py`
-- `tests/unit/test_etf_sma_adjusted_spy_bars_refresh_intake.py`
-- `tests/unit/test_nexustrade_monthly_adjusted_data_manifest.py`
-- `tests/unit/test_spy_adjusted_data_refresh.py`
+- `scripts/run_nexustrade_monthly_independent_replication.ps1`
+- `src/algotrader/research/nexustrade_monthly_independent_replication.py`
+- `tests/unit/test_nexustrade_monthly_independent_replication.py`
 
-Compatibility limitation:
+The tracked preregistration design was committed before outcome computation:
 
-- Existing M446 adapter and record names retain `ETF`/`SPY` terminology for
-  backward compatibility even when the explicit research-only equity allowlist
-  is used.
+- `docs/design/v5_64_nexustrade_monthly_independent_replication.md`
 
 ## Next milestone
 
-No operator action or manual CSV placement is required. Do not request or expose
-the Tiingo key and do not contact the source merely to force progress.
+Freeze V5.64 as a failed promotion hypothesis. Do not tune this protocol after
+outcome inspection and do not implement a no-submit shadow because no
+`preview_review` route was earned.
 
-The authentic-source route may resume only if new candidate-specific
-authoritative public material explicitly states the historical bar/data mode,
-slippage assumption, and 365-day clock. Generic current documentation is not
-sufficient.
+If work continues without new authoritative source facts, the next milestone
+must preregister a new, independently named hypothesis before inspecting its
+outcomes. The most decision-relevant target is the observed failure mode:
+fold-two static-basket underperformance and full/fold drawdown excess. It must
+not claim source authenticity or reuse V5.64 results as promotion evidence.
 
-If the operator later accepts a different research claim, a separately scoped
-milestone may preregister an explicitly independent replication with disclosed
-assumptions. That would not be represented as an authentic replay of the
-March 2025 NexusTrade run and must not inherit its source metrics or lineage.
+The authentic route may resume only if candidate-specific authoritative public
+material supplies the historical bar/data mode, slippage assumption, and
+365-day clock. No operator contact with the source, manual CSV placement, or
+credential action is required.
