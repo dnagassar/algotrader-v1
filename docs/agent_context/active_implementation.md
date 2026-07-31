@@ -2,69 +2,64 @@
 
 ## Ownership and takeover
 
-- Writer: Codex, sole implementation writer for this working tree.
+- Writer: Codex, sole implementation writer in this working tree.
 - Working tree:
   `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
-- V5.67 gate-audit takeover HEAD:
-  `a9700a485ae92831ed3a849e5ab8c9fabb39e7cd`.
-- Branch, HEAD, status, staged diff, unstaged diff, untracked files, and the
-  inherited handoff were inspected before any change.
+- Takeover HEAD:
+  `3581ffd5af80de38673a234a05159ddaeee911e5`.
+- Takeover inspection covered branch, HEAD, status, staged diff, unstaged diff,
+  untracked files, and this handoff before any change.
 - Takeover was clean: staged, unstaged, and untracked sets were empty.
 - No reset, clean, stash, restore, rebase, switch, new branch, or new worktree
-  occurred.
-- Codex remained the only writer. No subagent was used.
-- The V5.67 takeover was clean: staged, unstaged, and untracked sets were
-  empty. The prior V5.66 takeover and implementation history below remains
-  preserved as completed evidence.
-- Dirty-file owner before the V5.67 gate-audit commit: Codex owns only this
-  handoff file.
-- Next action after this handoff update: run final hygiene checks, commit the
-  documentation-only gate audit, verify clean status, and make no V5.67 code.
+  occurred. The operator's requested simple existing-checkout workflow was
+  preserved.
+- No subagent was used. Codex remained the only writer.
+- Outcome-blind protocol commit:
+  `9c66983e0baa7439e957df83a25b72bd945310a4`.
+- Dirty-file owner before the implementation commit: Codex owns the exact
+  V5.67 files listed below and no unrelated work.
 
 ## Decision
 
-V5.66 completed the preregistered attribution-only diagnostic of the frozen
-V5.65 NexusTrade high-volatility defense. The result is
-`classification_primary` under the fixed moderate-cost full-OOS rule.
+V5.67 implemented and replayed one independently designed NexusTrade-inspired
+risk-balanced candidate:
 
-The fixed four paths were:
+`nexustrade_monthly_independent_spy_sma_50_200_inverse_volatility_capped`.
 
-- `P`: frozen V5.64 parent
-  `nexustrade_monthly_independent_spy_sma_50_200_regime_filter`;
-- `A`: frozen V5.65 actual
-  `nexustrade_monthly_independent_spy_sma_50_200_high_volatility_defense`;
-- `D`: delayed, stateless-parent diagnostic; and
-- `I`: immediate volatility-transition, stateless-parent diagnostic.
+It uses the frozen V5.64 eleven-stock filter and SPY SMA50/200 trend parent as
+building blocks but makes no authentic NexusTrade replay or lineage claim. It
+replaces equal weighting with 60-session inverse sample volatility,
+deterministic capped proportional water-filling, a `0.20` per-name cap, and
+maximum stock exposure `min(1, 0.20 * eligible_count)`. The failed V5.65 binary
+high-volatility cash overlay is absent.
 
-`D` and `I` are diagnostic counterfactuals, not candidates. `I` moves only a
-volatility-gate target transition to the current signal close; ordinary frozen
-parent rebalance targets retain their next-session-close timing. Fold one,
-which contained no OOS high-volatility session, is the zero-effect control:
-all four paths have identical return, drawdown, turnover, trades, and zero
-divergence there.
+The canonical route is `continue_local_research`. The candidate passed frozen
+parent reproduction, allocation integrity, cost sensitivity, concentration,
+turnover, and every fold-drawdown subgate. It failed the full SPY baseline
+gate, the portfolio-level static cross-asset gate, and the targeted parent
+risk-balance gate. No threshold was changed and no same-thesis retry occurred.
 
-No candidate, route, preview, shadow, paper promotion, broker path, or live path
-was created. V5.64 and V5.65 remain frozen.
+No preview, shadow, paper promotion, broker route, third sleeve, or live path
+was created.
 
 ## Outcome-blind preregistration
 
-- Protocol:
-  `v5_66_nexustrade_high_volatility_attribution_v1`.
+- Protocol ID:
+  `v5_67_nexustrade_monthly_risk_balanced_allocation_v1`.
 - Tracked protocol:
-  `docs/design/v5_66_nexustrade_high_volatility_attribution.md`.
-- Final protocol SHA-256:
-  `2a2d03030b2ec74ca3a0682ca94163ea5b28218c1b452b4f10664fc182733227`.
-- Outcome-blind commits, both before canonical diagnostic output:
-  - `a91bc91ed0576399a04b364c5b6fb23b98ed32e7` - preregistration;
-  - `6f890d45cec5b1684def0584f96c7f9a499dcb69` - fixed `1e-24`
-    reconciliation/tie tolerance.
+  `docs/design/v5_67_nexustrade_monthly_risk_balanced_allocation.md`.
+- Protocol SHA-256:
+  `17f86b8eafd7e67e6816603cb1bf06fa96a734c7b7d9094d30e68ec85690505e`.
+- Preregistration commit before implementation or V5.67 outcome inspection:
+  `9c66983e0baa7439e957df83a25b72bd945310a4`.
 - Parameter search performed: `false`.
-- Reconciliation tolerance: `1e-24`.
-- Additive return identity:
-  `(I-P) + (D-I) + (A-D) = A-P`.
-- Every return and constituent-contribution decomposition passed within the
-  fixed tolerance across all four cost cases and all reporting windows.
+- Fixed volatility lookback: 60 simple adjusted-close returns from 61 prices.
+- Fixed volatility statistic: sample standard deviation, denominator 59.
+- Fixed maximum target weight: `0.20`.
+- Fixed target stock exposure: `min(1, 0.20 * eligible_count)`.
+- No volatility floor, annualization for weights, leverage, covariance model,
+  shrinkage, or discretionary residual assignment.
 
 Pinned frozen inputs:
 
@@ -72,35 +67,34 @@ Pinned frozen inputs:
   `f24c98daa03462fccd0e73163abfe42f597ab601db83b331ecd4b487e31f4ee0`.
 - V5.64 engine SHA-256:
   `66d73e4e0cd6160c8f07febe3a80b90eb4eebdd1ea7375b7fb3b23cadeef87f5`.
-- V5.65 protocol SHA-256:
-  `1b614cb9d9e310704a0f8adcda224a4c540054a70af2731bcd3ec9c9b44db0c5`.
-- V5.65 engine SHA-256:
-  `fbc37e7c5cda052951c9406c7666cf346fa6d814edbf41d9842c80f4c2516a3c`.
-- V5.65 preregistration artifact SHA-256:
-  `8ab8fb25edf1ccb9803465fbc568b4b5348776c472b58c447a189ee677723190`.
-- V5.65 result SHA-256:
-  `e30c9c6f9d90f0d87c33607c71d1ec3e7c0055a245b88d06a469bfbc33709611`.
-- V5.65 summary SHA-256:
-  `1ff76c5c3fcb840794fbcd2e501f7300976f34557dd9aad3dcea35ebdd3f936e`.
-- V5.65 manifest SHA-256:
-  `99c52a97d2f8d6ef88df844356dbd38e88859d2804c4db9cf166ae55cad48814`.
-- Frozen result reproduction passed every V5.64/V5.65 metric field, all eight
-  full target hashes, all eight OOS target hashes, and overlay integrity.
+- V5.64 preregistration artifact SHA-256:
+  `4c54d6c14de2579d1671a8257be6750bd49a586296d041fea95a3fe40e376e3c`.
+- V5.64 result artifact SHA-256:
+  `ca9f0177b0b42a3ec888b13799fdd3d39c5c5ae9caacedd2245a0292b42396da`.
+- V5.64 summary artifact SHA-256:
+  `af3b527db055c4568db7125047dad97ba9492fa55d5bbf2c3a6b6cc9002f41df`.
+- V5.64 manifest artifact SHA-256:
+  `96338ea291f40ea7d9a1ea4a0d45dd17ed5a60c856333150655701f64841dcf6`.
+- V5.66 exclusion-boundary protocol SHA-256:
+  `2a2d03030b2ec74ca3a0682ca94163ea5b28218c1b452b4f10664fc182733227`.
+- Frozen V5.64 preregistration structured equality: passed.
+- Frozen V5.64 result structured equality: passed.
+- Frozen V5.64 summary text equality: passed.
 
 ## Canonical data and chronology
 
-- Provider/provenance: Tiingo EOD, already acquired and validated by V5.63.
+- Provider/provenance: Tiingo EOD, previously acquired and validated by V5.63.
 - Canonical field: `adjusted_close` from Tiingo `adjClose`.
 - Adjustment semantics: split-and-dividend-adjusted EOD price.
 - Adjusted OHLCV claimed: `false`.
 - Symbols:
   `AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, GS, JPM, BRK-B, COST, SPY`.
-- Deterministic mapping: `BRK-B->BRK-B`.
+- Deterministic class-share mapping: `BRK-B->BRK-B`.
 - Coverage: `2019-01-02` through `2025-03-28`.
-- Sessions per symbol: `1,569`; total rows: `18,828`.
+- Sessions per symbol: 1,569; total rows: 18,828.
 - Missing/unexpected sessions and weekend rows: none.
 - Session reference limitation: observed Tiingo SPY EOD dates, not an
-  independently represented exchange calendar.
+  independently represented official exchange calendar.
 - Canonical CSV:
   `runs/operator_input/multi_etf_adjusted_daily_canonical.csv`.
 - Canonical CSV SHA-256:
@@ -108,146 +102,99 @@ Pinned frozen inputs:
 - V5.63 manifest SHA-256:
   `e204a8a1824e5b49ce4d457f12884bfc284d52f99ad3ba07072c978d7223d8e1`.
 - Training: `2021-12-31` through `2024-03-24`.
-- Untouched OOS: `2024-03-24` through `2025-03-28`; first observed session
-  `2024-03-25`; `254` sessions.
+- Untouched OOS boundary: `2024-03-24` through `2025-03-28`; first observed
+  session `2024-03-25`; 254 sessions.
 - Continuous-state folds:
-  - fold one `2024-03-25` through `2024-07-24`, `84` sessions;
-  - fold two `2024-07-25` through `2024-11-21`, `85` sessions;
-  - fold three `2024-11-22` through `2025-03-28`, `85` sessions.
-- V5.66 network data acquisition: `false`; only the validated local input was
+  - `2024-03-25` through `2024-07-24`, 84 sessions;
+  - `2024-07-25` through `2024-11-21`, 85 sessions;
+  - `2024-11-22` through `2025-03-28`, 85 sessions.
+- V5.67 network data acquisition: `false`; only validated local inputs were
   read.
 
-## Moderate-cost attribution evidence
+## Canonical V5.67 evidence
 
-Full OOS total returns:
+Moderate-cost full OOS:
 
-- `P`: `0.216081928040488296986127071`.
-- `A`: `0.167041852685457898451176029`.
-- `D`: `0.116515111490536446106923363`.
-- `I`: `0.144804220490674712181326511`.
-- Net harm `P-A`: `0.049040075355030398534951042`.
+- Candidate total return: `0.096781606110768419788213151`.
+- Candidate maximum drawdown: `0.1478735763442904011077737735`.
+- Candidate Sharpe ratio: `0.5114376714141200289454086450`.
+- Candidate one-way turnover: `11.18728067817860285454479686`.
+- Candidate trade count: 117.
+- Candidate maximum absolute contribution share:
+  `0.2639599520452363061570888890`.
+- Frozen parent total return: `0.216081928040488296986127071`.
+- Frozen parent maximum drawdown: `0.1542831596611372101415857540`.
+- Frozen parent Sharpe ratio: `1.014004230219840814526456983`.
+- Frozen parent one-way turnover: `11.72946592903657074232868409`.
+- Frozen parent maximum absolute contribution share:
+  `0.3730114389000650407684443910`.
 
-Exact signed effects from V5.65's perspective:
+Targeted parent comparison:
 
-- Classification `I-P`:
-  `-0.071277707549813584804800560`.
-- Next-session execution delay `D-I`:
-  `-0.028289109000138266074403148`.
-- Stateful carry `A-D`:
-  `0.050526741194921452344252666`.
-- Total `A-P`:
-  `-0.049040075355030398534951042`.
-- Reconciliation residual: exactly zero at the recorded decimal precision.
+- Maximum-drawdown delta: `-0.0064095833168468090338119805`.
+- Total-return delta: `-0.119300321929719877197913920`.
+- Sharpe-ratio delta: `-0.5025665588057207855810483380`.
+- One-way-turnover delta: `-0.54218525085796788778388723`.
+- Fold drawdown deltas:
+  `-0.0067991489641868343288413667`, `0`, and
+  `-0.0110537731098603395736969907`; all no-worse subgates passed.
+- Concentration requirement: passed.
+- Full-OOS drawdown improvement of at least `0.01`: failed.
+- Return delta of at least `-0.02`: failed.
+- Nonnegative Sharpe delta: failed.
+- Targeted risk-balance gate: failed.
 
-Positive-harm classification uses magnitudes. Classification accounts for
-`1.453458361019873718340725277` of net harm before offsetting benefits and is
-the unique preregistered primary driver. Execution delay is additional harm;
-stateful carry offsets rather than causes full-OOS return harm.
+Other fixed gates:
 
-Session mechanics:
-
-- OOS high-volatility sessions: `38`.
-- Parent-risk-on/high-volatility forced-cash sessions: `38`.
-- Actual-versus-parent target-divergence sessions: `163`.
-- Stateful-carry `A`-versus-`D` target divergences: `125`.
-- `D`-versus-`I` posttrade timing divergences: `19`.
-- Thus the 163 target divergences split into 38 direct cash-gate sessions and
-  125 subsequent stateful 30-day filled-event carry sessions.
-- OOS volatility transitions: five signal dates, each with an exact scheduled
-  next-session fill record in the transition ledger.
-
-Turnover and costs:
-
-- OOS one-way turnover `P/A/D/I`:
-  `11.72946592903657074232868409` /
-  `15.70416390432810190672866051` /
-  `14.32993387899970262982266998` /
-  `14.32993387899970262982266998`.
-- `A-P` turnover increment:
-  `3.97469797529153116439997642`.
-- Stateful `A-D` turnover increment:
-  `1.37423002532839927690599053`.
-- OOS trade counts `P/A/D/I`: `117/121/135/135`.
-- Source-fee-only to moderate return degradation `P/A/D/I`:
-  `0.005720874982004894178230310` /
-  `0.007356670031043610797317176` /
-  `0.006420187398890437404610968` /
-  `0.006582855489325920216386431`.
-
-Fold evidence:
-
-- Fold one: no high-volatility or divergence session; total effect and every
-  component are zero; all path returns are
-  `0.139010185844455840847480965`; all maximum drawdowns are
-  `0.1028816547447382668989194429`.
-- Fold two return effects classification/delay/state/total:
-  `-0.077770079511010181267658740` /
-  `0.016549075482118369381189935` /
-  `0.009681755963349674358971778` /
-  `-0.051539248065542137527497027`.
-- Fold two maximum drawdown `P/A/D/I`:
-  `0.0876811122686090139848287740` /
-  `0.0942877628564643970350360156` /
-  `0.0971677823108617477171365579` /
-  `0.1106532358047517508206632325`.
-  Classification caused the fold-two return harm; delay and state partially
-  recovered it, while A still worsened drawdown versus P.
-- Fold three return effects classification/delay/state/total:
-  `0.0085160724886560835111341067` /
-  `-0.0367334402939371793587441627` /
-  `0.0322948173689390070220863946` /
-  `0.0040774495636579111744763386`.
-- Fold three maximum drawdown `P/A/D/I`:
-  `0.1365827540765017539390053280` /
-  `0.1712215937752765950195728575` /
-  `0.1524352992808904442033569239` /
-  `0.1176338688111769290784097618`.
-  Immediate classification reduced fold-three drawdown, but next-session
-  timing and then stateful carry worsened the realized A drawdown.
-
-Constituent attribution is explicitly arithmetic gross contribution, not the
-compounded portfolio decomposition. Aggregate classification/delay/state/total
-effects are
-`-0.06208723238735183035768468881` /
-`-0.02481525245590856795131473973` /
-`0.04688984401616241291147816002` /
-`-0.04001264082709798539752126857`, with zero residual. Largest absolute
-total effects were META `+0.04994657904708298255037370177`, JPM
-`-0.04228162477138028125350490685`, BRK-B
-`-0.03979012118086521403130689640`, GOOGL
-`+0.02991155505871637058210980714`, and GS
-`-0.02704367879576899002913430983`.
+- Cost gate: passed. Source-fee OOS return
+  `0.101702110762891420264894379`; moderate degradation
+  `0.004920504652123000476681228`; moderate SPY edge
+  `0.017152912197919108216698478`.
+- SPY baseline gate: failed all four windows. Full-OOS return edge was positive
+  but drawdown delta was `0.0470149534782633633333054451`; fold three also had
+  negative return edge.
+- Portfolio-level cross-asset gate: failed. Candidate lagged static equal
+  weight in full OOS and folds one/two; it beat it only in fold three.
+- Eleven symbols received nonzero OOS targets and eight had positive arithmetic
+  gross contributions.
+- Allocation integrity: passed.
+- OOS target difference sessions versus frozen parent: 209.
+- Maximum observed OOS target weight: exactly `0.20`.
+- Partial-cash OOS sessions: 25.
+- Cap violations: 0; exposure violations: 0.
+- Final route: `continue_local_research`.
 
 ## Artifact evidence
 
 Ignored output root:
-`runs/v5_66_nexustrade_high_volatility_attribution`.
+`runs/v5_67_nexustrade_monthly_risk_balanced_allocation`.
 
 - `preregistration.json` SHA-256:
-  `73b201b6ff79a2a684ad1b251f1f09efda61704d8151d59c051498baf9eb5325`.
-- `attribution_results.json` SHA-256:
-  `f5e1340bf3c659f4e7c96602215bf5e92249747b7562748b2335fe1b5a2d3c0c`.
-- `attribution_summary.md` SHA-256:
-  `5d0b19f4e93d2866e3c935ad8133c2f65eb63e51aa96760f3e25664a2c0ff0cc`.
+  `6ee1e62efb4b20f94896b2e29fb022081b6c762f4c7da8de7f67f631bc747d6e`.
+- `risk_balanced_results.json` SHA-256:
+  `76de6eabe410c082b53ff123af31dccdf4704f78c3380bd6d6e8e8de24b2276f`.
+- `risk_balanced_summary.md` SHA-256:
+  `99fac23b5cbeae076bb0249d6741e98ca95a433b11cad994ed92abd2bcf886f1`.
 - `manifest.json` SHA-256:
-  `4aecd02b8a43712a28c95dc0625ad6051a8b3068e68ea4761fe9da79e041ed3c`.
-- Two final canonical replays were byte-identical for all four artifacts.
+  `0bcf77f91d4b92a9d85f566e0e0c946fc19be4b56bd28982eeb741d23dee1519`.
+- The second canonical replay was byte-identical for all four artifacts.
 
 External performance remains `untrusted_external_evidence`. The `29.64%`
-table versus `29.41%` chart discrepancy remains preserved. Source metrics were
-not used for decomposition, classification, ranking, routing, or promotion.
-The authentic V5.58 route remains hard-gated on candidate-specific historical
-bar/data mode, slippage, and 365-day clock evidence; V5.66 infers none of them.
+table versus `29.41%` chart discrepancy remains preserved. Source metrics did
+not control ranking, gating, routing, or promotion. The authentic V5.58 route
+remains hard-gated on candidate-specific historical bar/data mode, slippage,
+and 365-day-clock evidence; V5.67 infers none of them.
 
 ## Credential and safety audit
 
-- Boolean-only preflight before verification:
+- Boolean-only preflight before tests and replay:
   - `APP_PROFILE` loaded: `false`;
   - `APP_PROFILE=paper`: `false`;
-  - `APP_PROFILE=live`: `false`;
-  - Alpaca/broker credential or endpoint aliases loaded: `false`;
-  - `TIINGO_API_KEY` loaded: `false`;
+  - broker/Alpaca credential and endpoint aliases loaded: `false`;
+  - Tiingo credential aliases loaded: `false` in the process;
   - NexusTrade credential aliases loaded: `false`.
+- An unloaded Tiingo key may remain in `.env`; V5.67 did not read `.env` or
+  require the key because canonical data was already local.
 - Credential value requested, inspected, printed, returned, copied, or
   persisted: `false`.
 - NexusTrade access or mutation: none.
@@ -269,123 +216,60 @@ bar/data mode, slippage, and 365-day clock evidence; V5.66 infers none of them.
 
 ## Verification
 
-Focused V5.66 tests:
-
-`python -m pytest tests\unit\test_nexustrade_high_volatility_attribution.py -q`
-
-- `7 passed` in `19.85s` on the final implementation.
-
-Broader frozen-engine and safety regression:
-
-`python -m pytest tests\unit\test_nexustrade_high_volatility_attribution.py tests\unit\test_nexustrade_monthly_high_volatility_defense.py tests\unit\test_nexustrade_monthly_independent_replication.py tests\unit\test_volatility_regime_evidence.py tests\unit\test_volatility_filtered_spy_sma_backtest.py tests\unit\test_dependency_direction.py tests\unit\test_import_safety.py -q`
-
-- `90 passed` in `71.44s`.
-
-Mandatory offline verification:
-
-- `./scripts/verify_offline.ps1` equivalent Windows invocation
-  `.\scripts\verify_offline.ps1`.
-- Result: `PASS`.
-- `109 passed` in `99.35s`.
-- The script explicitly skipped the full default suite.
-
-Full default verification:
-
-- `python -m pytest`.
-- `10,194 passed`, `5 skipped` in `2,034.86s` (`33:54`).
-- Exit code: `0`.
-- The five skips are credential-gated paper integration tests.
-
-Final `git diff --check`, `git status --short`,
-`git diff --name-only HEAD -- src`, and
-`git ls-files --others --exclude-standard src tests` run after this handoff
-update and immediately before staging/commit.
+- Outcome-free focused subset after correcting three local assertion/order
+  mismatches: `8 passed, 1 deselected` in `5.04s`.
+- Canonical full-replay test: `1 passed, 8 deselected` in `14.58s`.
+- Final focused V5.67, frozen V5.64 parent, dependency-direction, and
+  import-safety regression: `67 passed` in `73.91s`.
+- Mandatory `./scripts/verify_offline.ps1`: `PASS`; 109 guard tests passed in
+  `116.36s`; full suite explicitly skipped.
+- A monolithic `python -m pytest` attempt produced no failure output but hit its
+  external 45-minute command timeout; it is not counted as a test result.
+- The first exact-node eight-shard full runner completed 10,207 nodes and had
+  one unrelated V5.36 PowerShell wrapper timeout under resource contention.
+  That exact node passed alone in `26.59s`.
+- Final repository-owned full verifier:
+  `./scripts/verify_offline.ps1 -Full -Shards 4`.
+  - canonical node IDs: 10,208 across 508 files;
+  - collection equivalence: passed;
+  - execution equivalence: passed;
+  - 10,203 passed, 5 skipped, 0 failures, 0 errors;
+  - all four shards completed without timeout;
+  - final offline verification result: `PASS`;
+  - wall time: `1,721.6s`.
+- The five skips are the existing credential-gated integration tests.
+- Final `git diff --check`, `git status --short`, exact source diff, and
+  untracked `src/tests` hygiene are run after this handoff update and before
+  staging/commit.
 
 ## Tracked implementation slice
 
 - `docs/OPERATOR_RUNBOOK.md`
 - `docs/agent_context/active_implementation.md`
 - `docs/deterministic_core.md`
-- `scripts/run_nexustrade_high_volatility_attribution.ps1`
-- `src/algotrader/research/nexustrade_high_volatility_attribution.py`
-- `tests/unit/test_nexustrade_high_volatility_attribution.py`
+- `scripts/run_nexustrade_monthly_risk_balanced_allocation.ps1`
+- `src/algotrader/research/nexustrade_monthly_risk_balanced_allocation.py`
+- `tests/unit/test_nexustrade_monthly_risk_balanced_allocation.py`
 
-The tracked preregistration design was committed before outcomes:
+The separately committed outcome-blind protocol is:
 
-- `docs/design/v5_66_nexustrade_high_volatility_attribution.md`
+- `docs/design/v5_67_nexustrade_monthly_risk_balanced_allocation.md`
 
 ## Next milestone
 
-Freeze V5.65 as a failed repair hypothesis and V5.66 as explanatory evidence.
-Do not tune the volatility lookback, quantiles, thresholds, immediate/delayed
-timing, state semantics, or gates from these inspected outcomes. Do not
-register `D` or `I` as a candidate and do not implement a no-submit shadow.
+Freeze V5.67 as a failed risk-balanced value hypothesis. Do not tune the
+60-session lookback, `0.20` cap, water-fill rule, partial-cash exposure,
+chronology, costs, or gates from these inspected outcomes, and do not create a
+no-submit shadow.
 
-No further NexusTrade implementation is decision-justified from the current
-evidence. A later V5.67 may begin only with a new outcome-blind protocol for an
-independently motivated strategy family or overlay whose thesis and fixed
-parameters do not come from optimizing V5.65/V5.66. The authentic route may
-resume only if new candidate-specific authoritative evidence supplies the
-historical bar/data mode, slippage, and 365-day clock. Until one of those
-conditions occurs, close this lane rather than fabricating, hand-normalizing,
-or tuning around the demonstrated result.
+A decision-justified V5.68 may be an attribution-only diagnostic that
+decomposes the frozen V5.67 parent-relative return loss into pure
+inverse-volatility sizing, the fewer-than-five partial-cash rule, and
+candidate-owned filled-event state carry under the same chronology and costs.
+That diagnostic must preregister exact counterfactuals and reconciliation
+identities, create no candidate or route, and perform no parameter search. Any
+later candidate requires a new independent thesis and a fresh outcome-blind
+protocol rather than tuning V5.67.
 
-## V5.67 entry-gate audit
-
-The operator approved advancement after V5.66, but approval does not satisfy
-either outcome-blind entry condition. A bounded read-only audit on
-`2026-07-31` found:
-
-- clean checkout and handoff takeover at
-  `a9700a485ae92831ed3a849e5ab8c9fabb39e7cd`;
-- no tracked or untracked V5.67 protocol, independently motivated strategy
-  family, overlay thesis, or fixed parameter contract in the repository;
-- authenticated read-only retrieval of the exact authoritative NexusTrade
-  article succeeded for article ID
-  `this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`,
-  short ID `rbXUPvf9o`, published `2025-03-29T08:54:48.906Z`;
-- the returned article plain text contains no explicit `slippage`, `intraday`,
-  `daily bar`, `daily bars`, `365`, `calendar day`, `trading day`, `session`,
-  `exact price`, `fill price`, or `market order` statement for the historical
-  run;
-- generic prose containing the word fragment `minute` or `adjusted` is not
-  candidate-specific bar-mode, adjustment, fill, or slippage evidence and was
-  not promoted into a fact;
-- the article-linked public paper portfolio ID
-  `67e7a4ad84bd219ef0619baf` returned `Portfolio not found`; no retry or
-  workaround was attempted;
-- the article's directly linked image captioned "The backtest config in the
-  advanced chat settings" was identified, but a single direct fetch returned
-  a cache-miss/internal fetch failure; no retry or alternate scraping path was
-  attempted; and
-- no NexusTrade create/build/backtest/deploy/apply/fork/purchase/subscribe,
-  portfolio mutation, broker, account, order, or paper operation was called.
-
-Gate-audit safety and verification:
-
-- process `APP_PROFILE`, broker/Alpaca, Tiingo, and NexusTrade credential-alias
-  presence booleans were all `false`; the authenticated NexusTrade provider
-  kept OAuth material inside its connector boundary and no value was exposed;
-- NexusTrade read-only source access: `true`;
-- one read-only public-image fetch attempt: `true`, failed as described above;
-- NexusTrade mutation, broker access, paper mutation, and live activity:
-  `false`;
-- documentation-only focused guard:
-  `python -m pytest tests\unit\test_dependency_direction.py -q`;
-- result: `44 passed` in `28.64s`;
-- no implementation suite was rerun because the gate audit changed no source,
-  tests, protocol, runtime behavior, or generated replay artifact; the clean
-  parent commit retains the recorded V5.66 full-suite result.
-
-Therefore V5.67 is a demonstrated hard gate, not an implementation milestone.
-No code, protocol, candidate, route, preview, shadow, paper promotion, or live
-authority may be created from the current evidence. Unblocking requires one of:
-
-1. a new independently motivated, outcome-blind strategy/overlay thesis with
-   fixed parameters and gates that were not selected from V5.65/V5.66; or
-2. new candidate-specific authoritative evidence explicitly stating the
-   authentic historical bar/data mode, slippage assumption, and 365-day clock.
-
-Operator approval alone, generic current documentation, manual CSV placement,
-inference from screenshots that could not be read, or tuning inspected results
-does not clear either gate.
+Next implementation action after this handoff: run final Git hygiene, stage
+only the exact tracked slice, commit it coherently, and verify a clean branch.

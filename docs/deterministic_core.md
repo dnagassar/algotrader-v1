@@ -1692,3 +1692,45 @@ parameter search.
 V5.66 remains offline, credential-free, network-free, broker-free, and
 no-submit. V5.57 sleeve ownership, reconciliation, auditing, live prohibition,
 and finite caps remain unchanged.
+
+## V5.67 NexusTrade-Inspired Risk-Balanced Allocation
+
+V5.67 is an independently designed candidate built from the frozen V5.64
+eligibility and SPY-trend mechanics. It is not an authentic NexusTrade replay
+or lineage claim. Its outcome-blind protocol is committed at
+`docs/design/v5_67_nexustrade_monthly_risk_balanced_allocation.md`.
+
+`algotrader.research.nexustrade_monthly_risk_balanced_allocation` verifies the
+V5.67 protocol, frozen V5.64 protocol and engine, every V5.64 output artifact,
+the excluded V5.66 diagnostic protocol, and the V5.63 canonical data and
+manifest. Before V5.67 results are written, the engine requires exact
+structured reproduction of the V5.64 preregistration and result and exact text
+reproduction of its summary.
+
+The candidate keeps V5.64's eleven-stock eligibility, own-filled-event
+30-calendar-day state, next-session adjusted-close fills, continuous
+train/OOS/fold state, SPY SMA50/200 risk gate, comparators, and cost cases. It
+changes only eligible-stock sizing: 60 simple adjusted-close returns, sample
+standard deviation, reciprocal-volatility scores, deterministic capped
+water-filling, a `0.20` per-name cap, and maximum stock exposure
+`min(1, 0.20 * eligible_count)`. Missing or nonpositive volatility fails
+closed; there is no volatility floor, leverage, covariance estimate, or
+parameter sweep. The V5.65 binary high-volatility cash overlay is absent.
+
+The canonical route is `continue_local_research`. At moderate cost, V5.67
+returned 9.6782% OOS with 14.7874% maximum drawdown, 0.5114 Sharpe, and
+11.1873 one-way turnover. The frozen V5.64 parent returned 21.6082% with
+15.4283% drawdown, 1.0140 Sharpe, and 11.7295 turnover. V5.67 reduced full-OOS
+drawdown by 0.64096 percentage points, turnover by 0.54219, and maximum
+absolute constituent-contribution share from 0.3730 to 0.2640; all fold
+drawdowns were no worse. It nevertheless missed the fixed 1.0-point drawdown
+improvement, lost 11.9300 return points and 0.5026 Sharpe versus the parent,
+failed all SPY baseline windows, and beat static equal weight only in fold
+three. The cost gate passed; the baseline, cross-asset, and targeted
+risk-balance gates failed.
+
+All 209 OOS desired-target differences were genuine, the maximum observed
+target weight was exactly `0.20`, 25 sessions retained partial cash, and cap
+and exposure violations were zero. A second canonical replay produced
+byte-identical artifacts. The result is frozen without tuning and grants no
+preview, shadow, paper promotion, broker operation, or live authority.

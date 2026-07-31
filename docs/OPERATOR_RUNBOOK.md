@@ -1977,3 +1977,37 @@ under `attribution.cost_results`, `volatility_transition_ledger`, and the
 manifest hashes. `D` and `I` are diagnostic counterfactuals, never candidates.
 No classification creates a route, preview, shadow, paper promotion, broker
 access, order authority, or live authority.
+
+## V5.67 Monthly Risk-Balanced Allocation
+
+Run the independently preregistered V5.67 candidate only from a
+credential-free, offline process:
+
+```powershell
+.\scripts\run_nexustrade_monthly_risk_balanced_allocation.ps1
+```
+
+The wrapper fails closed when `APP_PROFILE` is paper/live or a broker,
+NexusTrade, or Tiingo credential alias is loaded. A Tiingo key may remain in an
+unloaded `.env` file; V5.67 does not need or read it because the validated
+canonical adjusted-daily CSV is already local. The wrapper reports booleans
+only and never prints credential values.
+
+Before replay, the engine validates the V5.67 protocol, frozen V5.64 protocol,
+engine, and four output hashes, the V5.66 exclusion boundary, and V5.63 data
+and manifest. It refuses V5.67 output unless the V5.64 preregistration, result,
+and summary reproduce exactly.
+
+Expected ignored outputs under
+`runs/v5_67_nexustrade_monthly_risk_balanced_allocation` are:
+
+- `preregistration.json`;
+- `risk_balanced_results.json`;
+- `risk_balanced_summary.md`; and
+- `manifest.json`.
+
+Inspect `candidate.route`, every gate, `allocation_integrity`,
+`frozen_parent_reproduction`, all cost/window records, and the manifest hashes.
+The canonical V5.67 route is `continue_local_research`; freeze it without
+parameter tuning or another same-thesis repair. It creates no preview, shadow,
+paper promotion, broker access, order authority, or live authority.
