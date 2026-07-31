@@ -149,6 +149,9 @@ Require exact reconciliation within decimal tolerance:
 
 `(I - P) + (D - I) + (A - D) = A - P`.
 
+The fixed decimal reconciliation tolerance is `1e-24` for return,
+contribution, and reproduction comparisons.
+
 Effects are signed from V5.65's perspective. Negative values are harm;
 positive values are benefit. Harm magnitudes are the negated effects.
 
@@ -204,6 +207,9 @@ Use moderate-cost full-OOS total returns. Define net harm as `P - A`.
 - `mixed_harm`: net harm exceeds `0.005` but no component qualifies as primary.
 - `blocked`: any pinned hash, coverage, reproduction, reconciliation, or
   deterministic-output check fails.
+
+If two or more largest qualifying harm components are equal within `1e-24`,
+classify the result as `mixed_harm`; do not choose a driver by ordering.
 
 If positive harm components exceed net harm because another component is a
 benefit, report shares against net harm without clipping and retain the fixed
