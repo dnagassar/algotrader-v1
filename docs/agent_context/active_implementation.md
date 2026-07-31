@@ -6,18 +6,21 @@
 - Working tree:
   `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
-- Clean takeover HEAD:
-  `c02561b7cb738a4e2d0f0e90b92895d748ab142e`.
+- V5.67 gate-audit takeover HEAD:
+  `a9700a485ae92831ed3a849e5ab8c9fabb39e7cd`.
 - Branch, HEAD, status, staged diff, unstaged diff, untracked files, and the
   inherited handoff were inspected before any change.
 - Takeover was clean: staged, unstaged, and untracked sets were empty.
 - No reset, clean, stash, restore, rebase, switch, new branch, or new worktree
   occurred.
 - Codex remained the only writer. No subagent was used.
-- Dirty-file owner before the final local commit: Codex owns exactly the files
-  listed under "Tracked implementation slice."
-- Next action after this handoff update: run final hygiene checks, stage the
-  coherent implementation slice, commit locally, and verify clean status.
+- The V5.67 takeover was clean: staged, unstaged, and untracked sets were
+  empty. The prior V5.66 takeover and implementation history below remains
+  preserved as completed evidence.
+- Dirty-file owner before the V5.67 gate-audit commit: Codex owns only this
+  handoff file.
+- Next action after this handoff update: run final hygiene checks, commit the
+  documentation-only gate audit, verify clean status, and make no V5.67 code.
 
 ## Decision
 
@@ -326,3 +329,63 @@ resume only if new candidate-specific authoritative evidence supplies the
 historical bar/data mode, slippage, and 365-day clock. Until one of those
 conditions occurs, close this lane rather than fabricating, hand-normalizing,
 or tuning around the demonstrated result.
+
+## V5.67 entry-gate audit
+
+The operator approved advancement after V5.66, but approval does not satisfy
+either outcome-blind entry condition. A bounded read-only audit on
+`2026-07-31` found:
+
+- clean checkout and handoff takeover at
+  `a9700a485ae92831ed3a849e5ab8c9fabb39e7cd`;
+- no tracked or untracked V5.67 protocol, independently motivated strategy
+  family, overlay thesis, or fixed parameter contract in the repository;
+- authenticated read-only retrieval of the exact authoritative NexusTrade
+  article succeeded for article ID
+  `this-strategy-has-beaten-the-market-for-over-5-years-heres-how-i-created-it-20250329`,
+  short ID `rbXUPvf9o`, published `2025-03-29T08:54:48.906Z`;
+- the returned article plain text contains no explicit `slippage`, `intraday`,
+  `daily bar`, `daily bars`, `365`, `calendar day`, `trading day`, `session`,
+  `exact price`, `fill price`, or `market order` statement for the historical
+  run;
+- generic prose containing the word fragment `minute` or `adjusted` is not
+  candidate-specific bar-mode, adjustment, fill, or slippage evidence and was
+  not promoted into a fact;
+- the article-linked public paper portfolio ID
+  `67e7a4ad84bd219ef0619baf` returned `Portfolio not found`; no retry or
+  workaround was attempted;
+- the article's directly linked image captioned "The backtest config in the
+  advanced chat settings" was identified, but a single direct fetch returned
+  a cache-miss/internal fetch failure; no retry or alternate scraping path was
+  attempted; and
+- no NexusTrade create/build/backtest/deploy/apply/fork/purchase/subscribe,
+  portfolio mutation, broker, account, order, or paper operation was called.
+
+Gate-audit safety and verification:
+
+- process `APP_PROFILE`, broker/Alpaca, Tiingo, and NexusTrade credential-alias
+  presence booleans were all `false`; the authenticated NexusTrade provider
+  kept OAuth material inside its connector boundary and no value was exposed;
+- NexusTrade read-only source access: `true`;
+- one read-only public-image fetch attempt: `true`, failed as described above;
+- NexusTrade mutation, broker access, paper mutation, and live activity:
+  `false`;
+- documentation-only focused guard:
+  `python -m pytest tests\unit\test_dependency_direction.py -q`;
+- result: `44 passed` in `28.64s`;
+- no implementation suite was rerun because the gate audit changed no source,
+  tests, protocol, runtime behavior, or generated replay artifact; the clean
+  parent commit retains the recorded V5.66 full-suite result.
+
+Therefore V5.67 is a demonstrated hard gate, not an implementation milestone.
+No code, protocol, candidate, route, preview, shadow, paper promotion, or live
+authority may be created from the current evidence. Unblocking requires one of:
+
+1. a new independently motivated, outcome-blind strategy/overlay thesis with
+   fixed parameters and gates that were not selected from V5.65/V5.66; or
+2. new candidate-specific authoritative evidence explicitly stating the
+   authentic historical bar/data mode, slippage assumption, and 365-day clock.
+
+Operator approval alone, generic current documentation, manual CSV placement,
+inference from screenshots that could not be read, or tuning inspected results
+does not clear either gate.
