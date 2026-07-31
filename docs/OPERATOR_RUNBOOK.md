@@ -2011,3 +2011,36 @@ Inspect `candidate.route`, every gate, `allocation_integrity`,
 The canonical V5.67 route is `continue_local_research`; freeze it without
 parameter tuning or another same-thesis repair. It creates no preview, shadow,
 paper promotion, broker access, order authority, or live authority.
+
+## V5.68 Risk-Balanced Attribution Diagnostic
+
+Run V5.68 only from a credential-free, offline process:
+
+```powershell
+.\scripts\run_nexustrade_risk_balanced_attribution.ps1
+```
+
+The wrapper fails closed when `APP_PROFILE` is paper/live or a broker,
+NexusTrade, or Tiingo credential alias is loaded. An unloaded Tiingo key may
+remain in `.env`; the diagnostic reads only the frozen local canonical data
+and artifacts. Credential values are never printed.
+
+Before attribution, the engine validates the V5.68 protocol, V5.64/V5.67
+protocols and engines, all four V5.67 output hashes, and canonical data and
+manifest. It refuses output unless the frozen V5.67 preregistration, result,
+summary, candidate metrics, parent metrics, and target hashes reproduce.
+
+Expected ignored outputs under
+`runs/v5_68_nexustrade_risk_balanced_attribution` are:
+
+- `preregistration.json`;
+- `attribution_results.json`;
+- `attribution_summary.md`; and
+- `manifest.json`.
+
+Inspect `frozen_reproduction`, `attribution.cost_results`,
+`diagnostic_classification`, `parent_state_signal_ledger`, all reconciliation
+residuals, and artifact hashes. The canonical classification is
+`pure_sizing_primary`. Paths `R` and `C` are diagnostics, never candidates.
+No classification creates a route, parameter change, preview, shadow, paper
+promotion, broker access, order authority, or live authority.

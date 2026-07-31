@@ -1734,3 +1734,42 @@ target weight was exactly `0.20`, 25 sessions retained partial cash, and cap
 and exposure violations were zero. A second canonical replay produced
 byte-identical artifacts. The result is frozen without tuning and grants no
 preview, shadow, paper promotion, broker operation, or live authority.
+
+## V5.68 Risk-Balanced Loss Attribution
+
+V5.68 is an attribution-only diagnostic of the frozen V5.67 result. Its
+outcome-blind protocol is committed at
+`docs/design/v5_68_nexustrade_risk_balanced_attribution.md`.
+`algotrader.research.nexustrade_risk_balanced_attribution` verifies the V5.64
+and V5.67 protocols and engines, all frozen V5.67 artifacts, and canonical
+V5.63 data before requiring exact V5.67 preregistration/result/summary
+reproduction.
+
+The fixed paths are parent `P`, pure risk sizing under parent state `R`, exact
+V5.67 allocation under parent state `C`, and frozen actual V5.67 `A`. `R` uses
+equal-weight full exposure when no more than five stocks are eligible and the
+V5.67 inverse-volatility capped target when at least six are eligible. `C` adds
+only V5.67's one-to-four-stock partial-cash rule. `A` then adds actual
+candidate-owned filled-event state. `R` and `C` are diagnostic
+counterfactuals, never candidates.
+
+For every cost and reporting window, return and each constituent's arithmetic
+gross contribution reconcile within `1e-24` as
+`(R-P)+(C-R)+(A-C)=A-P`. Drawdown remains path-dependent and is not additively
+attributed.
+
+The pinned moderate-cost full-OOS classification is `pure_sizing_primary`.
+Returns P/R/C/A were 21.6082%, 11.8739%, 9.6782%, and 9.6782%. Pure sizing
+caused 9.7343 percentage points of harm, 81.5949% of net harm. The sub-five
+cash rule caused 2.1957 points, 18.4051%. Candidate-owned state carry was
+exactly zero: `A` and `C` had no OOS target or posttrade divergence.
+
+Twelve parent-state source signals occurred OOS. Eight changed pure sizing and
+two invoked the one-to-four-stock cash rule. Pure sizing created 184 OOS target
+divergence sessions; partial cash created 25; state carry created zero. The
+largest arithmetic constituent effect was TSLA at `-0.0613265`, entirely from
+pure sizing. A second canonical replay produced byte-identical artifacts.
+
+This classification is explanatory only. V5.68 creates no candidate, route,
+preview, shadow, parameter search, paper promotion, broker operation, or live
+authority. V5.67 remains frozen.
