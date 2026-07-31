@@ -1657,3 +1657,38 @@ session.
 V5.65 remains offline, credential-free, network-free, broker-free, and
 no-submit. Its route cannot itself authorize a shadow, paper candidate, broker
 operation, or live activity.
+
+## V5.66 NexusTrade High-Volatility Attribution
+
+V5.66 is an attribution-only diagnostic of the frozen V5.65 result. The
+committed protocol is
+`docs/design/v5_66_nexustrade_high_volatility_attribution.md`.
+`algotrader.research.nexustrade_high_volatility_attribution` verifies that
+protocol, the canonical V5.63 data and manifest, both V5.64/V5.65 protocols and
+engines, and every frozen V5.65 output hash before reading outcomes. It then
+reproduces every frozen V5.64 parent and V5.65 actual window metric and target
+hash before emitting attribution.
+
+The fixed four-path decomposition is parent `P`, actual V5.65 `A`, delayed
+stateless diagnostic `D`, and immediate stateless diagnostic `I`. `D` and `I`
+use the parent source-rule state; only `A` lets overlay fills update that state.
+`D` retains next-session fills, while `I` applies the signal-close target to the
+next return interval solely to isolate timing. Exact return effects reconcile
+as classification `I-P`, execution delay `D-I`, stateful carry `A-D`, and total
+`A-P`, with a fixed `1e-24` tolerance. The diagnostic also records target and
+posttrade divergences, transition fills, turnover/trades, constituent gross
+contributions, and peak/trough/recovery drawdown detail.
+
+The pinned moderate-cost full OOS result is `classification_primary`: `P`
+returned 21.6082%, `A` 16.7042%, `D` 11.6515%, and `I` 14.4804%.
+Classification cost 7.1278 percentage points and next-session delay cost
+2.8289 points, while stateful carry recovered 5.0527 points, for net harm of
+4.9040 points. The 163 actual-versus-parent target-divergence sessions split
+into 38 high-volatility parent-risk-on sessions and 125 additional stateful
+carry divergences. This classification is explanatory only: V5.66 creates no
+candidate, route, preview, shadow, or paper-promotion authority and performs no
+parameter search.
+
+V5.66 remains offline, credential-free, network-free, broker-free, and
+no-submit. V5.57 sleeve ownership, reconciliation, auditing, live prohibition,
+and finite caps remain unchanged.

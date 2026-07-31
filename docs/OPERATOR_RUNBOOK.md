@@ -1947,3 +1947,33 @@ route freezes the hypothesis without creating a no-submit shadow. Only a
 locally produced `preview_review` may support a later separately authorized
 no-submit design. The command never authorizes paper promotion, broker access,
 orders, or live activity.
+
+## V5.66 High-Volatility Attribution Diagnostic
+
+Run the preregistered attribution only from a credential-free, offline
+process:
+
+```powershell
+.\scripts\run_nexustrade_high_volatility_attribution.ps1
+```
+
+The wrapper fails closed when `APP_PROFILE` is paper/live or a broker,
+NexusTrade, or Tiingo credential alias is loaded. It prints presence booleans
+only. Before loading canonical bars, the engine validates the V5.66 protocol,
+canonical data/manifest, V5.64/V5.65 protocols and engines, and all frozen
+V5.65 output hashes. It also refuses output if the recomputed V5.64 parent or
+V5.65 actual metrics, target vectors, or overlay integrity differ.
+
+Expected ignored outputs under
+`runs/v5_66_nexustrade_high_volatility_attribution` are:
+
+- `preregistration.json`;
+- `attribution_results.json`;
+- `attribution_summary.md`; and
+- `manifest.json`.
+
+Inspect `frozen_reproduction`, `diagnostic_classification`, every cost/window
+under `attribution.cost_results`, `volatility_transition_ledger`, and the
+manifest hashes. `D` and `I` are diagnostic counterfactuals, never candidates.
+No classification creates a route, preview, shadow, paper promotion, broker
+access, order authority, or live authority.
