@@ -1630,3 +1630,30 @@ dates, three fixed chronological OOS folds, continuous state, and four
 identical cost cases. Preview review requires all preregistered SPY baseline,
 cost, portfolio-level cross-asset, and composite-integrity/value gates. This
 lane is offline research only; it never permits paper promotion or submission.
+
+## V5.65 NexusTrade Monthly High-Volatility Defense
+
+V5.65 freezes V5.64 and evaluates a separately named risk-overlay hypothesis.
+The committed protocol is
+`docs/design/v5_65_nexustrade_monthly_high_volatility_defense.md`.
+`algotrader.research.nexustrade_monthly_high_volatility_defense` validates the
+V5.65 protocol hash, frozen V5.64 protocol and engine hashes, V5.63 provenance
+manifest hash, and canonical CSV hash before reading outcomes.
+
+The candidate retains the frozen V5.64 source-rule, filled-event state, drift,
+next-session-close timing, SPY SMA50/200 parent, chronology, comparators, and
+cost cases. It adds only the repository-supported prior-only volatility
+defense: 20-session SPY adjusted-close realized volatility, expanding
+nearest-rank 33/67 quantiles with at least 252 prior observations, and cash
+while the regime is `high_vol`. Insufficient history does not force cash.
+
+The overlay must genuinely change OOS target weights. In addition to the
+unchanged SPY baseline, cost, and portfolio-level cross-asset gates, its
+preregistered parent-repair gate requires at least 0.01 full-OOS drawdown
+improvement, no fold drawdown worsening, no more than 0.02 full-OOS return
+loss, nonnegative Sharpe delta, and at least one high-volatility forced-cash
+session.
+
+V5.65 remains offline, credential-free, network-free, broker-free, and
+no-submit. Its route cannot itself authorize a shadow, paper candidate, broker
+operation, or live activity.

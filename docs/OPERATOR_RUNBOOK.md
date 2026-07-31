@@ -1918,3 +1918,32 @@ Inspect each candidate's `route` and gate details. Only `preview_review` can
 support a later separately authorized no-submit shadow design.
 `continue_local_research` and `reject` cannot advance. No result grants paper
 promotion, broker access, order submission, or live authority.
+
+## V5.65 Monthly High-Volatility Defense
+
+Run the separately preregistered V5.65 defense only from a credential-free,
+offline process:
+
+```powershell
+.\scripts\run_nexustrade_monthly_high_volatility_defense.ps1
+```
+
+The wrapper fails closed when `APP_PROFILE` is paper/live or a broker,
+NexusTrade, or Tiingo credential alias is loaded. It prints credential
+presence booleans only and never prints values. The engine also verifies the
+frozen V5.64 protocol and engine hashes before loading canonical bars.
+
+Expected ignored outputs under
+`runs/v5_65_nexustrade_monthly_high_volatility_defense` are:
+
+- `preregistration.json`;
+- `defense_results.json`;
+- `defense_summary.md`; and
+- `manifest.json`.
+
+Inspect `candidate.route`, every gate, `overlay_integrity`, and the
+per-window volatility diagnostics. A `continue_local_research` or `reject`
+route freezes the hypothesis without creating a no-submit shadow. Only a
+locally produced `preview_review` may support a later separately authorized
+no-submit design. The command never authorizes paper promotion, broker access,
+orders, or live activity.
