@@ -9,6 +9,7 @@ from algotrader.research.multi_etf_adjusted_data_manifest import (
     APPROVED_MULTI_ETF_ADJUSTED_DATA_SYMBOLS,
     MultiEtfAdjustedDataManifestConfig,
     build_multi_etf_adjusted_data_manifest,
+    main,
     run_multi_etf_adjusted_data_manifest,
 )
 
@@ -98,6 +99,34 @@ def test_existing_spy_canonical_data_remains_supported(tmp_path: Path) -> None:
     assert payload["valid_symbols"] == ["SPY"]
     assert payload["refresh_required_symbols"] == []
     assert _symbol_record(payload, "SPY")["validation_status"] == "valid"
+
+
+def test_cli_accepts_multiple_canonical_path_overrides(tmp_path: Path) -> None:
+    paths = _write_symbol_files(tmp_path, ("SPY", "QQQ"))
+    manifest_path = tmp_path / "manifest.json"
+    combined_path = tmp_path / "combined.csv"
+
+    exit_code = main(
+        [
+            "--output-manifest",
+            str(manifest_path),
+            "--combined-output-csv",
+            str(combined_path),
+            "--symbols",
+            "SPY,QQQ",
+            "--canonical-path",
+            f"SPY={paths['SPY']}",
+            "--canonical-path",
+            f"QQQ={paths['QQQ']}",
+        ]
+    )
+
+    assert exit_code == 0
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["valid_symbols"] == [
+        "SPY",
+        "QQQ",
+    ]
+    assert combined_path.is_file()
 
 
 def _write_symbol_files(

@@ -481,7 +481,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--canonical-path",
         action="append",
-        default=(),
+        default=[],
         help="Optional SYMBOL=path override. May be supplied more than once.",
     )
     return parser
