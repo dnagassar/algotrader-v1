@@ -30,7 +30,8 @@ def test_refresh_script_contract_defaults_to_dry_run_and_requires_live_flag() ->
 
     assert "[ValidateSet(\"offline_fixture\", \"dry_run\", \"live_market_data_fetch\")]" in script
     assert (
-        '[ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "AAPL", "MSFT", '
+        '[ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "XLB", "XLE", '
+        '"XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY", "AAPL", "MSFT", '
         '"GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]'
         in script
     )
@@ -87,7 +88,7 @@ def test_dry_run_builds_tiingo_request_without_network(tmp_path: Path) -> None:
     assert run_log.exists()
 
 
-@pytest.mark.parametrize("symbol", ("QQQ", "BRK-B"))
+@pytest.mark.parametrize("symbol", ("QQQ", "XLK", "BRK-B"))
 def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
     tmp_path: Path,
     symbol: str,

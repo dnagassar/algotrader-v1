@@ -52,7 +52,22 @@ __all__ = [
 _RECORD_TYPE = "automatic_adjusted_spy_data_refresh"
 _MILESTONE = "v1.78"
 _PROVIDER = "tiingo"
-APPROVED_ADJUSTED_ETF_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+APPROVED_ADJUSTED_ETF_SYMBOLS = (
+    "SPY",
+    "QQQ",
+    "IWM",
+    "TLT",
+    "GLD",
+    "XLB",
+    "XLE",
+    "XLF",
+    "XLI",
+    "XLK",
+    "XLP",
+    "XLU",
+    "XLV",
+    "XLY",
+)
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
     "MSFT",

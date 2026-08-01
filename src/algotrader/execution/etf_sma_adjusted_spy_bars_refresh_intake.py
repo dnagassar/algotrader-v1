@@ -38,7 +38,22 @@ __all__ = [
 _MILESTONE = "M446"
 _RECORD_TYPE = "etf_sma_adjusted_spy_bars_refresh_manifest"
 _COMMAND = "etf-sma-adjusted-spy-bars-refresh-intake"
-APPROVED_ADJUSTED_ETF_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+APPROVED_ADJUSTED_ETF_SYMBOLS = (
+    "SPY",
+    "QQQ",
+    "IWM",
+    "TLT",
+    "GLD",
+    "XLB",
+    "XLE",
+    "XLF",
+    "XLI",
+    "XLK",
+    "XLP",
+    "XLU",
+    "XLV",
+    "XLY",
+)
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
     "MSFT",
