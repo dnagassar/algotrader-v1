@@ -1808,3 +1808,22 @@ Constituent concentration was below the 0.50 gate. A second canonical replay
 was byte-identical. The exact 126-session/top-five confirmation is frozen and
 must not be repaired by lookback, count, threshold, symbol, or gate tuning.
 V5.69 creates no shadow, paper promotion, broker operation, or live authority.
+
+## V5.70 Frozen V5.64 Forward Confirmation
+
+V5.70 is the terminal, outcome-blind forward confirmation of the exact V5.64
+composite. Its protocol and metadata-only data receipt were committed before
+forward replay. The approved Tiingo adapter acquired 12 symbols through
+2026-06-30 into isolated generated paths; all symbols shared 1,883 sessions,
+the 314-session forward window partitioned 106/105/103, and the historical
+adjusted-close prefix had zero mismatches.
+
+The frozen V5.64 preregistration, result, and summary reproduced exactly. The
+forward composite returned 5.2352% at moderate friction with 13.2032% maximum
+drawdown, 0.2508 Sharpe, and 12.1050 turnover. Fold returns were 4.2726%,
+11.1197%, and -9.1762%. Baseline, cost, cross-asset, and composite-value gates
+failed; integrity passed with 105 genuine target-difference sessions.
+
+The terminal route is `close_stock_filter_family`. No retry, repair, new
+same-family candidate, preview, shadow, paper promotion, broker operation, or
+live authority exists.

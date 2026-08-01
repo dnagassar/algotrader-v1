@@ -2078,3 +2078,24 @@ all applicable gates did not pass. Freeze the exact result: do not tune the
 126-session lookback, five-name count, thresholds, symbol set, or gates from
 these outcomes. It creates no preview, shadow, paper promotion, broker access,
 order authority, or live authority.
+
+## V5.70 Frozen V5.64 Forward Confirmation
+
+The one-shot forward confirmation is complete. Its ignored data and result
+artifacts are under `runs/v5_70_v564_frozen_forward_confirmation`.
+
+Offline deterministic replay command:
+
+```powershell
+.\scripts\run_v564_frozen_forward_confirmation.ps1
+```
+
+The wrapper rejects paper/live profiles and all broker, NexusTrade, and Tiingo
+process credentials. It validates the committed protocol/receipt, admitted
+data hashes, frozen V5.64 engine/protocol/artifacts, and exact historical
+reproduction before forward evaluation.
+
+The canonical route is `close_stock_filter_family`. Do not refresh the fixed
+endpoint, change folds or gates, tune parameters, remove symbols, add an
+overlay, or run another same-family candidate. No preview, shadow, paper, or
+live action is authorized.
