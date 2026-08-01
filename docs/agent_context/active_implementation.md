@@ -1,78 +1,111 @@
 # Active implementation handoff
 
-## V5.70 terminal outcome
+## V5.71 terminal outcome
 
-The exact frozen V5.64 forward confirmation is complete. Terminal route:
-`close_stock_filter_family`. The NexusTrade-inspired stock-filter family is
-closed; no retry, repair, tuning, same-family candidate, preview, shadow,
-paper promotion, or live authority remains.
+The independently motivated diversified ETF absolute-trend evaluation is
+complete. Terminal route: `close_diversified_etf_absolute_trend`. The exact
+five-ETF, ten-month candidate is closed; no retry, parameter repair, preview,
+paper promotion, third sleeve, or live authority exists.
 
 ## Checkout and chronology
 
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
-- Clean takeover HEAD: `74ba4eca22356f43f7a106d5875906409c3e8896`.
-- Protocol commit `bec4267` preceded data acquisition.
-- Metadata-only receipt commit `6262e60` preceded forward replay.
-- Protocol SHA: `7977ef62d5b1da7b658e57aad34e85f91438659d9c5c639726abb23ee10e8e37`.
-- Receipt SHA: `9ad6db6e4cacf9e5accace6911052fb44f72fbe201609ce15fdbe8ba705a8ef9`.
-- Exactly one writer; no reset, clean, stash, restore, rebase, switch, or new
-  worktree.
+- Clean takeover HEAD: `115dcd40eb7b12115ad001b7fd8363e9ee5c4160`.
+- Preregistration commit: `89581022c5f4e345c586dd1329b44086841b61af`.
+- Data receipt and manifest-CLI correction commit:
+  `9278192ba2fe935a262996fad53f501fdc738eb3`.
+- Protocol SHA:
+  `afa4254ceac06f643fd51fd2df63364ce14a38f01ba8392e664d8e478bc57d17`.
+- Receipt SHA:
+  `ca782882cb499ea2e956fc36658df4f76f88fff06b4a69b293ced4a70c213525`.
+- Exactly one implementation writer; one bounded read-only inventory agent
+  made no filesystem, Git, credential, network, broker, paper, or live change.
+- No reset, clean, stash, restore, rebase, switch, or new worktree.
 
 ## Admitted data
 
-- Tiingo EOD `adjClose` to `adjusted_close`; split/dividend adjusted price;
-  adjusted OHLCV not claimed.
-- 12/12 symbols valid, `BRK-B->BRK-B`, zero blocked.
-- 2019-01-02 through 2026-06-30; 1,883 common sessions; 22,596 rows.
-- Fresh forward 2025-03-31 through 2026-06-30: 314 sessions.
-- Fold counts 106/105/103 with exact full coverage.
-- Historical adjusted-close prefix mismatch count: zero.
-- Data SHA: `04344d4a60702dd936b183b20937a41b7f90e6813096a9120fc3b2e642d91688`.
-- Manifest SHA: `43ae5c6bdd5c6addc2bd7e3d863818229748cad5d0b28f3cad569676340cb1ca`.
+- Tiingo EOD `adjClose` to `adjusted_close`, with the adapter's split/dividend-
+  adjusted close semantics; adjusted OHLCV and PIT vintages are not claimed.
+- Fixed identity universe: `SPY,QQQ,IWM,TLT,GLD`.
+- `2004-11-18` through `2026-07-31`; 5,458 common sessions per symbol;
+  27,290 combined rows; zero missing, invalid, stale, or blocked symbols.
+- OOS `2016-01-04` through `2026-07-31`: 2,659 sessions, with exact
+  878/884/897-session folds.
+- Combined data SHA:
+  `5e7a7da8519e37faa72787dc41c7e847e5749f74f9cd43dc8009cb2807b8e0ec`.
+- Manifest SHA:
+  `627119a769e38053c32ab7709f88672ab6dba5db9725cb4b2545a7bad77b177e`.
 
 The trusted adapter loaded only `TIINGO_API_KEY` from the primary checkout's
-existing `.env`; value printed/written false. Twelve allowlisted HTTPS GETs
-succeeded. Broker/account/order/position access and mutation were false.
+existing `.env`; value printed/written false. Five sequential allowlisted
+HTTPS GETs succeeded. Broker/account/order/position and NexusTrade access or
+mutation were false.
 
 ## Decision evidence
 
-Frozen V5.64 preregistration/result/summary reproduced exactly. Composite
-integrity passed with 105 target-difference sessions.
+Moderate-cost candidate full OOS:
 
-Moderate-friction composite:
+- total return `1.226013566215769808904956205`;
+- annualized return `0.0786388947775516`;
+- maximum drawdown `0.1627662470479759706556990356`;
+- Sharpe `0.8879291345654666689119935428`;
+- annualized one-way turnover `2.164417841910357912834346737`;
+- fold returns `0.205083423564649160269532183`,
+  `0.282191645924869628870147839`, and
+  `0.440647570767415337923134816`.
 
-- full forward return `0.052351627510281683703382537`, drawdown
-  `0.1320323282336477364892538502`, Sharpe
-  `0.2507882871646472557234913287`, turnover
-  `12.10499437780069802271361865`;
-- fold returns `0.0427262571478272947097422`,
-  `0.111196594498479289946322917`, and
-  `-0.0917620061625934073408801612`.
+Viability, friction stability, diversification, and replay integrity passed.
+All five symbols were held and contributed positively; maximum absolute
+contribution share was `0.3812121602557395941937088971`.
 
-All gates did not pass. SPY baseline failed full forward and folds two/three.
-Cost failed because both SPY edges were negative. Static equal weight failed
-full forward and folds one/three. Composite value failed versus standalone:
-return delta `-0.226555529570140695736317679`, Sharpe delta
-`-0.9871735043873385949447073353`, and no metric improved.
+Static equal weight returned `2.379773027017023501135459747`, annualized at
+`0.1221028842620504`, with `0.2591366198523230800478142105` drawdown and
+`0.9657868849912540293776704804` Sharpe. Candidate deltas were `-0.0434639894844988`
+annualized return, `+0.0963703728043471093921151749` drawdown improvement, and
+`-0.0778577504257873604656769376` Sharpe; only one fold won on Sharpe.
 
-The result is valid and terminal, not blocked. A second replay was
-byte-identical.
+SPY returned `3.349379488384785391485941631`, annualized at
+`0.14919869344426884`, with `0.3369994047056151965792361705` drawdown and
+`0.8379196227969595393953880149` Sharpe. Candidate drawdown improvement and
+Sharpe delta passed, but the annualized-return delta
+`-0.07055979866671724` failed the frozen `-0.03` tolerance.
 
 ## Artifacts
 
-- preregistration `94f9f5bb19c426c0cbf042e780cf22c1431ee123278f80d5f8fec129c996d67a`
-- result `095876c3729522211f480af92b1f08d745a12a58a649947ed46516230da72cb0`
-- summary `1062c0555a9174dc55cd8506a9361809ecd6728ca95d598d88b525ec307003fa`
-- manifest `452c518cce78324a4f67a3d271dbacdc012056e7527bbd6a68742ca2da18f846`
+- preregistration:
+  `260dcafe5de9deb1b1eaab2f7819ab2791b03eeaf23aab808b7b515016ed3771`
+- result:
+  `8ff0b4af228e4c08f65011b5f250a063efe888b2859f89d4d968d3ab710edb75`
+- summary:
+  `65e177dbc120cd4359ac751ecf4c7db3960eb223a5200a5f272ff47e516aa78a`
+- manifest:
+  `a7fee42cbf02df5ebeeda6f13fc42fca6b68b5d7d1bcd5480b9c5d8a88e704fd`
+
+A second canonical replay and the focused canonical test were byte-identical.
+
+## Verification
+
+- Focused V5.71/manifest suite: 10 passed.
+- Focused V5.71/manifest/dependency/import suite: 59 passed.
+- Full offline verifier safety guards: 109 passed.
+- Full default collection: 10,237 tests across 512 files.
+- Eight-shard aggregate: 10,232 passed, 5 skipped, zero failures/errors.
+- Collection equivalence, execution equivalence, interpreter binding, and
+  offline verification: pass.
+- `git diff --check`: pass.
 
 ## Safety and next milestone
 
-No NexusTrade access/mutation, broker access, paper mutation, receipt,
-reconciliation, or live activity occurred. V5.57 caps remain $25 entry, $60
-aggregate marked SPY exposure, one broker order per secure cycle, and two
-sleeve intents per UTC day. No third sleeve; live unauthorized.
+No broker, account, order, position, paper mutation, receipt, reconciliation,
+or live activity occurred. V5.57 caps remain $25 entry, $60 aggregate marked
+SPY exposure, one broker order per secure cycle, and two sleeve intents per
+UTC day. No third sleeve; live unauthorized.
 
-Next: stop this stock-filter lane. Any future alpha requires a materially new,
-independently evidenced family with genuinely untouched data and a new
-preregistration. Do not reuse V5.64-V5.70 outcomes for parameter or symbol
-selection.
+Dirty-file owner after this handoff is committed: none. The commit containing
+this file is the final coherent V5.71 implementation slice.
+
+Next: do not tune V5.71. The already-preregistered Crypto Tournament V2 is the
+nearest genuine untouched decision, but its sealed OOS window does not end
+until `2026-08-12` and terminal scoring is forbidden before
+`2026-08-13T00:00:00Z`. Until then, only receipt/completeness accrual is valid;
+manual candidate elevation would violate its frozen selector.

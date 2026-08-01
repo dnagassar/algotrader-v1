@@ -2099,3 +2099,32 @@ The canonical route is `close_stock_filter_family`. Do not refresh the fixed
 endpoint, change folds or gates, tune parameters, remove symbols, add an
 overlay, or run another same-family candidate. No preview, shadow, paper, or
 live action is authorized.
+
+## V5.71 Diversified ETF Absolute-Trend Evaluation
+
+Run only from a credential-free, offline process after the isolated data
+receipt is present:
+
+```powershell
+.\scripts\run_diversified_etf_absolute_trend.ps1
+```
+
+The wrapper rejects paper/live profiles and every broker, NexusTrade, and
+Tiingo process credential alias. It reads only the receipt-bound local
+canonical data; credential values are never printed.
+
+Expected ignored outputs under
+`runs/v5_71_diversified_etf_absolute_trend/evaluation` are:
+
+- `preregistration.json`;
+- `evaluation_results.json`;
+- `evaluation_summary.md`; and
+- `manifest.json`.
+
+Inspect `terminal_decision`, every gate, all moderate-cost OOS/fold metrics,
+the static-equal-weight and SPY comparisons, contribution concentration, and
+the artifact hashes. The canonical route is
+`close_diversified_etf_absolute_trend`. Freeze the result: do not change the
+ten-month lookback, five-symbol universe, one-session lag, cost cases,
+comparators, folds, or gates. No preview, paper, broker, or live action is
+authorized.

@@ -1827,3 +1827,39 @@ failed; integrity passed with 105 genuine target-difference sessions.
 The terminal route is `close_stock_filter_family`. No retry, repair, new
 same-family candidate, preview, shadow, paper promotion, broker operation, or
 live authority exists.
+
+## V5.71 Diversified ETF Absolute-Trend Evaluation
+
+V5.71 is a materially separate, outcome-blind five-ETF trend-allocation
+candidate. The protocol and metadata-only receipt were committed before any
+candidate return was computed. It uses the repository-approved `SPY`, `QQQ`,
+`IWM`, `TLT`, and `GLD` proxy universe, ten month-end adjusted closes, equal
+20% sleeves, residual non-accruing cash, and a deliberate next-common-session-
+close action lag. It is labeled `repository_proxy_not_faber_replication` and
+does not claim the source paper's universe, same-close fills, cash return,
+costs, or performance.
+
+The isolated Tiingo `adjClose` snapshot covers 5,458 common sessions from
+2004-11-18 through 2026-07-31. OOS is 2016-01-04 through 2026-07-31, partitioned
+into fixed 878/884/897-session folds. Portfolio weights drift between monthly
+actions; the candidate and comparators do not receive implicit daily
+rebalancing.
+
+At moderate two-basis-point friction, the candidate returned 122.6014% OOS,
+annualized at 7.8639%, with 16.2766% maximum drawdown, 0.8879 Sharpe, and
+2.1644 annualized one-way turnover. All three fold returns were positive:
+20.5083%, 28.2192%, and 44.0648%. Viability, friction, diversification, and
+replay-integrity gates passed.
+
+The static equal-weight comparator returned 237.9773%, annualized at 12.2103%,
+with 25.9137% drawdown and 0.9658 Sharpe. V5.71 improved drawdown by 9.6370
+percentage points but lost 4.3464 annualized-return points and 0.0779 Sharpe;
+only one of three folds had a nonnegative Sharpe delta. SPY returned 334.9379%,
+annualized at 14.9199%, with 33.6999% drawdown and 0.8379 Sharpe. V5.71 improved
+SPY drawdown and Sharpe but lost 7.0560 annualized-return points, exceeding the
+frozen three-point tolerance.
+
+The terminal route is `close_diversified_etf_absolute_trend`. The exact
+five-ETF 10-month candidate cannot be repaired with another lookback, lag,
+cost, symbol subset, cash proxy, threshold, or fold. It creates no preview,
+paper strategy, third sleeve, broker operation, or live authority.
