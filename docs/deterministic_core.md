@@ -1773,3 +1773,38 @@ pure sizing. A second canonical replay produced byte-identical artifacts.
 This classification is explanatory only. V5.68 creates no candidate, route,
 preview, shadow, parameter search, paper promotion, broker operation, or live
 authority. V5.67 remains frozen.
+
+## V5.69 Monthly Relative-Momentum Confirmation
+
+V5.69 is an independently preregistered security-selection candidate built on
+the frozen V5.64 source-rule eligibility and SPY SMA50/200 regime. Its protocol
+is committed at
+`docs/design/v5_69_nexustrade_monthly_relative_momentum_confirmation.md`.
+It is not an authentic NexusTrade replay and does not reuse any V5.65-V5.68
+signal, outcome, volatility sizing, attribution component, or retrospective
+symbol exclusion.
+
+At each source-rule rebalance, the candidate computes fixed 126-observed-
+session total returns for eligible stocks and SPY. It retains stocks with
+strictly positive return that strictly exceeds SPY, ranks descending by excess
+return with canonical symbol-order ties, selects at most five, and equal
+weights the selected set to full exposure. No selection means cash. The
+candidate preserves the V5.64 own-filled-event 30-calendar-day OR state,
+next-session adjusted-close fill, continuous chronology, four cost cases,
+comparators, and portfolio accounting.
+
+The canonical route is `continue_local_research`, with no preview authority.
+At moderate cost V5.69 returned 17.7789% OOS, versus 21.6082% for the frozen
+parent. Maximum drawdown was 16.6181% versus 15.4283%, Sharpe was 0.7690
+versus 1.0140, and one-way turnover was 13.7440 versus 11.7295. It improved
+parent-relative return only in fold two; folds one and three lost 4.1733 and
+3.1170 percentage points. The fixed parent-selection, SPY baseline, and static
+equal-weight cross-asset gates failed. The cost gate passed.
+
+Integrity passed: 229 OOS desired-target sessions differed from the parent,
+all 11 stocks were selected at least once OOS, the maximum selected count was
+five, and count, momentum, ranking, and equal-weight violations were zero.
+Constituent concentration was below the 0.50 gate. A second canonical replay
+was byte-identical. The exact 126-session/top-five confirmation is frozen and
+must not be repaired by lookback, count, threshold, symbol, or gate tuning.
+V5.69 creates no shadow, paper promotion, broker operation, or live authority.

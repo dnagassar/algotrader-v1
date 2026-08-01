@@ -2044,3 +2044,37 @@ residuals, and artifact hashes. The canonical classification is
 `pure_sizing_primary`. Paths `R` and `C` are diagnostics, never candidates.
 No classification creates a route, parameter change, preview, shadow, paper
 promotion, broker access, order authority, or live authority.
+
+## V5.69 Monthly Relative-Momentum Confirmation
+
+Run V5.69 only from a credential-free, offline process:
+
+```powershell
+.\scripts\run_nexustrade_monthly_relative_momentum_confirmation.ps1
+```
+
+The wrapper fails closed when `APP_PROFILE` is paper/live or a broker,
+NexusTrade, or Tiingo credential alias is loaded. An unloaded Tiingo key may
+remain in `.env`; V5.69 reads only frozen local canonical data and artifacts.
+Credential values are never printed.
+
+Before replay, the engine validates the committed V5.69 protocol, frozen
+V5.64 protocol/engine and all four parent artifact hashes, the V5.68 exclusion
+boundary, and V5.63 canonical data/manifest. It refuses candidate output until
+the complete V5.64 preregistration, result, and summary reproduce exactly.
+
+Expected ignored outputs under
+`runs/v5_69_nexustrade_monthly_relative_momentum_confirmation` are:
+
+- `preregistration.json`;
+- `relative_momentum_results.json`;
+- `relative_momentum_summary.md`; and
+- `manifest.json`.
+
+Inspect `candidate.route`, every gate, `selection_integrity`,
+`oos_selection_ledger`, `frozen_parent_reproduction`, all cost/window records,
+and the artifact hashes. The canonical route is `continue_local_research` and
+all applicable gates did not pass. Freeze the exact result: do not tune the
+126-session lookback, five-name count, thresholds, symbol set, or gates from
+these outcomes. It creates no preview, shadow, paper promotion, broker access,
+order authority, or live authority.
