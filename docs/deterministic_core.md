@@ -1863,3 +1863,84 @@ The terminal route is `close_diversified_etf_absolute_trend`. The exact
 five-ETF 10-month candidate cannot be repaired with another lookback, lag,
 cost, symbol subset, cash proxy, threshold, or fold. It creates no preview,
 paper strategy, third sleeve, broker operation, or live authority.
+
+## V5.72-V5.78 Primary-Source Alpha Tournament
+
+V5.72 through V5.78 form one outcome-blind, primary-source research sequence.
+Every candidate protocol and metadata-only data receipt was committed before
+its engine read returns. Every engine pins protocol, receipt, canonical data,
+symbol identities, exact sessions and folds, executes twice in memory, emits
+byte-identical deterministic artifacts, and records external performance as
+untrusted and unused.
+
+V5.72 evaluated turn-of-month SPY exposure and a nine-sector 6x6
+industry-momentum proxy. Both closed: the calendar strategy failed candidate,
+common, and portfolio gates; sector momentum passed integrity but failed
+static/SPY and portfolio-Sharpe gates.
+
+V5.73 evaluated a fixed SPY/VEU/BIL/AGG global-equities dual-momentum proxy.
+It returned 9.6866% annualized with 0.6702 Sharpe and 33.6999% drawdown, but
+failed diversified-baseline and portfolio-Sharpe gates. Terminal route:
+`close_global_equities_dual_momentum_12m_proxy`.
+
+V5.74 evaluated exact ETF-proxy VAA-G4 over post-publication OOS. It returned
+4.4043% annualized with 0.4667 Sharpe and 23.0235% drawdown. A fold was
+negative, full Sharpe and fold-concentration failed, and candidate/baseline
+gates failed. Terminal route:
+`close_vigilant_asset_allocation_g4_13612w_proxy`.
+
+V5.75 evaluated a five-global-proxy, twelve-complete-month, top-two relative-
+strength rule with next-session action and drifting weights. It returned
+9.5958% annualized with 0.7579 Sharpe and 23.7635% drawdown. Every common gate
+passed; annualized return and drawdown beat static five-proxy equal weight.
+The static Sharpe delta was 0.0943 versus the frozen 0.10 requirement, the SPY
+return/Sharpe gate failed, and composite Sharpe fell by 0.0016. Terminal route:
+`close_faber_global_asset_relative_strength_top2_12m_proxy`.
+
+V5.76 evaluated the fixed November-April SPY / May-October BIL seasonal
+proxy. It returned 7.3897% annualized with 0.5627 Sharpe and 33.6999%
+drawdown. It failed full Sharpe, annual 50/50, post-2021, fold, and portfolio-
+Sharpe gates. Terminal route: `close_halloween_spy_bil_seasonal_proxy`.
+
+V5.77 evaluated a capped long/cash SPY inverse-variance proxy using one fixed
+median calibration over 145 pre-2017 monthly population variances. It returned
+10.5476% annualized with 0.9458 Sharpe and 18.2756% drawdown. Common integrity
+and every portfolio gate passed; it exceeded SPY Sharpe by 0.1016, improved
+SPY drawdown by 15.4243 points, and improved composite Sharpe by 0.0352.
+It nevertheless lagged SPY annualized return by 4.4203 points and did not beat
+SPY on both Sharpe and drawdown in two folds. Terminal route:
+`close_spy_inverse_variance_long_cash_proxy`.
+
+V5.78 evaluated a static QUAL investable quality sleeve against PBUS and SPY
+over post-2019 OOS. It returned 13.9825% annualized with 0.7428 Sharpe and
+34.0567% drawdown. It underperformed both equity comparators on return and
+Sharpe and did not improve the core composite. Terminal route:
+`close_static_qual_quality_sleeve_proxy`.
+
+All V5.72-V5.78 routes are closed without tuning. No result creates strategy
+registration, a no-submit shadow, paper promotion, third-sleeve ownership,
+broker activity, or live authority. The exact evidence bindings and ranked
+research findings are recorded in
+`docs/design/v5_79_alpha_candidate_decision_and_live_readiness_gate.md`.
+
+## V5.79 Alpha and Live-Readiness Gate
+
+V5.79 records the repository-wide decision: validated alpha count zero,
+execution-adapter count zero, new untouched-shadow route count zero, paper-
+promotion count zero, and live authorization false. The leading research
+findings are V5.77 inverse variance, V5.75 global relative strength, and V5.71
+absolute trend, but “building block” is descriptive only; combining failed
+rules after inspecting outcomes would be a new, biased hypothesis and is not
+authorized.
+
+Live-capital readiness is hard-blocked by the absence of a validated alpha and
+future-only shadow, absent candidate strategy adapter/scheduler/order mapping,
+missing candidate sleeve ownership and caps, incomplete production loss/
+drawdown/reserve/correlation controls, missing durable alert/recovery evidence,
+and nonterminal M376 SPY order state. Existing V5.57 caps remain unchanged:
+$25 entry-order notional, $60 aggregate marked SPY entry exposure, one broker
+order per secure cycle, and two sleeve intents per UTC day. The repository
+remains not live-authorized.
+
+Crypto Tournament V2 remains sealed. Outcome scoring, partial ranking, and
+preference are forbidden before `2026-08-13T00:00:00Z`.
