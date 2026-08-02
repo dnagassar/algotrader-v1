@@ -1831,6 +1831,47 @@ Stop on `strategy_sleeve_broker_quantity_mismatch`,
 readiness sleeve generation/cap mismatch. Do not edit the SQLite ledger by
 hand or re-run adoption against a non-pristine ledger.
 
+## V5.85 Exact M376 Read-Only Reconciliation
+
+This one-purpose command refreshes the historical M376 gate without exposing a
+mutation surface. It reads the expected paper account, current positions, a
+bounded current open-SPY order set, and the stored order by exact ID:
+
+```powershell
+.\scripts\run_secure_spy_m376_reconciliation.ps1 -Format text
+```
+
+The wrapper rejects any ambient profile, broker credential, account, or
+endpoint alias before opening the opaque Windows Credential Manager reference.
+It is fixed to the Alpaca paper endpoint and has no submit, cancel, replace,
+close, liquidation, or live method.
+
+An unblocked result requires all of the following:
+
+- `state=m376_terminal_reconciled`;
+- `expected_account_matched=true`;
+- `paper_broker_read_performed=true`;
+- `open_spy_order_read_performed=true`;
+- `exact_order_found=true`;
+- `terminal_state=terminal`;
+- `open_order_count=0`;
+- `next_spy_submit_blocked=false`;
+- `paper_submit_performed=false`;
+- `broker_mutation_performed=false`; and
+- `live_authorized=false`.
+
+The corrected V5.85 production read met that contract with decision
+`m376_terminal_filled`. Its sanitized receipt SHA-256 is
+`217764341cb5083914b4550578450d1dc94122f4e46bb9636dd7ce7d4ecbe10f`;
+the append-only reconciliation ledger SHA-256 after that record is
+`8d9d9426315466709624cb4987ee402749138e889ff2fa5e8fbe53a0b8d9260c`.
+
+A different open SPY order, unavailable current-order context, account
+mismatch, exact-order identity mismatch, or nonterminal/ambiguous status exits
+nonzero and leaves the derived block true. Clearing this historical gate never
+bypasses the secure cycle's fresh account, position, open-order, adjusted-data,
+strategy-sleeve, cap, journal, readiness, receipt, or post-action
+reconciliation gates.
 ## V5.58 NexusTrade Research Intake
 
 Capture exact NexusTrade strategy rules and backtest metadata in a local JSON

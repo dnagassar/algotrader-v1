@@ -1,130 +1,135 @@
 # Active implementation handoff
 
-## Operator-directed halt
+## V5.85 operating decision
 
-On `2026-08-02`, the operator abandoned the remaining wait-for-data route. The
-Windows task `\crypto-tournament-v2-oos-scheduler` was disabled while idle; its
-last result was `0`. No repository data or evidence was deleted. No broker,
-paper, order, account, or live-capital surface was touched. Do not resume the
-collector or strategy work without a new explicit operator request.
+The system no longer waits for optional research data to operate. The existing
+SPY SMA 50/200 and RSI(14) paper lanes are healthy in real-paper no-submit
+visibility mode, their sleeves reconcile, their canonical adjusted SPY data is
+current through the latest completed session, and their Windows tasks are
+enabled for the next NYSE session.
 
-## Terminal portfolio decision
+Both strategies currently decide `hold`; no order was forced. This is bounded
+paper operational readiness only. Validated alpha remains zero, no
+profitability claim is made, and live capital remains prohibited.
 
-V5.84 is complete and terminally closed without tuning. The exact fixed
-factor-momentum style candidates were historically positive, but none passed
-the preregistered style-baseline, SPY, drawdown, and portfolio-value gates.
-
-- `style_factor_momentum_timeseries_12m`: 9.36% annualized, 0.690 Sharpe,
-  35.58% maximum drawdown.
-- `style_factor_momentum_cross_section_top2_12m`: 10.13% annualized, 0.708
-  Sharpe, 31.42% maximum drawdown.
-- `style_factor_momentum_ensemble_50_50`: 9.77% annualized, 0.707 Sharpe,
-  33.50% maximum drawdown.
-- Terminal route: `no_candidate_passed`; validated alpha: 0; shadow winner:
-  none; paper promotion: false; live ready/authorized: false.
-- Best closed building block remains V5.77
-  `spy_inverse_variance_long_cash_proxy` at 10.55% annualized, 0.946 Sharpe,
-  and 18.28% maximum drawdown. It failed frozen SPY return-capture and
-  fold-consistency gates and cannot be promoted or retuned.
-
-No rescue grid, relabeling, rule change, or outcome-driven combination is
-authorized. The only already-preregistered untouched terminal route is frozen
-Crypto Tournament V2 after `2026-08-13T00:00:00Z`.
+Crypto Tournament V2 remains preserved but its unattended collector is
+operator-disabled. Do not resume it without a new explicit operator request.
+Neither it nor the unresolved NexusTrade source route is an operational
+dependency.
 
 ## Checkout and writer ownership
 
-- Worktree: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
+- Writer checkout:
+  `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
-- Clean takeover HEAD: `eeb0b4191b69036925e460d155344b1a75b012bf`.
-- V5.84 protocol/data/engine commits: `1a16754885f91b036bb9722ac1db60ffe6f7d264`,
-  `a774f3698ae9b0aa9eabd87311c35197aa9dad04`,
-  `a686ae9c080cf9713b5cbbe5cc6268ef3fd009ce`, and
-  `aca347d93afebdd278e75e0f9f23d04d742efd3a`.
+- Clean continuation HEAD before V5.85:
+  `e128c5e71f6c7c08743425e6dd843ae5b9aaa43b`.
 - No reset, clean, stash, restore, rebase, branch switch, or new worktree.
-- Exactly one implementation writer; three bounded agents audited read-only.
-- Dirty-file owner until the final coherent commit: root implementation writer.
+- Exactly one implementation writer; bounded subagents audited read-only.
+- Dirty-file owner until the coherent V5.85 commit: root implementation writer.
+- Stable scheduler checkout source remained clean and was not edited.
 
-## V5.84 canonical evidence
+## Implemented slice
 
-- Authenticated provider/path: Tiingo EOD HTTPS GET through the existing
-  secure read-only adapter.
-- Exact symbols: IWD, IWF, RSP, VBR, VIG, SPLV, SHY, SPY, IEF.
-- Semantics: provider `adjClose` to split/dividend-adjusted `adjusted_close`;
-  not executable prices or adjusted OHLCV.
-- Exact common coverage: 3,832 sessions, 34,488 rows,
-  `2011-05-05..2026-07-31`.
-- Canonical data SHA-256:
-  `c54d53450cd523677e9f72a7a3ba001295c738a7a388b37ff2a3d1f5bf361919`.
-- Data manifest SHA-256:
-  `ee0063bbb19f6c05b593b8519a0864d2224fe93061ca674f62412c736733d790`.
-- Result SHA-256:
-  `48944fdda451dc4fdbe4d5091fedd9d2993e35e3f916b85499dab81e644cc4cf`.
-- Artifact manifest SHA-256:
-  `90217675189b32883aff765092660e20f6a0ac81a56da25ff511407dfd95b219`.
-- Summary SHA-256:
-  `5b8ce3f540d2ac069004a6805c1e3341a137bead05e55174cdde9901cbba36ad`.
-- Two fresh end-to-end replays produced byte-identical persisted result and
-  manifest artifacts; earning-period holdings and contribution accounting
-  reconcile to compounded return.
+- `src/algotrader/execution/secure_spy_m376_reconciliation.py`:
+  account-bound, read-only exact historical-order reconciliation with a real
+  bounded current open-SPY-order context.
+- `scripts/run_secure_spy_m376_reconciliation.ps1`:
+  fail-closed wrapper using the opaque Windows Credential Manager paper
+  observation reference and fixed paper endpoint.
+- `tests/unit/test_secure_spy_m376_reconciliation.py`:
+  eight tests covering terminal, nonterminal, other-open-SPY, account mismatch,
+  ambient environment rejection, paper interlock, secret exclusion, and
+  wrapper forwarding.
+- `docs/deterministic_core.md`, `docs/OPERATOR_RUNBOOK.md`, and
+  `docs/design/v5_85_immediate_paper_operationalization.md`:
+  corrected current contract, operating procedure, and decision evidence.
 
-## Crypto V2 unattended evidence
+A read-only audit caught the first draft's missing current open-SPY context.
+That draft was not committed. The corrected source performs the bounded read
+and fails closed if another open SPY order exists or that context is
+unavailable.
 
-- Task `\crypto-tournament-v2-oos-scheduler`: disabled by operator`n  direction; exact
-  current-worktree market-data-only wrapper; no paper-read, submit, or live
-  flags.
-- Latest automatic completion: `2026-08-02T21:05:01Z`, Task Scheduler result
-  `0`; next scheduled run `2026-08-02T22:05:00Z`.
-- OOS: 429/672 hours per symbol; 243 remain per symbol, 729 total; contiguous
-  frontier `2026-08-02T20:00:00Z`; next missing hour `2026-08-02T21:00:00Z`;
-  receipt count 7.
-- Terminal scoring false; candidate metrics/ranking empty; selection absent;
-  paper eligible false.
-- Accrued OOS SHA-256:
-  `3b3b2e3c2336f907c6f0417d41a278b9357c956107881319001a9dd7cc1fe3fe`.
-- Receipt ledger SHA-256:
-  `164703af753bb6ece43f1ab48db11ecdef26243ed8e90aa53acb66782bddabfa`.
-- Frozen state SHA-256:
-  `03fd8acae9bedb1393b83ab89f894de82ac467ea873869080cb7cb8585788cf1`.
-- Operating packet SHA-256:
-  `e36acd704fe08db6108a6efc7856b25ef41aa6ce79ecfbe26e05b4cfada2e7f1`.
-- State fingerprint:
-  `02ca27cce33b76ae15123d65315742130355b7508d2bd2dceb427fbec810b8c9`.
+## Data and operating evidence
 
-No raw price or sealed candidate outcome was inspected.
+- Necessary data only: one Tiingo EOD GET refreshed SPY.
+- Semantics: provider `adjClose` to split-and-dividend-adjusted
+  `adjusted_close`; not an executable price or adjusted OHLCV.
+- Coverage: 1,905 sessions, `2019-01-02..2026-07-31`.
+- Refresh delta: 336 new rows, 9 unchanged overlap rows, 0 revisions.
+- Canonical SHA-256:
+  `0ec56ce757a71945da587452f8a4c20b5fdd37e58af9aeab83cd935a92ad1dd9`.
+- Raw-response SHA-256:
+  `ad42d6c908b9475def4f5499565bc1b4aa6e3f7b2401c1985ffb62d66a4e8c07`.
+- Corrected sanitized reconciliation receipt SHA-256:
+  `217764341cb5083914b4550578450d1dc94122f4e46bb9636dd7ce7d4ecbe10f`.
+- Append-only reconciliation ledger SHA-256 after the corrected record:
+  `8d9d9426315466709624cb4987ee402749138e889ff2fa5e8fbe53a0b8d9260c`.
+- The historical M376-derived standing block is cleared. Each secure paper
+  cycle still performs its independent current account, position, open-order,
+  data, sleeve, cap, readiness, journal, receipt, and reconciliation checks.
+- A documented local no-submit sleeve adoption reconciled the existing
+  SMA-owned quantity; broker mutation remained false.
+- Stable primary SMA and RSI no-submit runs were healthy, blocker-free holds.
+- SMA and RSI tasks are enabled for `2026-08-03` at 09:31 and 09:38 ET.
+- EOD SPY refresh is enabled for 20:10 ET.
 
-## Safety and verification
+No raw broker payload, account identifier, order identifier, credential value,
+or generated payload is copied into this handoff.
 
-- Test-process preflight: APP_PROFILE and all checked Alpaca/Tiingo ambient
-  credential aliases false. Primary `.env` existed and Tiingo credential was
-  available only within the trusted acquisition boundary; value exposure and
-  persistence false.
-- Network: nine Tiingo market-data GETs for V5.84 plus the documented Crypto V2
-  market-data receipt fetches. Broker/account/order/position reads: zero.
-- Paper mutations: zero. Live endpoint touches/activity: zero. Live authorized:
-  false.
-- V5.57 ownership, reconciliation, auditing, live prohibition, and caps remain
-  unchanged: USD 25 entry-order notional, USD 60 aggregate marked SPY entry
-  exposure, one broker order per secure cycle, two SPY sleeve intents per UTC
-  day. No crypto allocation exists.
-- M376 remains conservatively nonterminal; overlapping SPY submit remains
-  blocked.
-- Focused V5.84 result suite: 105 passed.
-- Final combined changed-surface suite: 185 passed in 190.33 seconds.
-- `scripts/verify_offline.ps1`: PASS; 109 safety-guard tests passed in 196.24
-  seconds; its full-suite phase was explicitly skipped.
-- Required `python -m pytest` was attempted once and hit the 3,604.6-second
-  command timeout. It emitted no failing node, but it is not a pass and remains
-  an exhaustive-regression verification gate. The timed-out process exited.
-- `git diff --check`: pass. Changed `src`: only
-  `src/algotrader/orchestration/crypto_tournament_v2_forward_oos.py`.
-  Untracked `src/tests`: none.
+## Verification
+
+Credential/profile preflight before offline tests:
+
+- checked ambient alias count: 0;
+- paper profile loaded: false;
+- broker credential alias loaded: false;
+- Tiingo credential alias loaded: false.
+
+Results:
+
+- corrected reconciliation focused suite: 8 passed;
+- final affected lifecycle/dependency/import suite: 89 passed in 60.10
+  seconds;
+- `.\scripts\verify_offline.ps1 -Full -Shards 8`: PASS in 1,476.3
+  seconds;
+- offline safety guards: 109 passed;
+- full default suite: 10,351 collected, 10,346 passed, 5 skipped, 0 failures,
+  0 errors;
+- all eight shard exits zero; collection and execution equivalence PASS;
+- verifier `git diff --check`: PASS.
+
+Run the final exact Git diff, source diff, and untracked `src/tests` hygiene
+checks immediately before staging and commit.
+
+## Safety and trust
+
+- Tiingo `.env` present: true.
+- Tiingo credential available within the trusted adapter boundary: true.
+- Credential values requested, printed, returned, or persisted: false.
+- Read-only paper account/order/position access: performed through the trusted
+  secure provider boundary.
+- Paper submit/cancel/replace/close/liquidate: none.
+- Live endpoint access/activity: none.
+- Live authorized: false.
+- External source metrics trusted or used for ranking/promotion: false.
+- The NexusTrade `29.64%` table versus `29.41%` chart discrepancy remains
+  preserved and unused. Candidate-specific data mode and slippage remain
+  unresolved; no values were inferred and no adapter was fabricated.
+- Existing caps unchanged: USD 25 entry-order notional, USD 60 aggregate marked
+  SPY entry exposure, one broker order per secure cycle, and two sleeve intents
+  per UTC day.
+- Receipt, reconciliation, auditing, sleeve ownership, and live prohibitions
+  remain intact.
 
 ## Exact next action
 
-Allow automatic sealed Crypto V2 accrual through the terminal close, without
-early scoring or manual hourly Git milestones. At or after
-`2026-08-13T00:00:00Z`, run the already-frozen terminal evaluation once. A
-sealed winner must then pass the accepted 168-hour no-submit shadow and fresh
-winner-scoped paper qualification before any capital route. If the tournament
-does not produce a passing winner, close the route. Live capital remains a
-separate operator hard gate.
+Allow the enabled SMA and RSI tasks to run on the next NYSE session. Inspect
+their sanitized receipts and terminal reconciliation; a continued hold should
+remain no-action, while an actionable signal may exercise only the existing
+bounded paper path if every fresh gate passes. Accumulate forward paper
+evidence before proposing any live-capital milestone.
+
+Do not tune parameters, fabricate source assumptions, restart optional data
+accrual, or claim profitable/live-ready status from operational health. Live
+capital remains a separate operator hard gate.

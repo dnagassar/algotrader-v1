@@ -22,10 +22,12 @@ Live capital remains locked down.
   or otherwise mutate broker/account/order state.
 - LLMs and agents are not allowed in the trading hot path.
 - SPY daily long-only ETF SMA 50/200 remains the initial paper-lab path;
-  tournament-v2 BTCUSD/ETHUSD/SOLUSD is the current primary research-to-paper
-  evidence lane. Neither path grants live authority.
-- M376 remains treated as an open/nonterminal SPY paper close order until a
-  read-only reconciliation artifact says terminal.
+  SPY RSI(14) is the second bounded paper lane. Crypto Tournament V2 is an
+  optional sealed research route whose unattended collector is operator-
+  disabled. None of these paths grants live authority.
+- V5.85 proves the exact historical M376 order terminal and the bounded current
+  open-SPY order context empty. M376 no longer supplies a standing submit block;
+  every new secure cycle must still pass its independent open-order gate.
 
 ## Non-Negotiable Safety Rails
 
@@ -685,42 +687,45 @@ Mutation-capable paper commands also require explicit intent flags such as
 flags are not enough by themselves; the milestone must also explicitly scope
 the broker mutation.
 
-## M376 Open-Order Caution
+## M376 Terminal Reconciliation
 
-M376 remains the active open-order caution for SPY.
+V5.85 supersedes the former M376 open-order caution with two account-bound,
+read-only paper observations: a direct lookup of the stored historical order
+and a bounded current open-SPY-order query. The corrected adapter requires both
+contexts before it can return an unblocked result.
 
-Current conservative state:
+Corrected current evidence:
 
-- order lineage: M376 SPY paper close order
-- client order id: `paper-order-close-m376_spy_paper_close_submit`
-- broker order id: `dbb32dd3-58bf-49ea-b9b1-9aa44e85002d`
-- expected side: `sell`
-- expected quantity: `0.033172072`
-- latest recorded reconciliation context: M385
-- observed status in that context: `accepted`
-- observed filled quantity: `0`
-- observed remaining quantity: `0.033172072`
-- terminal state: `nonterminal`
-- reconciliation decision: `m376_nonterminal_open`
-- SPY position quantity observed in that context: `0.033172072`
-- open SPY order evidence: present
+- expected paper account matched: true, without persisting its identifier;
+- exact order found and all stored identity fields matched: true;
+- observed exact-order status: `filled`;
+- terminal state: `terminal`;
+- reconciliation decision: `m376_terminal_filled`;
+- bounded open-SPY order read performed: true;
+- current open-SPY order count: `0`;
+- M376-derived next-SPY-submit block: false;
+- paper submit, broker mutation, and live authorization: false;
+- corrected receipt SHA-256:
+  `217764341cb5083914b4550578450d1dc94122f4e46bb9636dd7ce7d4ecbe10f`;
+- append-only reconciliation ledger SHA-256 after the corrected record:
+  `8d9d9426315466709624cb4987ee402749138e889ff2fa5e8fbe53a0b8d9260c`.
 
-Contract until superseded by a read-only terminal reconciliation:
+The adapter accepts only the opaque Windows Credential Manager paper-
+observation reference, constructs only the fixed Alpaca paper endpoint, and
+exposes account, position, bounded open-SPY order, and exact order-ID reads.
+It has no submit, cancel, replace, close, liquidation, or live method. SDK enum
+fields are normalized before the unchanged identity and terminal-state
+classifier runs. A different open SPY order, unavailable open-order context,
+an identity mismatch, or any nonterminal/ambiguous exact-order state remains
+blocked.
 
-- treat M376 as open/nonterminal
-- block SPY submits
-- block duplicate or overlapping SPY order intent
-- allow offline work
-- allow read-only reconciliation only when explicitly scoped
-- do not submit a second SPY order
-- do not cancel, replace, close, liquidate, delete, or retry as an autonomous
-  action
-- preserve `submitted=false`, `mutated=false`, and
-  `broker_action_performed=false` for offline previews
-
-The next allowed action for this caution is offline work or explicitly scoped
-read-only reconciliation. A terminal state must come from a read-only
-reconciliation artifact before this caution can be relaxed.
+M376 no longer blocks the bounded SPY paper lane. Every normal current-cycle
+gate remains mandatory: NYSE execution window, fresh adjusted bars, expected
+account match, active account, no open SPY order, no unexpected position,
+strategy-sleeve equality, readiness hash, durable journal, one-order-per-cycle
+limit, USD 25 entry cap, USD 60 aggregate exposure cap, two sleeve intents per
+UTC day, and terminal post-action reconciliation. This terminal evidence does
+not validate alpha or authorize live capital.
 
 ## Current Local Components
 
@@ -879,12 +884,12 @@ Preferred next work remains offline unless explicitly scoped otherwise:
 - maintain the SPY ETF/SMA current-contract docs
 - extend fake brokers and deterministic simulators
 - improve local reconciliation artifacts and operator reports
-- acquire or locally place real non-synthetic SPY daily bars with clear operator
-  provenance, a manifest-pinned `expected_input_sha256`, and at least 201
-  usable bars, then run the manual import gate before treating them as backtest
-  evidence
-- run read-only M376 reconciliation only under an explicit paper milestone
-- keep SPY submit blocked until M376 is terminal by read-only reconciliation
+- keep the canonical Tiingo adjusted-daily SPY refresh and both bounded SPY
+  paper tasks healthy without coupling them to optional research accrual
+- preserve the exact read-only M376 reconciler and its real bounded open-SPY
+  context; re-run it only when historical-order context must be refreshed
+- keep every secure paper cycle's independent current account, position, open-
+  order, data, sleeve, cap, journal, receipt, and reconciliation gates intact
 
 Do not promote any paper/live mutation from this document alone.
 
@@ -1933,11 +1938,12 @@ absolute trend, but “building block” is descriptive only; combining failed
 rules after inspecting outcomes would be a new, biased hypothesis and is not
 authorized.
 
-Live-capital readiness is hard-blocked by the absence of a validated alpha and
-future-only shadow, absent candidate strategy adapter/scheduler/order mapping,
-missing candidate sleeve ownership and caps, incomplete production loss/
-drawdown/reserve/correlation controls, missing durable alert/recovery evidence,
-and nonterminal M376 SPY order state. Existing V5.57 caps remain unchanged:
+Live-capital readiness remains hard-blocked by the absence of a validated alpha
+and future-only shadow, absent candidate strategy adapter/scheduler/order
+mapping, missing candidate sleeve ownership and caps, incomplete production
+loss/drawdown/reserve/correlation controls, and missing durable alert/recovery
+evidence. V5.85 closes the historical M376 paper-order gate, but it does not
+validate alpha or grant live authority. Existing V5.57 caps remain unchanged:
 $25 entry-order notional, $60 aggregate marked SPY entry exposure, one broker
 order per secure cycle, and two sleeve intents per UTC day. The repository
 remains not live-authorized.
