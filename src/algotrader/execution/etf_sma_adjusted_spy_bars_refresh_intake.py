@@ -62,6 +62,9 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "SHY",
     "IEF",
     "LQD",
+    "EFA",
+    "VNQ",
+    "DBC",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
