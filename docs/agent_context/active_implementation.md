@@ -1,5 +1,13 @@
 # Active implementation handoff
 
+## Operator-directed halt
+
+On `2026-08-02`, the operator abandoned the remaining wait-for-data route. The
+Windows task `\crypto-tournament-v2-oos-scheduler` was disabled while idle; its
+last result was `0`. No repository data or evidence was deleted. No broker,
+paper, order, account, or live-capital surface was touched. Do not resume the
+collector or strategy work without a new explicit operator request.
+
 ## Terminal portfolio decision
 
 V5.84 is complete and terminally closed without tuning. The exact fixed
@@ -61,7 +69,7 @@ Crypto Tournament V2 after `2026-08-13T00:00:00Z`.
 
 ## Crypto V2 unattended evidence
 
-- Task `\crypto-tournament-v2-oos-scheduler`: Ready and enabled; exact
+- Task `\crypto-tournament-v2-oos-scheduler`: disabled by operator`n  direction; exact
   current-worktree market-data-only wrapper; no paper-read, submit, or live
   flags.
 - Latest automatic completion: `2026-08-02T21:05:01Z`, Task Scheduler result
