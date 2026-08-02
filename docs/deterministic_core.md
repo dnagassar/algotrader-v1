@@ -1979,3 +1979,26 @@ The external scheduler task remains disabled and references an older worktree;
 V5.80 does not mutate it. Exact hashes, acquisition receipt, limitations, and
 next action are bound in
 `docs/design/v5_80_crypto_tournament_v2_pre_score_readiness.md`.
+
+## V5.81 Crypto Tournament V2 Receipt Checkpoint
+
+V5.81 admits one current-clock, receipt-only Alpaca crypto-bars delta for the
+exact inclusive window `2026-08-02T12:00:00Z..2026-08-02T13:00:00Z` and only
+BTCUSD, ETHUSD, and SOLUSD at 1Hour / `us`. Each symbol supplied two rows.
+Embargo remains complete. OOS coverage advances to 422 of 672 hours per symbol
+through `2026-08-02T13:00:00Z`, leaving 250 hours per symbol before terminal
+close.
+
+The refresh is data-intake-only and records no strategy evaluation. Candidate
+evaluations and ranking remain empty, the selected-candidate structure is an
+empty placeholder, and terminal scoring remains false. The preregistration
+fingerprint is unchanged. The hard scoring boundary remains
+`2026-08-13T00:00:00Z`; ordinary scheduler grace makes
+`2026-08-13T00:05:00Z` the earliest normal terminal attempt.
+
+The cycle used an opaque credential reference inside the guarded adapter. It
+performed one market-data network request and no broker/account/order/position
+read, paper mutation, live endpoint touch, or credential disclosure. The
+external scheduler remains disabled and unchanged. Exact coverage, artifact
+hashes, safety receipt, limitations, and the next authorized action are bound
+in `docs/design/v5_81_crypto_tournament_v2_receipt_checkpoint.md`.

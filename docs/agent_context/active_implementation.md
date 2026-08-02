@@ -1,132 +1,101 @@
 # Active implementation handoff
 
-## V5.80 terminal outcome
+## V5.81 terminal outcome
 
-The pre-score Crypto Tournament V2 receipt/readiness milestone is complete.
+The current-clock Crypto Tournament V2 receipt checkpoint is complete.
 
-- Classification: `pre_score_receipt_current_hard_time_gate`.
-- Candidate evaluations inspected: `0`.
-- Rankings/preferences inspected: `0`.
-- Selected candidate present: `false`.
-- Terminal scoring performed: `false`.
-- Paper or broker eligible: `false`.
-- Live authorized: `false`.
-- Exact scoring boundary: `2026-08-13T00:00:00Z`, conditional on the
-  authentic final receipt.
-- Earliest normal scheduler attempt: `2026-08-13T00:05:00Z`.
+- Classification: `receipt_checkpoint_current_hard_time_gate`.
+- Candidate evaluations inspected: 0.
+- Rankings or preferences inspected: 0.
+- Selected candidate: none; empty zero-property placeholder only.
+- Terminal scoring performed: false.
+- Paper or broker eligible: false.
+- Live authorized: false.
+- Scoring boundary: `2026-08-13T00:00:00Z`, conditional on the authentic final
+  receipt; earliest normal scheduler attempt: `2026-08-13T00:05:00Z`.
 
 ## Checkout and writer ownership
 
-- Worktree:
-  `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
+- Worktree: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
 - Clean takeover HEAD:
-  `f3357c518409653db1646949944c3ef6efce2416`.
+  `e2fe8dffcab66c2330bc806933c7d4bcdd4de4c1`.
 - No reset, clean, stash, restore, rebase, branch switch, or new worktree.
-- Exactly one implementation writer. Three agents performed bounded read-only
-  time-gate, receipt, and test-gap audits.
+- Exactly one implementation writer.
 
-## Outcome-blind implementation
+## Receipt-bound state
 
-- The production forward-OOS CLI and scheduler reject malformed, naive, or
-  future explicit operating timestamps before state/evaluation access.
-- The deterministic research core retains injectable times for fixtures.
-- The PowerShell acquisition wrapper forwards the required opaque Windows
-  Credential Manager reference plus exact paper/data public configuration only
-  in authorized fetch mode.
-- The wrapper rejects blank secure parameters, ambient Alpaca credential
-  aliases, and secure-fetch parameters in offline modes.
-- The operator runbook now uses current clock by default and the secure opaque
-  reference rather than ambient credential loading.
-- No strategy rule, candidate set, cost, gate, ranking, or scoring function was
-  changed.
+One authorized, guarded, data-intake-only Alpaca crypto-bars cycle admitted
+`2026-08-02T12:00:00Z..2026-08-02T13:00:00Z` for BTCUSD, ETHUSD, and SOLUSD at
+1Hour / `us`.
 
-## Canonical state and provenance
-
-The worktree started without V2 generated state. Initialization used the
-existing guarded V1 discovery source and receipt through their original
-receipt-bound path; neither was copied or edited.
-
-- Discovery CSV SHA-256:
-  `65db4f1aa09b8c45a8d8fcaf9f4e2b965a7d5814c859fa3125416d7497908137`.
-- Discovery receipt SHA-256:
-  `33a6c09e47b86f11e3b28d6421293253b5571cfe5484e77a6b76057ea5dd1570`.
-- Preregistration fingerprint:
-  `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
-- Discovery: 12,960 normalized rows, 4,320 per symbol, three explicit
-  isolated-gap imputations.
-- Frozen preregistration SHA-256:
-  `36c72d2b2014c6e4a407a81f84de7ccaa792b1cca3ad299c9343409ac0542b57`.
-- Frozen discovery SHA-256:
-  `ecf4f99e92c8ba0a549c32236978b4a9a955d1305818a916f2051ddc5d5fbb1e`.
-
-One guarded data-intake-only Alpaca crypto-bars cycle accrued the exact
-`2026-07-15T00:00:00Z..2026-08-02T11:00:00Z` window for BTCUSD, ETHUSD, and
-SOLUSD at 1Hour / `us`.
-
+- Fetch: 2 rows per symbol, 6 total; no missing symbol.
 - Embargo: 24/24 hours per symbol, complete.
-- OOS: 420/672 hours per symbol through `2026-08-02T11:00:00Z`.
-- Remaining terminal coverage: 252 hours/symbol, 756 rows total.
+- OOS: 422/672 hours per symbol through `2026-08-02T13:00:00Z`.
+- Remaining: 250 hours per symbol, 750 rows total.
+- Receipt count: 3; next missing hour: `2026-08-02T14:00:00Z`.
 - Refresh output SHA-256:
-  `430bab008cca24173a1af5f678d6e48ea5b69032a064b38f24804f1f8febc031`.
-- Refresh receipt SHA-256:
-  `8887b8136c80cfa4ee87fad0fa710bec2893b89f1dd8fe1b7a25ba13e14807ec`.
+  `011b088d13be58268d92645ac82a8bc97e6e2e27e958eec5a1dc69cc9c4f811c`.
+- Raw response SHA-256:
+  `1c6df5fa3b5c96f8365e099c58ddfaa9efe16b1ead2e8eddd9bcbf82277801c5`.
+- Refresh packet / receipt SHA-256:
+  `5666f30f2c2c79ed9268c292e403c65721857fcccad91d5cc954c50ac7c3936a`.
 - Accrued OOS SHA-256:
-  `5d608a0bb29e3ff0f5afd761a014a80a5a38cd5085b92499751df69b1fb51a0a`.
+  `d283e88d51491fc38d8d4f193c8b8d6f22d1e22387f29bdb901e2eb360d42c44`.
+- Frozen state SHA-256:
+  `2cc6378ab82ba7bc2d66ac3c9d42f2e6389ccbb1b0e6bb783b5e7ac893805699`.
+- Receipt ledger SHA-256:
+  `13c7c7446302cd68984424c2578e897ca7063a6b6107b382971b6116ae14e4f1`.
 - State fingerprint:
-  `c5d49fe9508711f7f7a2042e9ef47965b1702e81a4c9f75cb57a8f047ea5d592`.
+  `1b84e722ab9fd5cfe98e37fb53cda7dd9f332cf6fd5114fa6f268b49c3d62f32`.
+- Preregistration fingerprint unchanged:
+  `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
 
-Generated `runs/` artifacts remain ignored evidence, never authority.
+Generated `runs/` artifacts remain ignored evidence, never authority. No raw
+prices or candidate outcomes were inspected.
 
-## Safety and credential receipt
+## Safety and credentials
 
 - Process paper profile before tests: false.
 - Process broker credential aliases before tests: false.
 - Network/integration test escapes: false.
-- Opaque market-data credential reference availability: true.
+- Opaque market-data credential reference resolved: true.
 - Credential values exposed/printed/persisted/in commands: false.
 - Network-enabled acquisition cycles: one.
 - Broker/account/order/position reads: zero.
 - Broker or paper mutations: zero.
 - Live endpoint touches/activity: zero.
-- Acquisition receipt: exact three symbols, exact window, 1Hour / `us`,
-  data-intake-only true, strategy evaluation false, non-live endpoint.
-
-The installed scheduler task remains disabled and points to an older worktree.
-It was not enabled, rewritten, or registered.
+- Scheduler mutations: zero.
 
 V5.57 caps remain unchanged: $25 entry-order notional, $60 aggregate marked
 SPY entry exposure, one broker order per secure cycle, and two sleeve intents
-per UTC day. No third sleeve exists.
+per UTC day. Receipt/reconciliation, auditing, sleeve ownership, and live
+prohibitions remain unchanged. No third sleeve exists.
 
 ## Seal limitation
 
 This is a governance/reproducibility seal, not local confidentiality. Raw bars
-are readable, private Python evaluators are importable, and receipts are local
-SHA-256 bindings rather than provider-signed trusted-time records. Supported
-production CLI future-time bypass is now blocked; no claim is made that a
-malicious local analyst cannot compute outcomes manually.
+are readable, private evaluators are importable, and receipts are local hashes
+rather than provider-signed trusted-time records.
 
 ## Verification
 
-- Focused core/wrapper/scheduler suite: 49 passed.
-- Expanded Crypto V2/dependency/import suite: 166 passed.
-- Offline verifier: PASS, 109 passed.
-- Full exact-node suite: 10,312 collected across 520 files; 10,307 passed,
-  5 skipped, 0 failures, 0 errors.
+- Focused Crypto V2, dependency, and import suite: 166 passed.
+- Offline verifier: PASS, 109 passed; full default suite explicitly skipped.
+- Bounded full suite: 10,312 canonical tests across 520 files; 10,307 passed,
+  5 skipped, 0 failures, and 0 errors.
 - Eight-shard collection and execution equivalence: PASS.
-- Focused compilation: PASS.
-- `git diff --check`: final report records PASS.
-- Exact `src` diff and untracked `src/tests` hygiene: final report records
-  intended two-module diff and no untracked files.
+- V5.81 has no `src` or test change.
+- Final diff/hygiene results are recorded in the completion report.
 
-Dirty-file owner after the final commit: none.
+Dirty-file owner after the coherent local commit: none. The committed slice is
+this handoff, `docs/deterministic_core.md`, and
+`docs/design/v5_81_crypto_tournament_v2_receipt_checkpoint.md`.
 
 ## Next action
 
-Continue current-clock receipt-only accrual with ambient credential aliases
-unloaded. Do not pass a future `as_of`, inspect raw OOS outcomes, call private
-evaluators, rank, prefer, or tune. At or after `2026-08-13T00:05:00Z`, admit
-the authentic terminal receipt and allow the existing one-shot scorer to run.
-A winner permits only the preregistered no-submit shadow and grants no paper or
-live authority.
+Continue current-clock receipt-only accrual after the next completed hour. Do
+not pass a future `as_of`, inspect raw OOS outcomes, call private evaluators,
+rank, prefer, or tune. At or after `2026-08-13T00:05:00Z`, admit the authentic
+terminal receipt and allow the one-shot scorer. A passing winner permits only
+the preregistered no-submit shadow and grants no paper or live authority.
