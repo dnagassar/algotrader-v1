@@ -1944,3 +1944,38 @@ remains not live-authorized.
 
 Crypto Tournament V2 remains sealed. Outcome scoring, partial ranking, and
 preference are forbidden before `2026-08-13T00:00:00Z`.
+
+## V5.80 Crypto Tournament V2 Pre-Score Readiness
+
+V5.80 restores the receipt-bound Crypto Tournament V2 state in the current
+worktree without copying or hand-editing its path-bound discovery source. The
+guarded V1 discovery CSV and receipt were resolved from their original checkout
+and validated by hash, window, source, symbols, and safety fields. The frozen
+preregistration fingerprint remains
+`2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
+
+One explicit data-intake-only Alpaca crypto-bars cycle accrued the exact
+`2026-07-15T00:00:00Z..2026-08-02T11:00:00Z` window for BTCUSD, ETHUSD, and
+SOLUSD at 1Hour. Embargo coverage is complete at 24 hours per symbol. OOS is
+current through `2026-08-02T11:00:00Z` at 420 of 672 hours per symbol. Candidate
+evaluations and ranking remain empty, no candidate is selected, and terminal
+scoring remains false.
+
+The production forward-OOS CLI and scheduler now reject malformed, naive, or
+future explicit operating timestamps while retaining deterministic synthetic
+time injection in core tests. The PowerShell fetch wrapper now forwards only
+the required opaque Windows credential reference and exact paper/data public
+configuration in authorized fetch mode; it rejects ambient Alpaca credential
+aliases and rejects secure-fetch parameters in all offline modes.
+
+This reduces accidental operator bypass but does not claim local
+confidentiality: raw bars are readable, private Python functions are importable,
+and receipts are locally hash-bound rather than signed trusted-time records.
+The supported path remains outcome-blind until the authentic terminal receipt
+is admitted no earlier than `2026-08-13T00:00:00Z`; ordinary scheduler grace
+makes `2026-08-13T00:05:00Z` the first normal terminal attempt.
+
+The external scheduler task remains disabled and references an older worktree;
+V5.80 does not mutate it. Exact hashes, acquisition receipt, limitations, and
+next action are bound in
+`docs/design/v5_80_crypto_tournament_v2_pre_score_readiness.md`.

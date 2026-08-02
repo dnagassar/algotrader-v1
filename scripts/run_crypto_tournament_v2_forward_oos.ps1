@@ -28,6 +28,13 @@ param(
     [string]$DiscoveryReceiptPath = (
         "runs\crypto_strategy_tournament\v1\refresh\refresh_packet.json"
     ),
+    [string]$CredentialProvider = "windows-credential-manager",
+    [string]$CredentialReference = (
+        "wincred:algotrader/v5.35/alpaca-market-data/production"
+    ),
+    [string]$AppProfile = "paper",
+    [string]$PaperEndpoint = "https://paper-api.alpaca.markets",
+    [string]$MarketDataEndpoint = "https://data.alpaca.markets",
     [switch]$MarketDataFetchAuthorized,
     [switch]$AllowNetwork
 )
@@ -51,6 +58,23 @@ function Format-Bool {
     return $Value.ToString().ToLowerInvariant()
 }
 
+$CredentialAliasNames = @(
+    "ALPACA_API_KEY",
+    "ALPACA_API_SECRET_KEY",
+    "ALPACA_SECRET_KEY",
+    "APCA_API_KEY_ID",
+    "APCA_API_SECRET_KEY"
+)
+$ExplicitSecureParameters = @(
+    @(
+        "CredentialProvider",
+        "CredentialReference",
+        "AppProfile",
+        "PaperEndpoint",
+        "MarketDataEndpoint"
+    ) | Where-Object { $PSBoundParameters.ContainsKey($_) }
+)
+
 if ($Mode -eq "market_data_fetch") {
     if (
         -not $MarketDataFetchAuthorized.IsPresent -or
@@ -61,13 +85,33 @@ if ($Mode -eq "market_data_fetch") {
             "-MarketDataFetchAuthorized and -AllowNetwork."
         )
     }
+    foreach ($RequiredValue in @(
+        $CredentialProvider,
+        $CredentialReference,
+        $AppProfile,
+        $PaperEndpoint,
+        $MarketDataEndpoint
+    )) {
+        if ([string]::IsNullOrWhiteSpace($RequiredValue)) {
+            throw "market_data_fetch secure parameters cannot be blank."
+        }
+    }
+    foreach ($CredentialAliasName in $CredentialAliasNames) {
+        if (Test-EnvLoaded -Name $CredentialAliasName) {
+            throw (
+                "market_data_fetch rejects ambient credential aliases; " +
+                "use the opaque secure credential reference."
+            )
+        }
+    }
 }
 elseif (
     $MarketDataFetchAuthorized.IsPresent -or
-    $AllowNetwork.IsPresent
+    $AllowNetwork.IsPresent -or
+    $ExplicitSecureParameters.Count -gt 0
 ) {
     throw (
-        "Network authorization switches require " +
+        "Network authorization or secure credential parameters require " +
         "-Mode market_data_fetch."
     )
 }
@@ -82,13 +126,7 @@ Write-Host (
         [Environment]::GetEnvironmentVariable("APP_PROFILE") -eq "paper"
     ))
 )
-foreach ($Name in @(
-    "ALPACA_API_KEY",
-    "ALPACA_API_SECRET_KEY",
-    "ALPACA_SECRET_KEY",
-    "APCA_API_KEY_ID",
-    "APCA_API_SECRET_KEY"
-)) {
+foreach ($Name in $CredentialAliasNames) {
     Write-Host (
         $Name + "_loaded=" +
         (Format-Bool (Test-EnvLoaded -Name $Name))
@@ -123,7 +161,12 @@ if (-not [string]::IsNullOrWhiteSpace($AsOf)) {
 if ($Mode -eq "market_data_fetch") {
     $Arguments += @(
         "--market-data-fetch-authorized",
-        "--allow-network"
+        "--allow-network",
+        "--credential-provider", $CredentialProvider,
+        "--credential-reference", $CredentialReference,
+        "--app-profile", $AppProfile,
+        "--paper-endpoint", $PaperEndpoint,
+        "--market-data-endpoint", $MarketDataEndpoint
     )
 }
 

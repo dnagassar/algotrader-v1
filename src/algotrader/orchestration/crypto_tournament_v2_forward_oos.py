@@ -66,7 +66,48 @@ __all__ = [
     "build_crypto_tournament_v2_refresh_readiness",
     "main",
     "run_crypto_tournament_v2_operating_cycle",
+    "validate_crypto_tournament_v2_operating_as_of",
 ]
+
+
+def validate_crypto_tournament_v2_operating_as_of(
+    as_of: datetime | str | None,
+    *,
+    observed_at: datetime | None = None,
+) -> datetime:
+    """Return a UTC operating timestamp that cannot lead the wall clock."""
+
+    observed = observed_at or datetime.now(UTC)
+    if observed.tzinfo is None:
+        raise ValidationError("observed_at must be timezone-aware.")
+    observed = observed.astimezone(UTC)
+    if as_of is None or (type(as_of) is str and not as_of.strip()):
+        requested = observed
+    elif isinstance(as_of, datetime):
+        requested = as_of
+    elif type(as_of) is str:
+        try:
+            requested = datetime.fromisoformat(
+                as_of.strip().replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "crypto tournament v2 operating as_of is invalid."
+            ) from exc
+    else:
+        raise ValidationError(
+            "crypto tournament v2 operating as_of is invalid."
+        )
+    if requested.tzinfo is None:
+        raise ValidationError(
+            "crypto tournament v2 operating as_of must be timezone-aware."
+        )
+    requested = requested.astimezone(UTC)
+    if requested > observed:
+        raise ValidationError(
+            "crypto tournament v2 operating as_of cannot be in the future."
+        )
+    return requested
 
 
 def build_crypto_tournament_v2_refresh_readiness(
@@ -423,7 +464,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    as_of = args.as_of or datetime.now(UTC).isoformat()
+    try:
+        as_of = validate_crypto_tournament_v2_operating_as_of(
+            args.as_of,
+            observed_at=datetime.now(UTC),
+        ).isoformat()
+    except ValidationError as exc:
+        parser.error(str(exc))
     if args.mode != "market_data_fetch" and (
         args.market_data_fetch_authorized or args.allow_network
     ):

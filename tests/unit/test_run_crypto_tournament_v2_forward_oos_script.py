@@ -33,6 +33,11 @@ def test_v2_script_contract_is_no_submit_and_three_symbol_only() -> None:
         "algotrader.orchestration.crypto_tournament_v2_forward_oos",
         "--market-data-fetch-authorized",
         "--allow-network",
+        "--credential-provider",
+        "--credential-reference",
+        "--app-profile",
+        "--paper-endpoint",
+        "--market-data-endpoint",
     ):
         assert fragment in source
     assert "[switch]$Submit" not in source
@@ -80,6 +85,11 @@ def test_v2_status_invocation_does_not_forward_network_flags(
     assert "--mode status" in args
     assert "--allow-network" not in args
     assert "--market-data-fetch-authorized" not in args
+    assert "--credential-provider" not in args
+    assert "--credential-reference" not in args
+    assert "--app-profile" not in args
+    assert "--paper-endpoint" not in args
+    assert "--market-data-endpoint" not in args
 
 
 def test_v2_fetch_requires_both_explicit_switches(
@@ -109,6 +119,118 @@ def test_v2_fetch_requires_both_explicit_switches(
 
     assert result.returncode != 0
     assert "requires -MarketDataFetchAuthorized and -AllowNetwork" in (
+        result.stdout + result.stderr
+    )
+    assert not capture.exists()
+
+
+def test_v2_fetch_forwards_only_opaque_secure_provider_arguments(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "args.txt"
+    env = _fake_python_env(tmp_path, capture)
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT),
+            "-Mode",
+            "market_data_fetch",
+            "-MarketDataFetchAuthorized",
+            "-AllowNetwork",
+            "-AsOf",
+            "2026-08-02T12:00:00+00:00",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0, combined
+    args = capture.read_text(encoding="utf-8")
+    for fragment in (
+        "--market-data-fetch-authorized",
+        "--allow-network",
+        "--credential-provider windows-credential-manager",
+        "--credential-reference "
+        "wincred:algotrader/v5.35/alpaca-market-data/production",
+        "--app-profile paper",
+        "--paper-endpoint https://paper-api.alpaca.markets",
+        "--market-data-endpoint https://data.alpaca.markets",
+    ):
+        assert fragment in args
+    assert "credential_values_exposed=false" in result.stdout
+
+
+def test_v2_fetch_rejects_ambient_credential_aliases(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "args.txt"
+    env = _fake_python_env(tmp_path, capture)
+    env["APCA_API_KEY_ID"] = "synthetic-test-value"
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT),
+            "-Mode",
+            "market_data_fetch",
+            "-MarketDataFetchAuthorized",
+            "-AllowNetwork",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "rejects ambient credential aliases" in (
+        result.stdout + result.stderr
+    )
+    assert not capture.exists()
+
+
+def test_v2_status_rejects_explicit_secure_fetch_parameters(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "args.txt"
+    env = _fake_python_env(tmp_path, capture)
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT),
+            "-Mode",
+            "status",
+            "-CredentialReference",
+            "wincred:algotrader/v5.35/alpaca-market-data/production",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "secure credential parameters require" in (
         result.stdout + result.stderr
     )
     assert not capture.exists()

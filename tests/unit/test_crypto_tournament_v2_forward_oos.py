@@ -18,6 +18,7 @@ from algotrader.execution.crypto_history_refresh_adapter import (
 from algotrader.orchestration.crypto_tournament_v2_forward_oos import (
     build_crypto_tournament_v2_refresh_readiness,
     run_crypto_tournament_v2_operating_cycle,
+    validate_crypto_tournament_v2_operating_as_of,
 )
 from algotrader.research.crypto_preregistered_tournament import (
     _completed_round_trips,
@@ -45,6 +46,34 @@ def _utc(value: str) -> datetime:
     return datetime.fromisoformat(
         value.replace("Z", "+00:00")
     ).astimezone(UTC)
+
+
+def test_operating_as_of_rejects_future_or_naive_timestamps() -> None:
+    observed_at = _utc("2026-08-02T12:26:42Z")
+
+    with pytest.raises(ValidationError, match="cannot be in the future"):
+        validate_crypto_tournament_v2_operating_as_of(
+            "2026-08-02T12:26:43Z",
+            observed_at=observed_at,
+        )
+    with pytest.raises(ValidationError, match="must be timezone-aware"):
+        validate_crypto_tournament_v2_operating_as_of(
+            "2026-08-02T12:00:00",
+            observed_at=observed_at,
+        )
+
+
+def test_operating_as_of_defaults_to_observed_clock_and_normalizes_utc() -> None:
+    observed_at = _utc("2026-08-02T12:26:42Z")
+
+    assert validate_crypto_tournament_v2_operating_as_of(
+        None,
+        observed_at=observed_at,
+    ) == observed_at
+    assert validate_crypto_tournament_v2_operating_as_of(
+        "2026-08-02T08:00:00-04:00",
+        observed_at=observed_at,
+    ) == _utc("2026-08-02T12:00:00Z")
 
 
 def _write_history(

@@ -725,21 +725,27 @@ fill, and emits no candidate metrics.
 
 Status and readiness are also offline:
 
-    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode status -AsOf <CURRENT_UTC_TIMESTAMP>
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode status
 
-    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode readiness -AsOf <CURRENT_UTC_TIMESTAMP>
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode readiness
 
 Readiness reports the earliest missing hour and the latest completed hour. It
 reads only boolean preflight state and never prints credential values.
+In a credential-free shell its ambient-credential booleans are expected to be
+false; the opaque credential record is validated only inside an explicitly
+authorized fetch process.
 
 When the operator has explicitly authorized one read-only market-data
-operation, load paper market-data credentials and the explicit paper base URL
-only into that isolated process. Then run:
+operation, keep all ambient credential aliases unloaded and use only the
+approved opaque Windows Credential Manager market-data reference. Then run:
 
-    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode market_data_fetch -AsOf <CURRENT_COMPLETED_UTC_HOUR> -MarketDataFetchAuthorized -AllowNetwork
+    .\scripts\run_crypto_tournament_v2_forward_oos.ps1 -Mode market_data_fetch -MarketDataFetchAuthorized -AllowNetwork -CredentialProvider windows-credential-manager -CredentialReference wincred:algotrader/v5.35/alpaca-market-data/production
 
 The wrapper calculates the exact inclusive start/end window. Do not hand-edit
 it, extend the endpoint, add symbols, or reuse a receipt from another output.
+Omit `-AsOf` during normal operation. The Python CLI and scheduler reject any
+explicit future timestamp, while deterministic core functions remain directly
+testable with synthetic clocks.
 The call is HTTPS GET market data only. It does not read an account and cannot
 submit, cancel, replace, close, liquidate, or mutate broker state.
 The adapter must report data_intake_only=true and
@@ -747,10 +753,10 @@ strategy_evidence_evaluation_performed=false. It validates OHLCV and provenance
 only; it must not run a strategy battery or emit interim candidate metrics.
 
 
-After the isolated fetch, clear APP_PROFILE and all Alpaca credential variables
-before running tests or other local commands. Repeated identical receipts are
-safe and idempotent. Any conflicting historical rewrite is a hard integrity
-failure and must not be forced.
+The wrapper rejects loaded Alpaca credential aliases. The provider lease is
+one-use, redacted, and zeroized inside the trusted adapter boundary. Repeated
+identical receipts are safe and idempotent. Any conflicting historical rewrite
+is a hard integrity failure and must not be forced.
 
 Before 2026-08-13T00:00:00Z, accept only completeness and provenance packets;
 candidate metrics must remain empty. At or after the terminal timestamp, a

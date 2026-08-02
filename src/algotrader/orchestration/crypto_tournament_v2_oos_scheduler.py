@@ -23,6 +23,9 @@ from typing import Callable, Mapping, Sequence
 
 from algotrader.errors import ValidationError
 from algotrader.core.time import require_utc_datetime
+from algotrader.orchestration.crypto_tournament_v2_forward_oos import (
+    validate_crypto_tournament_v2_operating_as_of,
+)
 
 WINDOWS_PROVIDER_NAME = "windows-credential-manager"
 _V535_MARKET_CREDENTIAL_REFERENCE_RE = re.compile(
@@ -2203,11 +2206,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    as_of = (
-        datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
-        if args.as_of
-        else datetime.now(UTC)
-    )
+    try:
+        as_of = validate_crypto_tournament_v2_operating_as_of(
+            args.as_of or None,
+            observed_at=datetime.now(UTC),
+        )
+    except ValidationError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     output_root = Path(args.output_root)
     db_path = Path(args.db_path) if args.db_path else output_root / "scheduler.sqlite3"
