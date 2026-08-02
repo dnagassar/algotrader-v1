@@ -65,6 +65,8 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "EFA",
     "VNQ",
     "DBC",
+    "QUAL",
+    "PBUS",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",

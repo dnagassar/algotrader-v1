@@ -33,7 +33,7 @@ def test_refresh_script_contract_defaults_to_dry_run_and_requires_live_flag() ->
         '[ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "XLB", "XLE", '
         '"XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY", "VEU", "BIL", '
         '"AGG", "VEA", "VWO", "BND", "SHY", "IEF", "LQD", "EFA", "VNQ", '
-        '"DBC", "AAPL", "MSFT", '
+        '"DBC", "QUAL", "PBUS", "AAPL", "MSFT", '
         '"GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]'
         in script
     )
@@ -91,7 +91,8 @@ def test_dry_run_builds_tiingo_request_without_network(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "symbol", ("QQQ", "XLK", "VEU", "VEA", "LQD", "EFA", "VNQ", "DBC", "BRK-B")
+    "symbol",
+    ("QQQ", "XLK", "VEU", "VEA", "LQD", "EFA", "VNQ", "DBC", "QUAL", "PBUS", "BRK-B"),
 )
 def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
     tmp_path: Path,

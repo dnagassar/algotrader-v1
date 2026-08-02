@@ -283,7 +283,8 @@ def test_non_spy_symbol_rejected_if_symbol_column_exists(tmp_path) -> None:  # n
 
 
 @pytest.mark.parametrize(
-    "symbol", ("QQQ", "XLK", "VEU", "VEA", "LQD", "EFA", "VNQ", "DBC", "BRK-B")
+    "symbol",
+    ("QQQ", "XLK", "VEU", "VEA", "LQD", "EFA", "VNQ", "DBC", "QUAL", "PBUS", "BRK-B"),
 )
 def test_approved_non_spy_symbol_can_be_validated_offline(
     tmp_path,
