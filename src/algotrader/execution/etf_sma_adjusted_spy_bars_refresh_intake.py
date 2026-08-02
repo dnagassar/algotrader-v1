@@ -53,6 +53,9 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "XLU",
     "XLV",
     "XLY",
+    "VEU",
+    "BIL",
+    "AGG",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
