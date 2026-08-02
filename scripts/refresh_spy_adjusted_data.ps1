@@ -27,7 +27,7 @@ param(
     [string]$SoakReport,
     [ValidateRange(1, 20)]
     [int]$SoakRequiredSessions = 5,
-    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY", "VEU", "BIL", "AGG", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]
+    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY", "VEU", "BIL", "AGG", "VEA", "VWO", "BND", "SHY", "IEF", "LQD", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]
     [string]$Symbol = "SPY",
     [ValidateSet("offline_fixture", "dry_run", "live_market_data_fetch")]
     [string]$Mode = "dry_run",

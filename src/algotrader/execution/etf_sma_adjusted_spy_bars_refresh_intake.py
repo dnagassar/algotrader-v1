@@ -56,6 +56,12 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "VEU",
     "BIL",
     "AGG",
+    "VEA",
+    "VWO",
+    "BND",
+    "SHY",
+    "IEF",
+    "LQD",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
