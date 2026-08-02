@@ -1,6 +1,6 @@
 # Active implementation handoff
 
-## V5.81 terminal outcome
+## V5.82 terminal outcome
 
 The current-clock Crypto Tournament V2 receipt checkpoint is complete.
 
@@ -19,40 +19,42 @@ The current-clock Crypto Tournament V2 receipt checkpoint is complete.
 - Worktree: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
 - Clean takeover HEAD:
-  `e2fe8dffcab66c2330bc806933c7d4bcdd4de4c1`.
+  `d8292d240a2e127095a6e5988c3aa33f1926790b`.
 - No reset, clean, stash, restore, rebase, branch switch, or new worktree.
 - Exactly one implementation writer.
 
 ## Receipt-bound state
 
 One authorized, guarded, data-intake-only Alpaca crypto-bars cycle admitted
-`2026-08-02T12:00:00Z..2026-08-02T13:00:00Z` for BTCUSD, ETHUSD, and SOLUSD at
-1Hour / `us`.
+the exact `2026-08-02T14:00:00Z` hour for BTCUSD, ETHUSD, and SOLUSD at 1Hour
+/ `us`.
 
-- Fetch: 2 rows per symbol, 6 total; no missing symbol.
+- Fetch: 1 row per symbol; 3 accepted/new, zero exact duplicates, no missing
+  symbol.
 - Embargo: 24/24 hours per symbol, complete.
-- OOS: 422/672 hours per symbol through `2026-08-02T13:00:00Z`.
-- Remaining: 250 hours per symbol, 750 rows total.
-- Receipt count: 3; next missing hour: `2026-08-02T14:00:00Z`.
+- OOS: 423/672 hours per symbol through `2026-08-02T14:00:00Z`.
+- Remaining: 249 hours per symbol, 747 rows total.
+- Receipt count: 4; next missing hour: `2026-08-02T15:00:00Z`.
 - Refresh output SHA-256:
-  `011b088d13be58268d92645ac82a8bc97e6e2e27e958eec5a1dc69cc9c4f811c`.
+  `51aae51e7f7126d7ddb0f6dd5874d70151757a63d1261b1caef00c61b06534b9`.
 - Raw response SHA-256:
-  `1c6df5fa3b5c96f8365e099c58ddfaa9efe16b1ead2e8eddd9bcbf82277801c5`.
+  `0777fe2d1fea2f31338221a7347705411c3cfed4b187fb62946bf5846d579c69`.
 - Refresh packet / receipt SHA-256:
-  `5666f30f2c2c79ed9268c292e403c65721857fcccad91d5cc954c50ac7c3936a`.
+  `fcec87911b26467542bf56977eeced53a6b707a9545bb424ce36b2bba9d13230`.
 - Accrued OOS SHA-256:
-  `d283e88d51491fc38d8d4f193c8b8d6f22d1e22387f29bdb901e2eb360d42c44`.
+  `08a7a7b20911ee1d6225af494a12c2ddf1929c685fda3508f980347597bb3848`.
 - Frozen state SHA-256:
-  `2cc6378ab82ba7bc2d66ac3c9d42f2e6389ccbb1b0e6bb783b5e7ac893805699`.
+  `4eddbe31d87b2f0dfa03669bac9be8ca7f9a0745db0ba16889c9a448646bd315`.
 - Receipt ledger SHA-256:
-  `13c7c7446302cd68984424c2578e897ca7063a6b6107b382971b6116ae14e4f1`.
+  `6fc2baf0727049b885341ee01147002f89dd562d3ce63bb1e57049e1b75afbcb`.
 - State fingerprint:
-  `1b84e722ab9fd5cfe98e37fb53cda7dd9f332cf6fd5114fa6f268b49c3d62f32`.
+  `24cf78a8d15703db243e34ec097c0535c6b48776c1aca3dc250f3948d841756a`.
 - Preregistration fingerprint unchanged:
   `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
 
-Generated `runs/` artifacts remain ignored evidence, never authority. No raw
-prices or candidate outcomes were inspected.
+Generated `runs/` artifacts remain ignored evidence, never authority. All
+bound hashes reconciled after testing. No raw prices or candidate outcomes
+were inspected.
 
 ## Safety and credentials
 
@@ -72,12 +74,6 @@ SPY entry exposure, one broker order per secure cycle, and two sleeve intents
 per UTC day. Receipt/reconciliation, auditing, sleeve ownership, and live
 prohibitions remain unchanged. No third sleeve exists.
 
-## Seal limitation
-
-This is a governance/reproducibility seal, not local confidentiality. Raw bars
-are readable, private evaluators are importable, and receipts are local hashes
-rather than provider-signed trusted-time records.
-
 ## Verification
 
 - Focused Crypto V2, dependency, and import suite: 166 passed.
@@ -85,12 +81,11 @@ rather than provider-signed trusted-time records.
 - Bounded full suite: 10,312 canonical tests across 520 files; 10,307 passed,
   5 skipped, 0 failures, and 0 errors.
 - Eight-shard collection and execution equivalence: PASS.
-- V5.81 has no `src` or test change.
-- Final diff/hygiene results are recorded in the completion report.
+- V5.82 has no `src` or test change.
 
 Dirty-file owner after the coherent local commit: none. The committed slice is
 this handoff, `docs/deterministic_core.md`, and
-`docs/design/v5_81_crypto_tournament_v2_receipt_checkpoint.md`.
+`docs/design/v5_82_crypto_tournament_v2_receipt_checkpoint.md`.
 
 ## Next action
 

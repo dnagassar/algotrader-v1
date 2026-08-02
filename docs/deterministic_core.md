@@ -2002,3 +2002,23 @@ read, paper mutation, live endpoint touch, or credential disclosure. The
 external scheduler remains disabled and unchanged. Exact coverage, artifact
 hashes, safety receipt, limitations, and the next authorized action are bound
 in `docs/design/v5_81_crypto_tournament_v2_receipt_checkpoint.md`.
+
+## V5.82 Crypto Tournament V2 Receipt Checkpoint
+
+V5.82 admits one current-clock, receipt-only Alpaca crypto-bars delta for the
+exact `2026-08-02T14:00:00Z` hour and only BTCUSD, ETHUSD, and SOLUSD at 1Hour
+/ `us`. Each symbol supplied one new row, with zero exact duplicates. Embargo
+remains complete. OOS coverage advances to 423 of 672 hours per symbol through
+`2026-08-02T14:00:00Z`, leaving 249 hours per symbol before terminal close.
+
+The refresh is data-intake-only and records no strategy evaluation. Candidate
+evaluations and ranking remain empty, the selected-candidate structure is an
+empty placeholder, and terminal scoring remains false. The hard scoring
+boundary remains `2026-08-13T00:00:00Z`; ordinary scheduler grace makes
+`2026-08-13T00:05:00Z` the earliest normal terminal attempt.
+
+The cycle performed one guarded market-data request and no broker/account/
+order/position read, paper mutation, live endpoint touch, or credential
+disclosure. Exact coverage, hashes, safety receipt, verification, limitations,
+and next action are bound in
+`docs/design/v5_82_crypto_tournament_v2_receipt_checkpoint.md`.
