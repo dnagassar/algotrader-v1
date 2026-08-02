@@ -67,6 +67,12 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "DBC",
     "QUAL",
     "PBUS",
+    "IWD",
+    "IWF",
+    "RSP",
+    "VBR",
+    "VIG",
+    "SPLV",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
