@@ -3,7 +3,7 @@
   <RegistrationInfo>
     <Date>2026-07-18T22:00:00</Date>
     <Author>Operator</Author>
-    <Description>Disabled V5.35 secure unattended read-only market-data and paper-observation cycle.</Description>
+    <Description>Disabled Crypto Tournament V2 current-clock receipt-only market-data accrual cycle.</Description>
     <URI>\crypto-tournament-v2-oos-scheduler</URI>
   </RegistrationInfo>
   <Triggers>
@@ -46,7 +46,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_v535_unattended_readonly.ps1" -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -PaperBrokerReadAuthorized -AllowNetwork</Arguments>
+      <Arguments>-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\run_crypto_tournament_v2_forward_oos.ps1" -Mode market_data_fetch -MarketDataFetchAuthorized -AllowNetwork</Arguments>
       <WorkingDirectory>%REPO_ROOT%</WorkingDirectory>
     </Exec>
   </Actions>

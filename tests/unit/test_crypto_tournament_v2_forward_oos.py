@@ -15,6 +15,9 @@ from algotrader.errors import ValidationError
 from algotrader.execution.crypto_history_refresh_adapter import (
     CryptoHistoryRefreshConfig,
 )
+from algotrader.orchestration import (
+    crypto_tournament_v2_forward_oos as oos_operating,
+)
 from algotrader.orchestration.crypto_tournament_v2_forward_oos import (
     build_crypto_tournament_v2_refresh_readiness,
     run_crypto_tournament_v2_operating_cycle,
@@ -765,6 +768,78 @@ def test_readiness_is_boolean_only_and_network_free(
         isinstance(value, bool)
         for value in packet["operator_preflight"].values()
     )
+
+
+@pytest.mark.parametrize("mode", ("initialize", "status", "readiness"))
+def test_non_fetch_modes_reject_overlapping_operating_cycle(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    root = tmp_path / "forward_oos"
+
+    with oos_operating._exclusive_operating_cycle_lock(root):
+        with pytest.raises(ValidationError, match="operating cycle"):
+            oos_operating.run_crypto_tournament_v2_operating_cycle(
+                mode=mode,
+                output_root=root,
+                as_of="2026-07-15T12:00:00+00:00",
+                discovery_source_path=tmp_path / "discovery.csv",
+                discovery_receipt_path=tmp_path / "discovery.json",
+            )
+
+
+def test_operating_fetch_rejects_overlapping_full_cycle(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "forward_oos"
+    calls: list[CryptoHistoryRefreshConfig] = []
+    config = CryptoHistoryRefreshConfig(
+        mode="market_data_fetch",
+        output_path=tmp_path / "ignored.csv",
+        packet_path=tmp_path / "ignored.json",
+        raw_response_path=tmp_path / "ignored_raw.json",
+        market_data_fetch_authorized=True,
+        allow_network=True,
+        data_intake_only=True,
+    )
+
+    with oos_operating._exclusive_operating_cycle_lock(root):
+        with pytest.raises(ValidationError, match="operating cycle"):
+            oos_operating.run_crypto_tournament_v2_operating_cycle(
+                mode="market_data_fetch",
+                output_root=root,
+                as_of="2026-07-15T12:00:00+00:00",
+                refresh_config=config,
+                refresh_runner=lambda candidate: calls.append(candidate) or {},
+            )
+
+    assert calls == []
+
+
+def test_operating_fetch_rejects_unc_root_before_lock_or_adapter(
+    tmp_path: Path,
+) -> None:
+    calls: list[CryptoHistoryRefreshConfig] = []
+    config = CryptoHistoryRefreshConfig(
+        mode="market_data_fetch",
+        output_path=tmp_path / "ignored.csv",
+        packet_path=tmp_path / "ignored.json",
+        raw_response_path=tmp_path / "ignored_raw.json",
+        market_data_fetch_authorized=True,
+        allow_network=True,
+        data_intake_only=True,
+    )
+
+    with pytest.raises(ValidationError, match="output_root must be a local path"):
+        oos_operating.run_crypto_tournament_v2_operating_cycle(
+            mode="market_data_fetch",
+            output_root=r"\\server\share\forward_oos",
+            as_of="2026-07-15T12:00:00+00:00",
+            refresh_config=config,
+            refresh_runner=lambda candidate: calls.append(candidate) or {},
+        )
+
+    assert calls == []
 
 
 def test_operator_narrows_fetch_to_exact_three_symbol_window(

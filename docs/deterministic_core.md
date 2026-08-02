@@ -2022,3 +2022,52 @@ order/position read, paper mutation, live endpoint touch, or credential
 disclosure. Exact coverage, hashes, safety receipt, verification, limitations,
 and next action are bound in
 `docs/design/v5_82_crypto_tournament_v2_receipt_checkpoint.md`.
+
+## V5.83 Strategy Finalization And Unattended Evidence
+
+V5.83 stops the manual hourly milestone loop. The frozen nine-candidate Crypto
+Tournament V2 is the sole active alpha-finalization route; every V5.64-V5.78
+candidate remains closed, and SPY SMA50/200 remains an operational paper-lab
+baseline rather than validated alpha. The authentic terminal gate remains
+`2026-08-13T00:00:00Z`, with the first normal scoring attempt at 00:05. A winner
+must then complete 168 new no-submit shadow hours, normally no earlier than
+`2026-08-20T01:00:00Z`, before bounded-paper review.
+
+The latest receipt admits the exact `2026-08-02T19:00:00Z` bar for BTCUSD,
+ETHUSD, and SOLUSD. OOS coverage is 428 of 672 hours per symbol through that
+frontier. Candidate evaluations and ranking remain empty; no winner is selected
+and terminal scoring remains false.
+
+The Windows task `\crypto-tournament-v2-oos-scheduler` was repaired and
+commissioned against the current worktree. It is `Ready`, with task and hourly
+trigger enabled and the next observed trigger at `2026-08-02T21:05:00Z`. It
+runs only the hardened current-clock Crypto V2 market-data wrapper and removes
+the obsolete worktree, V5.35 paper observation, paper-broker-read authorization,
+and every submit/live surface. The checked-in XML remains disabled by default;
+explicit registration plus activation is required.
+
+This direct lane uses Task Scheduler `IgnoreNew`, V2 operating/state locks,
+exact immutable receipt validation, and the receipt ledger. It does not claim
+the older SQLite job-dispatch ledger. The first automatic run completed successfully at `2026-08-02T20:05:01Z`, returned Task Scheduler result `0`, and advanced the receipt-bound frontier without scoring. Exact strategy decisions, hashes, task evidence,
+safety limits, and remaining live gates are bound in
+`docs/design/v5_83_strategy_finalization_and_unattended_evidence.md`.
+
+## V5.84 Factor-Momentum Style Tournament
+
+V5.84 tested three fixed monthly factor-style ETF rules only after committing
+its outcome-blind protocol, exact Tiingo data boundary, and canonical data
+receipt. The nine-symbol panel uses provider `adjClose` as split/dividend-
+adjusted `adjusted_close`, exact identity mappings, and 3,832 common sessions
+from `2011-05-05` through `2026-07-31`.
+
+The causal engine forms signals after month-end close, trades at the next common
+close, first earns the following interval, preserves drift, charges the initial
+and later one-way turnover, and reconciles earning-period asset plus cost
+contributions to compounded return. Two complete fresh pipelines produced
+byte-identical persisted result and manifest artifacts.
+
+All three candidates were positive historically but failed the frozen style,
+SPY, drawdown, and portfolio-value gates. Terminal route is
+`no_candidate_passed`; no shadow winner, paper promotion, or live authority
+exists. Exact metrics, gates, data provenance, and hashes are bound in
+`docs/design/v5_84_factor_momentum_style_terminal_decision.md`.

@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
-import json
-from pathlib import Path
 from functools import partial
+import json
+import os
+from pathlib import Path
+from typing import Iterator
 
 from algotrader.errors import ValidationError
 from algotrader.execution.crypto_history_refresh_adapter import (
@@ -193,6 +196,39 @@ def run_crypto_tournament_v2_operating_cycle(
     refresh_runner: RefreshRunner = run_crypto_history_refresh,
     env: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
+    """Run one process-exclusive state-writing operating cycle."""
+
+    root = Path(output_root)
+    if str(root).startswith(("\\\\", "//")):
+        raise ValidationError("output_root must be a local path.")
+    with _exclusive_operating_cycle_lock(root):
+        return _run_crypto_tournament_v2_operating_cycle_unlocked(
+            mode=mode,
+            output_root=root,
+            as_of=as_of,
+            discovery_source_path=discovery_source_path,
+            discovery_receipt_path=discovery_receipt_path,
+            refresh_config=refresh_config,
+            refresh_runner=refresh_runner,
+            env=env,
+        )
+
+
+def _run_crypto_tournament_v2_operating_cycle_unlocked(
+    *,
+    mode: str,
+    output_root: Path | str = CRYPTO_TOURNAMENT_V2_DEFAULT_OUTPUT_ROOT,
+    as_of: datetime | str,
+    discovery_source_path: Path | str = (
+        CRYPTO_TOURNAMENT_V2_DEFAULT_DISCOVERY_SOURCE_PATH
+    ),
+    discovery_receipt_path: Path | str = (
+        CRYPTO_TOURNAMENT_V2_DEFAULT_DISCOVERY_RECEIPT_PATH
+    ),
+    refresh_config: CryptoHistoryRefreshConfig | None = None,
+    refresh_runner: RefreshRunner = run_crypto_history_refresh,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     """Initialize, inspect, or execute one exact read-only accrual fetch."""
 
     root = Path(output_root)
@@ -311,6 +347,47 @@ def run_crypto_tournament_v2_operating_cycle(
     )
     accrued["refresh"] = _safe_refresh_summary(refresh)
     return accrued
+
+
+@contextmanager
+def _exclusive_operating_cycle_lock(root: Path) -> Iterator[None]:
+    root.mkdir(parents=True, exist_ok=True)
+    lock_path = root / ".forward_oos_operating_cycle.lock"
+    stream = lock_path.open("a+b")
+    try:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl  # pragma: no cover - exercised on non-Windows hosts
+
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        stream.close()
+        raise ValidationError(
+            "another Crypto V2 forward-OOS operating cycle is active."
+        ) from exc
+    try:
+        yield
+    finally:
+        try:
+            stream.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl  # pragma: no cover - exercised on non-Windows hosts
+
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        finally:
+            stream.close()
 
 
 def _refresh_matches_request(

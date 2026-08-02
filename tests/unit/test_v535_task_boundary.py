@@ -19,9 +19,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = REPO_ROOT / "scripts" / "run_v535_unattended_readonly.ps1"
 TASK_XML = REPO_ROOT / "docs" / "design" / "crypto_tournament_v2_oos_scheduler_task.xml"
 MODULE = REPO_ROOT / "src" / "algotrader" / "execution" / "v535_unattended_readonly.py"
+EXPECTED_CRYPTO_V2_ARGUMENTS = (
+    '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File '
+    '"%REPO_ROOT%\\scripts\\run_crypto_tournament_v2_forward_oos.ps1" '
+    '-Mode market_data_fetch -MarketDataFetchAuthorized -AllowNetwork'
+)
 
 
-def test_task_definition_is_disabled_and_action_matches_runtime_contract() -> None:
+def test_task_definition_is_disabled_and_delegates_to_crypto_v2_receipt_lane() -> None:
     root = ET.parse(TASK_XML).getroot()
     namespace = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
     assert root.findtext("t:RegistrationInfo/t:URI", namespaces=namespace) == V535_TASK_IDENTITY
@@ -29,7 +34,17 @@ def test_task_definition_is_disabled_and_action_matches_runtime_contract() -> No
     assert root.findtext("t:Settings/t:AllowStartOnDemand", namespaces=namespace) == "false"
     assert root.findtext("t:Triggers/t:TimeTrigger/t:Enabled", namespaces=namespace) == "false"
     assert root.findtext("t:Actions/t:Exec/t:Command", namespaces=namespace) == V535_TASK_EXECUTE
-    assert root.findtext("t:Actions/t:Exec/t:Arguments", namespaces=namespace) == V535_TASK_ARGUMENTS
+    arguments = root.findtext("t:Actions/t:Exec/t:Arguments", namespaces=namespace)
+    assert arguments is not None
+    assert arguments == EXPECTED_CRYPTO_V2_ARGUMENTS
+    assert "-AsOf" not in arguments
+    assert "run_crypto_tournament_v2_forward_oos.ps1" in arguments
+    assert "-Mode market_data_fetch" in arguments
+    assert "-MarketDataFetchAuthorized" in arguments
+    assert "-AllowNetwork" in arguments
+    assert "run_v535_unattended_readonly.ps1" not in arguments
+    assert "-PaperBrokerReadAuthorized" not in arguments
+    assert arguments != V535_TASK_ARGUMENTS
     assert root.findtext("t:Settings/t:MultipleInstancesPolicy", namespaces=namespace) == "IgnoreNew"
 
 

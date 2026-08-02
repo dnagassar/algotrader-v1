@@ -1089,85 +1089,63 @@ V5.30 lifecycle quartet or V5.29 flat trio exists. Continue receipt-bound OOS
 accrual without early scoring, then complete the accepted 168-hour V5.25 shadow
 before venue refresh, planning, exact grant, paper lifecycle, and closeout.
 
-## Deterministic One-Shot Tournament-V2 OOS Scheduler
+## Crypto Tournament V2 unattended receipt accrual
 
-V5.35 replaces the unattended production action with
-`scripts/run_v535_unattended_readonly.ps1`. The older scheduler wrapper remains
-available for credential-free preview/status/recovery only; its real dispatcher
-now fails closed without an injected secure provider and reference. The V5.35
-wrapper rejects inherited credential/profile aliases and passes only non-secret
-Windows Credential Manager references.
+The recurring task runs only the hardened current-clock Crypto V2 market-data
+wrapper. It does not use the general V5.35 paper-observation cycle, broker or
+account reads, SQLite scheduler dispatch, order construction, or mutation.
 
-The canonical XML template is disabled at task and trigger levels and disallows
-start-on-demand. V5.35 verification does not provision credentials, register
-the template, enable it, or run it. Those are separate operator gates.
+The source XML remains disabled at both task and trigger levels. Preview is
+non-mutating:
 
-The one-shot scheduler calculates eligible closed crypto hours, claims jobs atomically using SQLite transaction fencing, dispatches the existing accrual command, and records durable audit receipts. It is entirely offline by default, never polls or sleeps, and enforces strict security gates.
+```powershell
+.\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1
+```
 
-### Usage Modes
+Register it disabled:
 
-* **Preview (Default)**: Runs the scheduler in offline preview mode without using credentials or network. It prints a deterministic mock receipt:
-  ```powershell
-  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode preview
-  ```
-* **Legacy Run Once**: This older command has no complete V5.35 credential boundary and now fails closed. Do not use it for V5.35:
-  ```powershell
-  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode run_once -SchedulerEnabled -MarketDataReadAuthorized -AllowNetwork
-  ```
-* **Status**: Displays the current status of the scheduler and lists the last 10 recorded jobs:
-  ```powershell
-  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode status
-  ```
-* **Recover Stale**: Scans the database and marks any running jobs that have exceeded the 15-minute lease limit as FAILED:
-  ```powershell
-  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode recover_stale
-  ```
-* **Reset Failed**: Resets a failed job to pending state using explicit operator authorization switches:
-  ```powershell
-  .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
-  ```
+```powershell
+.\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 `
+  -RepositoryRoot <EXACT_STABLE_REPOSITORY_ROOT> `
+  -RegisterTask
+```
 
-#### Stale Job Recovery and Failure Reset Policy
+Register and explicitly activate both task and hourly trigger:
 
-*   **No Automatic Retry**: Automatic retries are strictly prohibited to prevent cascading network errors, database corruption, or rate-limit violations during transient failures.
-*   **Identifying Failed Windows**: If a job fails, the scheduler's accepted frontier will not advance. To identify failed windows, query the status command:
-    ```powershell
-    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode status
-    ```
-    The status output table lists the recorded jobs, their IDs, windows, and current status.
-*   **Failed Window Reset Command**: To make a failed window retryable, execute the reset command with the exact job ID and the explicit authorization switch:
-    ```powershell
-    .\scripts\run_crypto_tournament_v2_oos_scheduler.ps1 -Mode reset_failed -JobId <FAILED_JOB_ID> -ResetAuthorized
-    ```
-*   **Executing the Rerun**: No unattended rerun is authorized by V5.35. Leave a failed window blocked for separately scoped operator review:
-    ```powershell
-    # No V5.35 rerun command is authorized by this milestone.
-    ```
-*   **Avoiding Skipped Intervals**: Since the scheduler computes the eligible window starting immediately after the accepted frontier, a blocked/failed job blocks subsequent hours from being processed in that lane. Once reset and rerun successfully, the accepted frontier advances, ensuring that no intervals are skipped or processed out of order.
+```powershell
+.\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1 `
+  -RepositoryRoot <EXACT_STABLE_REPOSITORY_ROOT> `
+  -RegisterTask `
+  -ActivateTask
+```
 
-#### Timing Semantics and Hour Bounds
+`-ActivateTask` without `-RegisterTask` fails closed. Activation is accepted
+only when the XML contains exactly the two expected disabled nodes. The task
+uses least-privilege `InteractiveToken`, `IgnoreNew`, a five-minute publication
+grace, current clock, and a 15-minute limit. Its action is exactly:
 
-*   **Bar Timestamps**: Hourly bar timestamps represent the **opening time** of the bar, not its completion or publication time. For example, a bar covering the interval `20:00:00Z` to `21:00:00Z` is identified by the timestamp `20:00:00Z`.
-*   **Closing Boundary**: An hourly bar is not closed and cannot be fetched until the end of its hour (e.g., `21:00:00Z` for the `20:00:00Z` bar).
-*   **Trigger and Grace Period Offset**: The Windows scheduled task triggers 5 minutes after every UTC hour boundary (e.g., at `HH:05`). The 5-minute offset represents the publication grace period. Thus, a scheduler tick firing at `21:05:00Z` evaluates the eligibility of the prior hour's bar-open timestamp (`20:00:00Z` or `21:05:00Z - 1 hour - 5 minutes` floored).
-*   **Forming Bar Protection**: The scheduler strictly filters out any currently forming bar. At tick time `HH:MM`, the bar for hour `HH:00` is currently forming and will never be requested, queued, or dispatched.
-*   **Dispatcher Status**: The real command dispatcher remains **disabled** in normal configuration and is only enabled dynamically at runtime with explicit authorization switches.
-*   **Task Registration Status**: The Windows scheduled task template is provided for operator review and remains **unregistered** by default.
+```powershell
+.\scripts\run_crypto_tournament_v2_forward_oos.ps1 `
+  -Mode market_data_fetch `
+  -MarketDataFetchAuthorized `
+  -AllowNetwork
+```
 
-### Windows Scheduled Task Template
+The command uses the wrapper's opaque Windows Credential Manager reference; no
+credential value is stored in the task. It does not authorize a paper broker
+read or any submit/cancel/replace/close/liquidation/live action. Idempotency and
+concurrency are enforced by Task Scheduler `IgnoreNew`, the V2 operating/state
+locks, exact receipt validation, and the append-only receipt ledger. Do not
+claim the separate SQLite scheduler job ledger for this direct-wrapper lane.
 
-A disabled Windows Task Scheduler XML template is available at `docs/design/crypto_tournament_v2_oos_scheduler_task.xml`. It describes a trigger 5 minutes after every UTC hour boundary, uses least privileges, prevents overlapping executions (`MultipleInstancesPolicy = IgnoreNew`), and has a 15-minute execution limit. It is review evidence only in V5.35.
+Hourly bar timestamps are bar-open times. At `HH:05`, only the prior completed
+hour is eligible; the forming `HH:00` bar is excluded. The task cannot wake the
+machine and requires the interactive user to remain signed in with network
+available.
 
-Only preview the resolved XML during V5.35:
-*   **Preview XML Template (Default)**:
-    ```powershell
-    .\scripts\register_crypto_tournament_v2_oos_scheduler_task.ps1
-    ```
-
-Do not use the helper's registration or unregistration switches under V5.35;
-task mutation remains outside the milestone authorization.
-
-No real credentials, live endpoints, or trading actions are permitted or stored in the task configuration.
+After commissioning, read the task back with `Get-ScheduledTask` and
+`Get-ScheduledTaskInfo`; verify task/trigger enabled, exact repository root,
+wrapper action, hourly repetition, and absence of paper-read/submit flags. The first automatic run is now proven by Task Scheduler result `0` and the advanced receipt/state hashes through `2026-08-02T19:00:00Z`.
 
 ## V5.36 Independent-Review And One-Canary Route
 
@@ -2134,3 +2112,28 @@ the artifact hashes. The canonical route is
 ten-month lookback, five-symbol universe, one-session lag, cost cases,
 comparators, folds, or gates. No preview, paper, broker, or live action is
 authorized.
+
+## V5.84 factor-momentum style research command
+
+Acquire only the exact preregistered nine-symbol adjusted panel:
+
+```powershell
+.\scripts\refresh_v584_factor_momentum_data.ps1 `
+  -Mode live_market_data_fetch `
+  -LiveMarketDataFetchAuthorized `
+  -DotenvPath <EXACT_LOCAL_DOTENV_PATH>
+```
+
+The dotenv path is passed to the trusted adapter; never place the credential
+value in the command. The wrapper performs Tiingo EOD GETs only and has no
+broker or mutation path. Run the credential-free frozen tournament with:
+
+```powershell
+.\scripts\run_v584_factor_momentum_tournament.ps1
+```
+
+The terminal V5.84 route is `no_candidate_passed`. Do not tune, promote, or
+shadow these rules. The best closed research building block remains V5.77
+inverse variance, but it also failed its frozen return-capture and fold gates.
+Continue the automatic sealed Crypto V2 receipt path; do not score it before
+`2026-08-13T00:00:00Z`.

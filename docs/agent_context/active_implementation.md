@@ -1,96 +1,122 @@
 # Active implementation handoff
 
-## V5.82 terminal outcome
+## Terminal portfolio decision
 
-The current-clock Crypto Tournament V2 receipt checkpoint is complete.
+V5.84 is complete and terminally closed without tuning. The exact fixed
+factor-momentum style candidates were historically positive, but none passed
+the preregistered style-baseline, SPY, drawdown, and portfolio-value gates.
 
-- Classification: `receipt_checkpoint_current_hard_time_gate`.
-- Candidate evaluations inspected: 0.
-- Rankings or preferences inspected: 0.
-- Selected candidate: none; empty zero-property placeholder only.
-- Terminal scoring performed: false.
-- Paper or broker eligible: false.
-- Live authorized: false.
-- Scoring boundary: `2026-08-13T00:00:00Z`, conditional on the authentic final
-  receipt; earliest normal scheduler attempt: `2026-08-13T00:05:00Z`.
+- `style_factor_momentum_timeseries_12m`: 9.36% annualized, 0.690 Sharpe,
+  35.58% maximum drawdown.
+- `style_factor_momentum_cross_section_top2_12m`: 10.13% annualized, 0.708
+  Sharpe, 31.42% maximum drawdown.
+- `style_factor_momentum_ensemble_50_50`: 9.77% annualized, 0.707 Sharpe,
+  33.50% maximum drawdown.
+- Terminal route: `no_candidate_passed`; validated alpha: 0; shadow winner:
+  none; paper promotion: false; live ready/authorized: false.
+- Best closed building block remains V5.77
+  `spy_inverse_variance_long_cash_proxy` at 10.55% annualized, 0.946 Sharpe,
+  and 18.28% maximum drawdown. It failed frozen SPY return-capture and
+  fold-consistency gates and cannot be promoted or retuned.
+
+No rescue grid, relabeling, rule change, or outcome-driven combination is
+authorized. The only already-preregistered untouched terminal route is frozen
+Crypto Tournament V2 after `2026-08-13T00:00:00Z`.
 
 ## Checkout and writer ownership
 
 - Worktree: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
 - Branch: `codex/v5.62-nexustrade-source-data-unblock`.
-- Clean takeover HEAD:
-  `d8292d240a2e127095a6e5988c3aa33f1926790b`.
+- Clean takeover HEAD: `eeb0b4191b69036925e460d155344b1a75b012bf`.
+- V5.84 protocol/data/engine commits: `1a16754885f91b036bb9722ac1db60ffe6f7d264`,
+  `a774f3698ae9b0aa9eabd87311c35197aa9dad04`,
+  `a686ae9c080cf9713b5cbbe5cc6268ef3fd009ce`, and
+  `aca347d93afebdd278e75e0f9f23d04d742efd3a`.
 - No reset, clean, stash, restore, rebase, branch switch, or new worktree.
-- Exactly one implementation writer.
+- Exactly one implementation writer; three bounded agents audited read-only.
+- Dirty-file owner until the final coherent commit: root implementation writer.
 
-## Receipt-bound state
+## V5.84 canonical evidence
 
-One authorized, guarded, data-intake-only Alpaca crypto-bars cycle admitted
-the exact `2026-08-02T14:00:00Z` hour for BTCUSD, ETHUSD, and SOLUSD at 1Hour
-/ `us`.
+- Authenticated provider/path: Tiingo EOD HTTPS GET through the existing
+  secure read-only adapter.
+- Exact symbols: IWD, IWF, RSP, VBR, VIG, SPLV, SHY, SPY, IEF.
+- Semantics: provider `adjClose` to split/dividend-adjusted `adjusted_close`;
+  not executable prices or adjusted OHLCV.
+- Exact common coverage: 3,832 sessions, 34,488 rows,
+  `2011-05-05..2026-07-31`.
+- Canonical data SHA-256:
+  `c54d53450cd523677e9f72a7a3ba001295c738a7a388b37ff2a3d1f5bf361919`.
+- Data manifest SHA-256:
+  `ee0063bbb19f6c05b593b8519a0864d2224fe93061ca674f62412c736733d790`.
+- Result SHA-256:
+  `48944fdda451dc4fdbe4d5091fedd9d2993e35e3f916b85499dab81e644cc4cf`.
+- Artifact manifest SHA-256:
+  `90217675189b32883aff765092660e20f6a0ac81a56da25ff511407dfd95b219`.
+- Summary SHA-256:
+  `5b8ce3f540d2ac069004a6805c1e3341a137bead05e55174cdde9901cbba36ad`.
+- Two fresh end-to-end replays produced byte-identical persisted result and
+  manifest artifacts; earning-period holdings and contribution accounting
+  reconcile to compounded return.
 
-- Fetch: 1 row per symbol; 3 accepted/new, zero exact duplicates, no missing
-  symbol.
-- Embargo: 24/24 hours per symbol, complete.
-- OOS: 423/672 hours per symbol through `2026-08-02T14:00:00Z`.
-- Remaining: 249 hours per symbol, 747 rows total.
-- Receipt count: 4; next missing hour: `2026-08-02T15:00:00Z`.
-- Refresh output SHA-256:
-  `51aae51e7f7126d7ddb0f6dd5874d70151757a63d1261b1caef00c61b06534b9`.
-- Raw response SHA-256:
-  `0777fe2d1fea2f31338221a7347705411c3cfed4b187fb62946bf5846d579c69`.
-- Refresh packet / receipt SHA-256:
-  `fcec87911b26467542bf56977eeced53a6b707a9545bb424ce36b2bba9d13230`.
+## Crypto V2 unattended evidence
+
+- Task `\crypto-tournament-v2-oos-scheduler`: Ready and enabled; exact
+  current-worktree market-data-only wrapper; no paper-read, submit, or live
+  flags.
+- Latest automatic completion: `2026-08-02T21:05:01Z`, Task Scheduler result
+  `0`; next scheduled run `2026-08-02T22:05:00Z`.
+- OOS: 429/672 hours per symbol; 243 remain per symbol, 729 total; contiguous
+  frontier `2026-08-02T20:00:00Z`; next missing hour `2026-08-02T21:00:00Z`;
+  receipt count 7.
+- Terminal scoring false; candidate metrics/ranking empty; selection absent;
+  paper eligible false.
 - Accrued OOS SHA-256:
-  `08a7a7b20911ee1d6225af494a12c2ddf1929c685fda3508f980347597bb3848`.
-- Frozen state SHA-256:
-  `4eddbe31d87b2f0dfa03669bac9be8ca7f9a0745db0ba16889c9a448646bd315`.
+  `3b3b2e3c2336f907c6f0417d41a278b9357c956107881319001a9dd7cc1fe3fe`.
 - Receipt ledger SHA-256:
-  `6fc2baf0727049b885341ee01147002f89dd562d3ce63bb1e57049e1b75afbcb`.
+  `164703af753bb6ece43f1ab48db11ecdef26243ed8e90aa53acb66782bddabfa`.
+- Frozen state SHA-256:
+  `03fd8acae9bedb1393b83ab89f894de82ac467ea873869080cb7cb8585788cf1`.
+- Operating packet SHA-256:
+  `e36acd704fe08db6108a6efc7856b25ef41aa6ce79ecfbe26e05b4cfada2e7f1`.
 - State fingerprint:
-  `24cf78a8d15703db243e34ec097c0535c6b48776c1aca3dc250f3948d841756a`.
-- Preregistration fingerprint unchanged:
-  `2ed9489543d8d21ab00d9f2f4000927b8012decf39882cb721cb2d1ce0b9376b`.
+  `02ca27cce33b76ae15123d65315742130355b7508d2bd2dceb427fbec810b8c9`.
 
-Generated `runs/` artifacts remain ignored evidence, never authority. All
-bound hashes reconciled after testing. No raw prices or candidate outcomes
-were inspected.
+No raw price or sealed candidate outcome was inspected.
 
-## Safety and credentials
+## Safety and verification
 
-- Process paper profile before tests: false.
-- Process broker credential aliases before tests: false.
-- Network/integration test escapes: false.
-- Opaque market-data credential reference resolved: true.
-- Credential values exposed/printed/persisted/in commands: false.
-- Network-enabled acquisition cycles: one.
-- Broker/account/order/position reads: zero.
-- Broker or paper mutations: zero.
-- Live endpoint touches/activity: zero.
-- Scheduler mutations: zero.
+- Test-process preflight: APP_PROFILE and all checked Alpaca/Tiingo ambient
+  credential aliases false. Primary `.env` existed and Tiingo credential was
+  available only within the trusted acquisition boundary; value exposure and
+  persistence false.
+- Network: nine Tiingo market-data GETs for V5.84 plus the documented Crypto V2
+  market-data receipt fetches. Broker/account/order/position reads: zero.
+- Paper mutations: zero. Live endpoint touches/activity: zero. Live authorized:
+  false.
+- V5.57 ownership, reconciliation, auditing, live prohibition, and caps remain
+  unchanged: USD 25 entry-order notional, USD 60 aggregate marked SPY entry
+  exposure, one broker order per secure cycle, two SPY sleeve intents per UTC
+  day. No crypto allocation exists.
+- M376 remains conservatively nonterminal; overlapping SPY submit remains
+  blocked.
+- Focused V5.84 result suite: 105 passed.
+- Final combined changed-surface suite: 185 passed in 190.33 seconds.
+- `scripts/verify_offline.ps1`: PASS; 109 safety-guard tests passed in 196.24
+  seconds; its full-suite phase was explicitly skipped.
+- Required `python -m pytest` was attempted once and hit the 3,604.6-second
+  command timeout. It emitted no failing node, but it is not a pass and remains
+  an exhaustive-regression verification gate. The timed-out process exited.
+- `git diff --check`: pass. Changed `src`: only
+  `src/algotrader/orchestration/crypto_tournament_v2_forward_oos.py`.
+  Untracked `src/tests`: none.
 
-V5.57 caps remain unchanged: $25 entry-order notional, $60 aggregate marked
-SPY entry exposure, one broker order per secure cycle, and two sleeve intents
-per UTC day. Receipt/reconciliation, auditing, sleeve ownership, and live
-prohibitions remain unchanged. No third sleeve exists.
+## Exact next action
 
-## Verification
-
-- Focused Crypto V2, dependency, and import suite: 166 passed.
-- Offline verifier: PASS, 109 passed; full default suite explicitly skipped.
-- Bounded full suite: 10,312 canonical tests across 520 files; 10,307 passed,
-  5 skipped, 0 failures, and 0 errors.
-- Eight-shard collection and execution equivalence: PASS.
-- V5.82 has no `src` or test change.
-
-Dirty-file owner after the coherent local commit: none. The committed slice is
-this handoff, `docs/deterministic_core.md`, and
-`docs/design/v5_82_crypto_tournament_v2_receipt_checkpoint.md`.
-
-## Next action
-
-Continue current-clock receipt-only accrual after the next completed hour. Do
-not pass a future `as_of`, inspect raw OOS outcomes, call private evaluators,
-rank, prefer, or tune. At or after `2026-08-13T00:05:00Z`, admit the authentic
-terminal receipt and allow the one-shot scorer. A passing winner permits only
-the preregistered no-submit shadow and grants no paper or live authority.
+Allow automatic sealed Crypto V2 accrual through the terminal close, without
+early scoring or manual hourly Git milestones. At or after
+`2026-08-13T00:00:00Z`, run the already-frozen terminal evaluation once. A
+sealed winner must then pass the accepted 168-hour no-submit shadow and fresh
+winner-scoped paper qualification before any capital route. If the tournament
+does not produce a passing winner, close the route. Live capital remains a
+separate operator hard gate.
