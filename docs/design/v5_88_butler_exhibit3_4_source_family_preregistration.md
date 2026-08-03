@@ -1,7 +1,10 @@
 # V5.88 Butler Exhibit 3/4 source-family preregistration
 
-Status: frozen before any V5.88 candidate target, return, metric, gate, rank, or
-route was computed. This is the preordered third source family after V5.86 and
+Status: corrected and re-frozen before any V5.88 candidate target, return,
+metric, gate, rank, or route was computed. The first committed draft used a
+proportional normalization interpretation of Exhibit 4; a final primary-paper
+formula audit proved the individual one-over-n multiplier and cap before any
+data request or scoring. That unscored draft is superseded by this v2 rule. This is the preordered third source family after V5.86 and
 V5.87 closed without tuning. The two candidates below are revealed atomically;
 no later rescue, alternate lookback, universe substitution, or parameter search
 is allowed. This document grants no shadow, paper, broker, or live authority.
@@ -37,7 +40,7 @@ source's unavailable pre-inception splices, and starts OOS after that mapping
 was public. The candidate IDs are:
 
 - `butler_exhibit3_top5_6m_equal_weight_proxy`;
-- `butler_exhibit4_top5_6m_one_pct_volatility_proxy`.
+- `butler_exhibit4_top5_6m_capped_volatility_proxy`.
 
 All source performance is untrusted. No reported source return, Sharpe,
 drawdown, trade count, cost, or chart value controls ranking or promotion.
@@ -92,11 +95,13 @@ It is fully invested.
 
 Exhibit 4 uses the same selected set. For each selected ETF, calculate the 60
 most recent daily simple adjusted-close returns ending at t and their sample
-standard deviation (n-1). Raw weight is `0.01 / daily_standard_deviation`.
-When raw weights sum above one, divide every raw weight by their sum; otherwise
-retain the raw weights and hold the remainder as implicit zero-return cash.
-This is the deterministic repository translation of equal 1% daily nominal-risk
-contribution capped at 100% exposure. A nonpositive or nonfinite estimate
+standard deviation (n-1). With five selected assets, raw weight is
+`0.20 * (0.01 / daily_standard_deviation)` and target weight is the lesser of
+that value and `0.20`. Targets are not renormalized; the unallocated remainder
+is implicit zero-return cash. This applies the paper's printed one-over-n
+multiplier and individual one-over-n cap to the five-asset selected portfolio.
+The source does not resolve sample versus population standard deviation, so n-1
+is an explicit repository convention. A nonpositive or nonfinite estimate
 blocks.
 
 The sources specify monthly formation for the next month but not an exact
@@ -110,9 +115,9 @@ source-fill replication.
 
 - Warm-up/reference: 2007-07-26 through 2014-03-31.
 - Conservative mapped historical OOS: 2014-04-01 through 2026-07-31.
-- Fold 1: 2014-04-01 through 2018-05-31 (50 action months).
-- Fold 2: 2018-06-01 through 2022-06-30 (49 action months).
-- Fold 3: 2022-07-01 through 2026-07-31 (49 action months).
+- Fold 1: 2014-04-01 through 2018-04-30 (49 action months).
+- Fold 2: 2018-05-01 through 2022-05-31 (49 action months).
+- Fold 3: 2022-06-01 through 2026-07-31 (50 action months).
 
 The March 31, 2014 signal supplies the first April 1 action. The receipt must
 prove every session boundary and exact fold partition. One continuous path
@@ -129,12 +134,15 @@ source claims.
 
 Controls use identical sessions, lag, drift, cash, and costs:
 
-1. `static_equal_ten_monthly`, the exact feature-removal ablation for Exhibit 3
-   and static candidate-universe baseline;
-2. `spy_buy_and_hold`; and
-3. `spy_ief_60_40_monthly`.
+1. `constant_score_top5_equal_weight`, which preserves five 20% sleeves but
+   removes dynamic ranking by always holding the canonical first five ETFs;
+2. `static_equal_ten_monthly`, the static candidate-universe baseline;
+3. `spy_buy_and_hold`; and
+4. `spy_ief_60_40_monthly`.
 
-Exhibit 3 is the closest ablation for Exhibit 4. The genuine portfolio test is
+`constant_score_top5_equal_weight` is Exhibit 3's closest feature-removal
+ablation. Exhibit 3 is Exhibit 4's closest sizing ablation. The genuine
+portfolio test is
 80% of actual monthly 60/40 parent targets plus 20% of actual candidate targets,
 including any implicit cash. Metadata pairing is invalid.
 
@@ -145,22 +153,26 @@ At 5 bps, each candidate must have positive annualized return, Sharpe at least
 fold. At 15 bps, annualized return must remain positive and Sharpe at least
 0.50. No fold may supply more than 70% of positive full compounded log return.
 
-Every candidate-universe ETF must be held, at least five must contribute
+Every candidate-universe ETF must be held, at least three must contribute
 positively, and no sleeve may supply more than 60% of total positive
-contribution. Exhibit 3 target weight may not exceed 20%; Exhibit 4 target
-weight may not exceed 60% and total ETF exposure may not exceed 100%. All data,
+contribution. Both candidates' target weights may not exceed 20%. Exhibit 4 total
+ETF exposure may not exceed 100%, and its average non-cash target exposure must be
+at least 60%. All data,
 lag, rank, volatility, target, drift, cash, turnover, contribution, fold, hash,
 and nonpositive-equity checks must pass. Two complete replays must produce
 byte-identical result and manifest bytes.
 
 Both candidates must beat static equal ten by at least 0.05 Sharpe, have
-maximum drawdown no more than 2 percentage points worse, win Sharpe in at least
-two folds, and diverge on at least 12 monthly targets.
+maximum drawdown no more than 2 percentage points worse, and win Sharpe in at
+least two folds.
 
-Exhibit 4 must also diverge from Exhibit 3 on at least 12 monthly targets and
-add sizing value: either Sharpe improves by at least 0.03, or drawdown improves
-by at least 5% relatively while annualized-return drag is no more than 1
-percentage point.
+Exhibit 3 must diverge from `constant_score_top5_equal_weight` on at least 12
+monthly targets and add selection value: either Sharpe improves by at least
+0.03, or drawdown improves by at least 5% relatively while annualized-return
+drag is no more than 1 percentage point.
+
+Exhibit 4 must diverge from Exhibit 3 on at least 12 monthly targets and add
+sizing value under the identical alternative gate.
 
 Each candidate must pass one SPY route:
 
@@ -178,7 +190,8 @@ composite Sharpe improvement must be nonnegative. No fold may supply more than
 
 Candidates are revealed atomically. If both pass, select exactly one by, in
 order: higher 5-bps composite Sharpe improvement, higher standalone Sharpe,
-higher annualized return, then candidate ID. A complete pass routes only to
+higher annualized return, smaller maximum drawdown, then candidate ID. A
+complete pass routes only to
 `provisional_historical_validated_alpha_candidate` and a newly fingerprinted
 current-clock no-submit shadow with no backfill. Failure closes the exact route
 without tuning. Only a completed passing forward shadow can earn an unqualified
