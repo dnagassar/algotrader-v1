@@ -76,6 +76,11 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "URTH",
     "VTI",
     "GSG",
+    "EEM",
+    "EWJ",
+    "ICF",
+    "RWX",
+    "VGK",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
