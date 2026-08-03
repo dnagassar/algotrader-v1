@@ -95,6 +95,8 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "ICF",
     "RWX",
     "VGK",
+    "HYG",
+    "TIP",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
