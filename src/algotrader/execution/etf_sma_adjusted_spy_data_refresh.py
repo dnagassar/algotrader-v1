@@ -88,6 +88,8 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "VIG",
     "SPLV",
     "URTH",
+    "VTI",
+    "GSG",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
