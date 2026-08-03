@@ -1,9 +1,12 @@
 # V5.87 Keller flexible asset allocation preregistration
 
-Status: frozen after the terminal V5.86 failure and before V5.87 data assembly,
-implementation, candidate-specific performance inspection, or scoring. V5.87
-was the pre-ordered second candidate; V5.86 results did not select or alter its
-rule. This document grants no shadow, paper, broker, or live-capital authority.
+Status: corrected and re-frozen before candidate-specific performance
+inspection or scoring. The first committed draft and data snapshot used
+SPY/DBC availability proxies; late primary-source verification showed that the
+paper explicitly supplies VTI/GSG ETF mappings. That unscored snapshot is
+superseded. The exact VTI/GSG contract below controls V5.87. V5.87 was the
+pre-ordered second candidate; V5.86 outcomes did not select or alter its rule.
+This document grants no shadow, paper, broker, or live-capital authority.
 
 ## Primary source and repository translation
 
@@ -16,13 +19,11 @@ sleeves, and a combined loss rank using return, volatility, and correlation.
 It uses weights 1.0, 0.5, and 0.5 respectively and replaces a selected fund
 whose four-month return is negative with its short-Treasury cash proxy.
 
-The candidate ID is keller_faa_ravc_4m_top3_proxy. The exact ETF proxy universe
-is SPY,VEA,VWO,SHY,BND,DBC,VNQ, mapping the source's VTI, VEA, VWO, SHY, BND,
-GSG, and VNQ examples. SPY substitutes for U.S. total-market VTI and DBC
-substitutes for GSG; this is not an exact fund/index replication. Adjusted
-closes replace the source's daily closing-price series. No source performance
-metric, optimized variant, leverage result, or transaction-cost result
-controls a gate.
+The candidate ID is keller_faa_ravc_4m_top3_proxy. The exact candidate
+universe is the paper's own ETF mapping: VTI,VEA,VWO,SHY,BND,GSG,VNQ.
+Adjusted closes replace the source's unspecified daily closing-price
+adjustment convention. No source performance metric, optimized variant,
+leverage result, or transaction-cost result controls a gate.
 
 Previously closed relative-strength, dual-momentum, VAA, Faber, factor-style,
 and Clare routes remain closed. No parameter from those outcomes is reused or
@@ -31,18 +32,23 @@ validation until new current-clock observations accrue.
 
 ## Exact data contract
 
-Candidate and cash universe: SPY,VEA,VWO,SHY,BND,DBC,VNQ. Baseline-only symbol:
-IEF. Canonical symbol order is SPY,VEA,VWO,SHY,BND,DBC,VNQ,IEF.
+Candidate and cash universe: VTI,VEA,VWO,SHY,BND,GSG,VNQ. Baseline-only
+symbols: SPY,IEF. Canonical symbol order is
+VTI,VEA,VWO,SHY,BND,GSG,VNQ,SPY,IEF.
 
-- Provider: authenticated Tiingo End-of-Day evidence already admitted by the
-  V5.72, V5.74, and V5.75 receipts.
+- Provider: authenticated Tiingo End-of-Day through the repository's GET-only,
+  destination-allowlisted adapter.
+- Exact new requests: VTI and GSG from 2007-07-26 through 2026-07-31.
+- VEA,VWO,SHY,BND,VNQ,SPY,IEF may be reused only from pinned V5.72, V5.74,
+  and V5.75 canonical evidence.
 - Provider field: adjClose normalized to adjusted_close.
 - Semantics: provider split- and dividend-adjusted close.
 - Exact coverage request for the V5.87 assembly: 2007-07-26 through
   2026-07-31.
 - All mappings are identity mappings.
-- No refresh, network request, manual bar, hand normalization, synthetic
-  history, broker data, alternate provider, or symbol substitution is allowed.
+- No request beyond the two exact VTI/GSG GETs, manual bar, hand normalization,
+  synthetic history, broker data, alternate provider, or symbol substitution
+  is allowed.
 
 The outcome-blind receipt must pin every source, the imported receipts,
 per-symbol hashes, one identical common-session sequence, combined canonical
@@ -61,21 +67,28 @@ Signals form after the last common-session close of each calendar month t.
    after t-4 through t. Volatility is their sample standard deviation (n-1).
 4. Calculate the sample Pearson correlation for every pair over those identical
    daily returns. A symbol's correlation measure is its arithmetic mean
-   correlation with the other six symbols.
-5. Assign ordinal return ranks 1 through 7 with higher return better, volatility
-   ranks with lower volatility better, and correlation ranks with lower average
-   correlation better. Exact factor ties resolve by canonical ticker ascending.
+   correlation with the other six symbols. Daily correlation frequency is a
+   preregistered inference from the paper's daily dataset and common
+   four-month factor window; the paper does not restate the frequency in its
+   correlation section.
+5. Assign ranks 1 through 7 with higher return better, volatility ranks with
+   lower volatility better, and correlation ranks with lower average
+   correlation better. Exact factor ties receive their average ordinal rank.
 6. Score each symbol as return_rank + 0.5 * volatility_rank + 0.5 *
-   correlation_rank. Lower score is better; score ties resolve by canonical
-   ticker ascending.
+   correlation_rank. Lower score is better; final equal-score ties resolve by
+   the paper's published ETF order VTI,VEA,VWO,SHY,BND,GSG,VNQ. The paper does
+   not specify ties; these are deterministic repository conventions.
 7. Select the three lowest-score symbols. Each owns exactly one third.
 8. For each selected symbol whose four-month return is strictly negative,
    transfer its full one-third sleeve to SHY. Zero return is not negative.
    Multiple transfers accumulate in SHY.
 
-The target is long-only, unlevered, and fully allocated. It trades at the next
-common-session close t+1, after the t-to-t+1 return, pays turnover cost there,
-and first earns t+1-to-t+2. There is no parameter grid, optimizer, covariance
+The source trades at the next month's first-session open. Because the
+admitted consistent adjusted field is close-only, this repository translation
+trades at the next common-session close t+1, after the t-to-t+1 return, pays
+turnover cost there, and first earns t+1-to-t+2. It is not an exact source-fill
+replication. The target is long-only, unlevered, and fully allocated. There is
+no parameter grid, optimizer, covariance
 shrinkage, leverage, volatility target, alternate score weight, top count,
 lookback, tie rule, discretionary override, or second candidate.
 
