@@ -7,12 +7,12 @@ proxy snapshot committed in ed6681f. Late primary-source verification identified
 the paper's explicit VTI/GSG ETF mapping. Protocol correction b353509 and the
 tested allowlist commit e0e003b preceded both exact authenticated requests. No
 V5.87 engine outcome, return, factor rank, metric, gate, or route existed
-before this corrected admission.
+before this corrected admission. Before any subsequent scoring, an outcome-blind implementation audit re-froze protocol v3 solely to clarify the already implemented nine-symbol turnover set and published-order return-only-control tie convention. Canonical data bytes and all provider evidence remained unchanged; the outcome-blind manifest changed only its protocol ID and protocol-hash pin.
 
 - Corrected protocol SHA-256:
-  e6c4de107bb23a00287c495cbd8585de5ef83551aec8801b4a670ce8121a15db.
+  c69692a82d58376be64a05118e73af77604e6ed6495987ed549e0b57ace2aff7.
 - Corrected outcome-blind manifest SHA-256:
-  a639488f3798db02896ef7807002771e77cd9b497d53a5f770df1ca2e5e47d01.
+  e911031d7ab3f9bc9669643ed2ee19de369daa2c1a15492391a04e9231becd08.
 - Corrected combined canonical SHA-256:
   5094981d3c24aa6d018123b6aad20ce9e70583ed09ff6df23778c64ec65c2502.
 - The earlier manifest/data hashes are revoked for V5.87 computation.

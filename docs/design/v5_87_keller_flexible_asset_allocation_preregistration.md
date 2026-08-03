@@ -1,7 +1,7 @@
 # V5.87 Keller flexible asset allocation preregistration
 
 Status: corrected and re-frozen before candidate-specific performance
-inspection or scoring. The first committed draft and data snapshot used
+inspection or scoring. An outcome-blind implementation audit subsequently clarified the exact nine-symbol turnover calculation and the published-order tie convention for the return-only control; neither clarification changed the candidate rule, data, dates, costs, or gates. The first committed draft and data snapshot used
 SPY/DBC availability proxies; late primary-source verification showed that the
 paper explicitly supplies VTI/GSG ETF mappings. That unscored snapshot is
 superseded. The exact VTI/GSG contract below controls V5.87. V5.87 was the
@@ -109,7 +109,7 @@ costs.
 
 Every portfolio starts OOS in implicit cash and pays its full initial
 transition. Holdings drift between monthly actions. One-way turnover is half
-the absolute target-minus-drifted-weight change across all eight symbols and
+the absolute target-minus-drifted-weight change across all nine symbols and
 implicit cash. Costs are 0, 5, and 15 basis points per unit of one-way
 turnover; 5 bps is decision and 15 bps stress.
 
@@ -121,8 +121,9 @@ Nonfinite metrics, nonpositive equity, or contribution mismatch block.
 Controls use identical chronology, drift, and costs:
 
 1. relative_absolute_momentum_top3_4m: rank by four-month return only, select
-   top three, equal weight, and apply the identical negative-return SHY
-   substitution;
+   top three, equal weight, resolve four-month-return ties by the published
+   ETF order VTI,VEA,VWO,SHY,BND,GSG,VNQ, and apply the identical
+   negative-return SHY substitution;
 2. static_equal_seven_monthly;
 3. SHY buy and hold;
 4. SPY buy and hold; and
