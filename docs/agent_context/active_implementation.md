@@ -13,9 +13,44 @@ live capital remains prohibited behind a separate operator hard gate.
 ## Checkout and writer ownership
 
 - Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
-- Branch: `claude/v5.89-bold-asset-allocation`, branched from the V5.88
-  closure tip.
+- Branch: `claude/v5.90-forward-shadow-infrastructure`, branched from the
+  V5.89 closure tip after that merged to `main`.
 - Exactly one implementation writer at a time.
+
+## V5.90 forward-shadow infrastructure (built)
+
+Implements Route 2 of the V5.89 diagnosis — the only route that can produce
+evidence this program has not already contaminated.
+
+- `src/algotrader/research/forward_shadow_registry.py`: strategy-agnostic
+  registry and append-only observation ledger.
+- `tests/unit/test_forward_shadow_registry.py`: seventeen tests.
+- `scripts/run_forward_shadow.ps1`: credential-fail-closed CLI wrapper.
+- `docs/design/v5_90_forward_shadow_infrastructure.md`: contract, operating
+  instructions, and honest limitations.
+
+Three properties are enforced mechanically, not by convention:
+
+1. Gates, universe, costs, and the required observation count are hashed into
+   an immutable `registration_fingerprint`; editing any of them afterward
+   makes every later load fail closed.
+2. Backfill is impossible — an observation is admissible only inside
+   `registration_date < session <= recorded_at`, with strictly increasing
+   sessions.
+3. Peeking early cannot produce a verdict — before the frozen observation
+   count is reached the status payload omits every metric and gate outcome
+   entirely, with no override.
+
+The ledger is hash-chained from the registration fingerprint, so editing,
+reordering, or truncating it is detected. Policy fingerprint:
+`62f48951559bbc91193cca0a9d3309e9f06ddf7770ea414d735cc7cc59fefed3`.
+
+**No hypothesis is registered.** Choosing what to shadow is an operator
+decision, and the tempting candidate — the V5.89
+`no_canary_g4_always_offensive` ablation — is outcome-contaminated as a
+historical claim. Registering it as a *forward* hypothesis is legitimate
+because the forward window is untouched, but that is a deliberate on-record
+choice, not a side effect of building the tool.
 
 ## Repository consolidation (done)
 
@@ -77,8 +112,16 @@ decision, not a retrofit.
 - Allowlist contract suites after the HYG/TIP change: 113 passed.
 - `tests/unit/test_baa_tournament.py`: 13 passed.
 - Tournament wrapper exited 0; two full replays byte-identical.
-- The full verifier has **not** been rerun after `6035d68`; the V5.89 commits
-  are covered by focused suites only.
+- `verify_offline.ps1 -Full -Shards 8` at the V5.89 tip `f3b81c3`: PASS
+  (10,421 collected, 10,416 passed, 5 skipped, 0 failures, 0 errors, all
+  eight shards exit 0, collection and execution equivalence PASS). `main` was
+  fast-forwarded to `f3b81c3` and pushed on that evidence.
+- `tests/unit/test_forward_shadow_registry.py`: 17 passed.
+- Architecture and safety invariants after V5.90: 69 passed
+  (dependency direction, broker mutation surface, network guard).
+- The V5.90 forward-shadow wrapper was confirmed to exit 2 with
+  `blocked_unsafe_environment` under a credential-bearing environment without
+  echoing the sentinel value.
 
 ## Safety and trust
 
@@ -96,11 +139,18 @@ decision, not a retrofit.
 
 ## Exact next action
 
-Run the full offline verifier once on this branch before any merge to `main`,
-then decide between the two recommended routes: stop the published-family
-search, and/or begin forward-shadow infrastructure. Do not reopen, re-tune,
-combine, or rescue any closed candidate, and do not promote any control or
-ablation — including the V5.89 no-canary ablation that beat SPY on return,
-which is outcome-contaminated and is a hypothesis only. The sealed Crypto
+The infrastructure is built and unused, which is the correct resting state.
+The next action is an operator decision, not an implementation task: choose
+whether to register a first forward-shadow hypothesis and, if so, which one.
+Registering it means committing to wait out the frozen window — roughly six
+months at 126 sessions — without a readable verdict, by design.
+
+If a hypothesis is registered, wire one
+`append_forward_shadow_observation` call per completed trading session into
+the existing EOD refresh cadence, with targets computed causally from data
+through the prior session.
+
+Do not reopen, re-tune, combine, or rescue any closed candidate, and do not
+promote any control or ablation on its historical numbers. The sealed Crypto
 Tournament V2 reveal remains preregistered for `2026-08-13T00:00:00Z`. Live
 capital remains a separate operator hard gate.
