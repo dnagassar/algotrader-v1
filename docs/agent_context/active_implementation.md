@@ -13,8 +13,8 @@ live capital remains prohibited behind a separate operator hard gate.
 ## Checkout and writer ownership
 
 - Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
-- Branch: `claude/v5.90-forward-shadow-infrastructure`, branched from the
-  V5.89 closure tip after that merged to `main`.
+- Branch: `claude/v5.91-vault-cross-sectional-triage`, branched from the
+  V5.90 tip after that merged to `main`.
 - Exactly one implementation writer at a time.
 
 ## V5.90 forward-shadow infrastructure (built)
@@ -102,6 +102,34 @@ registered hypothesis can accumulate uncontaminated evidence. Restating the
 objective away from "beat SPY" is available but is an explicit operator
 decision, not a retrofit.
 
+## V5.91 vault cross-sectional trend triage (closed)
+
+First use of the V5.90 vault: buying statistical breadth from markets never
+acquired here instead of buying it from calendar time.
+
+- `docs/design/v5_91_..._preregistration.md` (`09cf026`): frozen protocol.
+- `7f3ade7`: eighteen single-country ETFs added to the adjusted-EOD allowlist.
+- `559a5ef`: engine, tests, admission, and outcome-blind receipt, all committed
+  before the reveal.
+- `docs/design/v5_91_..._terminal_decision.md`: closure evidence.
+
+Route: `close_triage_without_tuning`. The primary breadth gate passed at
+exactly its threshold — 13 of 18 markets, binomial p `0.048126220703` — but two
+secondary gates failed and the protocol requires all of them.
+
+The failures are diagnostic, not noise. Post-2007 Sharpe wins were **6 of 18**
+against 13 of 18 over the full window, so essentially the whole edge lives in
+2001-2007. Raising costs from 5 bps to 15 bps dropped wins from 13 to 10.
+Drawdown improved in **18 of 18** markets, but annualized return was lower than
+buy-and-hold in 13 of 18 — the same buy-protection-with-return trade V5.88 and
+V5.89 documented. Mean pairwise excess correlation was `0.630936283855`, so the
+nominal p overstated significance, exactly as the protocol disclosed in advance.
+
+Cost: one session, 5,454 decisions across eighteen markets. V5.89 rested on 47
+decisions; a six-month forward shadow of a monthly rule would give six. The
+triage layer did its job — a published effect was screened out in hours rather
+than after a forward window.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -116,7 +144,10 @@ decision, not a retrofit.
   (10,421 collected, 10,416 passed, 5 skipped, 0 failures, 0 errors, all
   eight shards exit 0, collection and execution equivalence PASS). `main` was
   fast-forwarded to `f3b81c3` and pushed on that evidence.
-- `tests/unit/test_forward_shadow_registry.py`: 17 passed.
+- `tests/unit/test_forward_shadow_registry.py`: 29 passed;
+  `test_forward_shadow_vault.py`: 10 passed.
+- `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
+- V5.91 allowlist contract suites: 117 passed.
 - Architecture and safety invariants after V5.90: 69 passed
   (dependency direction, broker mutation surface, network guard).
 - The V5.90 forward-shadow wrapper was confirmed to exit 2 with
@@ -139,11 +170,16 @@ decision, not a retrofit.
 
 ## Exact next action
 
-The infrastructure is built and unused, which is the correct resting state.
-The next action is an operator decision, not an implementation task: choose
-whether to register a first forward-shadow hypothesis and, if so, which one.
-Registering it means committing to wait out the frozen window — roughly six
-months at 126 sessions — without a readable verdict, by design.
+The triage layer is proven and the forward-shadow registry remains built and
+deliberately unused. The next action is an operator decision, not an
+implementation task: either run further vault triages on the remaining
+untouched markets (18 more single-country ETFs are vault-eligible, plus the
+whole non-equity vault), or register a first forward-shadow hypothesis and
+accept its frozen window.
+
+Note for any future triage: V5.91 shows a cost-robustness gate and a
+regime-consistency gate both earn their keep. Do not drop them to make a
+primary gate carry a milestone alone.
 
 If a hypothesis is registered, wire one
 `append_forward_shadow_observation` call per completed trading session into
