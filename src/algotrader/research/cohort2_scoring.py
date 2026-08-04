@@ -155,7 +155,10 @@ def _canonical_replay(
     preregistration: Mapping[str, object],
 ) -> dict[str, object]:
     dates, prices = _load_panel()
-    labels = _panel_labels(dates)
+    raw_labels = _panel_raw_labels(dates)
+    # Targets form on raw month-end labels; scoring conditions on the effective
+    # labels those targets imply, so holding and conditioning coincide exactly.
+    labels = list(effective_action_labels(dates, raw_labels))
     occupancy = regime_occupancy(
         labels,
         minimum_episodes=MINIMUM_REGIME_EPISODES,
@@ -181,10 +184,10 @@ def _canonical_replay(
         benchmark_streams: dict[str, list[float]] = {}
         for cost_id, rate in _COSTS.items():
             component_streams[cost_id] = _conditional_basket(
-                dates, prices, assets, labels, regime_id, rate
+                dates, prices, assets, raw_labels, regime_id, rate
             )
             benchmark_streams[cost_id] = _conditional_basket(
-                dates, prices, assets, labels, None, rate
+                dates, prices, assets, raw_labels, None, rate
             )
         result = evaluate_component(
             component_id=component_id,
@@ -322,8 +325,12 @@ def _conditional_basket(
     return returns
 
 
-def _panel_labels(dates: Sequence[date]) -> list[str | None]:
-    """Regime labels for the panel, classified from SPY's full history."""
+def _panel_raw_labels(dates: Sequence[date]) -> list[str | None]:
+    """Raw daily regime labels for the panel, from SPY's full history.
+
+    Targets form on these at month-end. Scoring conditions on the effective
+    labels they imply, which is what `effective_action_labels` derives.
+    """
 
     bars = load_local_daily_bars_csv(
         _SPY_CANONICAL, symbol=REFERENCE_SYMBOL, as_of=_END
@@ -338,9 +345,7 @@ def _panel_labels(dates: Sequence[date]) -> list[str | None]:
             "panel extends outside the labelled regime window; the warm-up "
             "was not consumed before the component panel begins."
         )
-    # Repair two: condition on the label that governs the holding, not the
-    # label of the session being scored.
-    return list(effective_action_labels(dates, raw))
+    return raw
 
 
 def _load_panel() -> tuple[tuple[date, ...], dict[str, tuple[float, ...]]]:
