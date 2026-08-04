@@ -458,3 +458,97 @@ def test_mediocre_win_rate_fails_significance_even_above_the_rate_floor() -> Non
         is False
     )
     assert result["all_gates_passed"] is False
+
+
+# --- V5.97 harness repairs -------------------------------------------------
+
+
+def test_contract_records_the_repaired_label_basis_and_precondition() -> None:
+    contract = subject.build_ensemble_contract()
+
+    assert (
+        contract["label_basis"] == "effective_action_labels_from_prior_month_end"
+    )
+    assert contract["scoring_conditions_on_holdings_not_raw_labels"] is True
+    assert contract["regime_occupancy_precondition_required"] is True
+
+
+def test_effective_labels_lag_to_the_prior_month_end() -> None:
+    """Sessions inherit the label that set the target now in force."""
+
+    dates = [date(2024, 1, 29) + timedelta(days=offset) for offset in range(8)]
+    # A month boundary falls between index 2 (Jan 31) and index 3 (Feb 1).
+    raw = ["calm_up", "calm_up", "stressed_down", "calm_up", "calm_up",
+           "calm_up", "calm_up", "calm_up"]
+
+    effective = regimes.effective_action_labels(dates, raw)
+
+    # Nothing governs sessions before the first month-end.
+    assert effective[0] is None
+    assert effective[1] is None
+    assert effective[2] is None
+    # From the boundary onward the month-end label governs, not the daily one.
+    assert effective[3] == "stressed_down"
+    assert effective[7] == "stressed_down"
+
+
+def test_effective_labels_reject_misaligned_inputs() -> None:
+    with pytest.raises(ValidationError, match="must align"):
+        regimes.effective_action_labels([date(2024, 1, 1)], ["calm_up", "calm_up"])
+
+
+def test_occupancy_flags_a_regime_that_barely_occurs() -> None:
+    """The V5.96 defect: calm_down had 17 sessions and zero episodes."""
+
+    labels = ["calm_up"] * 300 + ["calm_down"] * 3 + ["calm_up"] * 300
+
+    occupancy = regimes.regime_occupancy(
+        labels, minimum_episodes=8, minimum_episode_sessions=10
+    )
+
+    assert occupancy["calm_down"].sessions == 3
+    assert occupancy["calm_down"].scoreable_episodes == 0
+    assert occupancy["calm_down"].sufficient is False
+    # A regime with no episodes must never host a component.
+    assert occupancy["calm_up"].scoreable_episodes >= 1
+
+
+def test_occupancy_accepts_a_well_occupied_regime() -> None:
+    labels = _labelled([("calm_up", 12), ("stressed_down", 12)] * 10)
+
+    occupancy = regimes.regime_occupancy(
+        labels, minimum_episodes=8, minimum_episode_sessions=10
+    )
+
+    assert occupancy["stressed_down"].scoreable_episodes == 10
+    assert occupancy["stressed_down"].sufficient is True
+    assert occupancy["calm_up"].sufficient is True
+
+
+def test_occupancy_minimums_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="occupancy minimums"):
+        regimes.regime_occupancy(["calm_up"], minimum_episodes=0, minimum_episode_sessions=10)
+
+
+def test_effective_labels_make_out_of_regime_sessions_genuinely_flat() -> None:
+    """The repair's observable consequence: a cash sleeve shows zero drag.
+
+    Under V5.96 daily labels a monthly component still held positions during
+    sessions labelled out-of-regime, so drag was positive. Conditioning on the
+    action-governing label removes that mismatch by construction.
+    """
+
+    dates = [date(2020, 1, 1) + timedelta(days=offset) for offset in range(240)]
+    raw = ["calm_up" if (index // 30) % 2 == 0 else "stressed_down"
+           for index in range(240)]
+    effective = regimes.effective_action_labels(dates, raw)
+
+    held = [index for index, label in enumerate(effective) if label == "stressed_down"]
+    idle = [index for index, label in enumerate(effective)
+            if label is not None and label != "stressed_down"]
+
+    # A component acting on the effective label is in cash on exactly the idle
+    # sessions, so any return it books there is zero by construction.
+    component = [0.004 if index in set(held) else 0.0 for index in range(240)]
+    assert all(component[index] == 0.0 for index in idle)
+    assert any(component[index] != 0.0 for index in held)

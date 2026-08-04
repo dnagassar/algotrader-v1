@@ -163,6 +163,15 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "MTUM",
     "SMH",
     "VBK",
+    "GDX",
+    "GDXJ",
+    "PPLT",
+    "CWB",
+    "ANGL",
+    "EMLC",
+    "VLUE",
+    "SIZE",
+    "IJR",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",

@@ -18,6 +18,7 @@ network or broker, mutate a paper account, or authorize live capital.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 import hashlib
 import json
@@ -28,6 +29,9 @@ from algotrader.errors import ValidationError
 
 __all__ = [
     "MEDIAN_WINDOW",
+    "RegimeOccupancy",
+    "effective_action_labels",
+    "regime_occupancy",
     "REFERENCE_SYMBOL",
     "REGIME_LABELS",
     "REGIME_SET_FINGERPRINT",
@@ -153,6 +157,90 @@ def classify_regimes(
         if label not in REGIME_LABELS:
             raise ValidationError(f"unexpected regime label: {label}")
     return tuple(labels)
+
+
+def effective_action_labels(
+    dates: Sequence[date],
+    labels: Sequence[str | None],
+) -> tuple[str | None, ...]:
+    """The label that actually governs holdings on each session.
+
+    V5.96 scored monthly components against daily labels, so a component could
+    be graded across an episode it never held, and out-of-regime sessions could
+    carry returns from a position it was still holding. This maps each session
+    to the label observed at the most recent prior month-end — the label that
+    determined the target now in force — so conditioning and holding coincide.
+
+    The transform is causal: session `t` is governed by a month-end strictly
+    before `t`.
+    """
+
+    if len(dates) != len(labels):
+        raise ValidationError("dates and labels must align.")
+    month_end = [
+        index
+        for index in range(len(dates) - 1)
+        if (dates[index].year, dates[index].month)
+        != (dates[index + 1].year, dates[index + 1].month)
+    ]
+    effective: list[str | None] = [None] * len(dates)
+    governing: str | None = None
+    pointer = 0
+    for index in range(len(dates)):
+        while pointer < len(month_end) and month_end[pointer] < index:
+            governing = labels[month_end[pointer]]
+            pointer += 1
+        effective[index] = governing
+    return tuple(effective)
+
+
+@dataclass(frozen=True, slots=True)
+class RegimeOccupancy:
+    """How much of a panel a regime actually occupies."""
+
+    regime: str
+    sessions: int
+    scoreable_episodes: int
+    sufficient: bool
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "regime": self.regime,
+            "sessions": self.sessions,
+            "scoreable_episodes": self.scoreable_episodes,
+            "sufficient": self.sufficient,
+        }
+
+
+def regime_occupancy(
+    labels: Sequence[str | None],
+    *,
+    minimum_episodes: int,
+    minimum_episode_sessions: int,
+) -> dict[str, RegimeOccupancy]:
+    """Report per-regime occupancy so unusable regimes are caught in advance.
+
+    V5.96 declared a component against `calm_down`, which occupied 17 of 3,220
+    sessions and yielded zero scoreable episodes; the component was untestable
+    rather than tested, and it still consumed a cohort slot and a multiplicity
+    share. Occupancy depends only on dates and labels, never on returns, so
+    checking it before declaring components is outcome-blind.
+    """
+
+    if minimum_episodes < 1 or minimum_episode_sessions < 1:
+        raise ValidationError("occupancy minimums must be positive.")
+    report: dict[str, RegimeOccupancy] = {}
+    for regime in REGIME_LABELS:
+        episodes = regime_episodes(
+            labels, regime, minimum_sessions=minimum_episode_sessions
+        )
+        report[regime] = RegimeOccupancy(
+            regime=regime,
+            sessions=sum(1 for label in labels if label == regime),
+            scoreable_episodes=len(episodes),
+            sufficient=len(episodes) >= minimum_episodes,
+        )
+    return report
 
 
 def regime_episodes(

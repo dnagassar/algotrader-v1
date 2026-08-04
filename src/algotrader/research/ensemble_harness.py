@@ -48,7 +48,7 @@ __all__ = [
 ]
 
 ENSEMBLE_CONTRACT_VERSION = "v5_95_ensemble_contract_v1"
-ENSEMBLE_CONTRACT_FINGERPRINT = "7cb91fae9224ad635a172740dc11494c6cdc1d8a517ab2fdf376349bb6ff02a8"
+ENSEMBLE_CONTRACT_FINGERPRINT = "9b5e97b43e7d59578fdcce38eee0b22b04cfa5b6971361720ef94e1e3a2ea564"
 _TRADING_DAYS = 252.0
 _DECISION = "decision"
 _STRESS = "stress"
@@ -146,6 +146,9 @@ def build_ensemble_contract(
         "component_gates": resolved_gates.as_payload(),
         "regime_set_fingerprint": regime["regime_set_fingerprint"],
         "regime_labels": list(REGIME_LABELS),
+        "label_basis": "effective_action_labels_from_prior_month_end",
+        "scoring_conditions_on_holdings_not_raw_labels": True,
+        "regime_occupancy_precondition_required": True,
         "evaluation_order": [
             "in_regime_skill",
             "out_of_regime_harmlessness",
