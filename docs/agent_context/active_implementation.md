@@ -253,6 +253,40 @@ Residual out-of-regime drag is now small and **two-sided** (-0.0026, +0.0068,
 -0.00005) versus uniformly positive under V5.96. Mixed signs are the signature
 of the one-session exit under causal t+1 execution, not misattribution.
 
+## V5.98 tax-loss forced-seller detector (closed)
+
+The program's first **structural** hypothesis: a group compelled to sell for a
+reason unrelated to price (tax treatment of realised losses) on a known
+calendar. Every prior milestone tested a published formula instead.
+
+45 held ETFs, 5,056 sessions, 19 cycles (2007-2025), **zero network requests**.
+Bottom-quintile year-to-date losers at the November close, measured over a
+December leg and a January leg against the equal-weight universe.
+
+Route: `close_detector_without_tuning`.
+
+- **December pressure present:** losers underperformed in 12 of 19 Decembers,
+  mean excess `-0.003163649396`. The forced-selling footprint is visible.
+- **January reversal absent:** positive in 10 of 19 years, binomial
+  `p = 0.500000000000` — an exact coin flip. 9 of 19 at stress costs.
+- **Legs are linked:** correlation `-0.418862185790`; harder December pressure
+  produced a bigger January bounce. 2022 was the extreme on both sides
+  (`-0.0390` then `+0.0437`). The mechanism is real; it is not tradeable here.
+
+The protocol required both legs precisely so a January-only result would fail.
+It received the mirror image and failed that too. Note the December gate itself
+is `p = 0.179641723633` — a preregistered coherence check, never evidence.
+
+## Where the structural direction stands
+
+Of four candidate structural edges, exactly one was testable without paid data
+and it is now closed. The other three — index rebalances, genuinely small
+illiquid names, operationally annoying situations — all require corporate-action
+feeds or delisted-inclusive universes. **Data access, not engineering, is the
+binding constraint on this direction.** The ETF substitution used here was
+disclosed in advance as a reason a null could occur even if the mechanism is
+real, and that is roughly what happened.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -271,6 +305,8 @@ of the one-session exit under causal t+1 execution, not misattribution.
   `test_forward_shadow_vault.py`: 10 passed.
 - `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
 - `tests/unit/test_ensemble_harness.py`: 32 passed.
+- `verify_offline.ps1 -Full -Shards 4` at `a88622e`: PASS (10,553 collected,
+  10,548 passed, 5 skipped, 0 failures).
 - `verify_offline.ps1 -Full -Shards 4` at `8f70cec`: PASS (10,553 collected,
   10,548 passed, 5 skipped, 0 failures).
 - `verify_offline.ps1 -Full -Shards 4` at `261766d`: PASS (10,542 collected,
@@ -302,20 +338,27 @@ of the one-session exit under causal t+1 execution, not misattribution.
 
 ## Exact next action
 
-Seven components across four mechanisms and two disjoint asset sets have run
-under the restructure; none admitted. Before a third cohort, raise test
-coverage of the scoring path itself: three defects have shipped into this
-harness across two milestones, and two of them (V5.96 label misalignment, V5.97
-double lag) would have produced false positives had the verification checks not
-caught them. New scoring machinery currently has a high enough defect rate that
-more coverage — not another cohort — is the correct next investment.
+This is an operator decision, not an implementation task. Twenty-three
+milestones, zero validated alpha, and the free-data search space is close to
+exhausted. Three options, stated without preference:
+
+1. **Acquire event data** (corporate actions, point-in-time universe including
+   delisted names). This is the only path that unlocks the three remaining
+   structural edges, which are the better ideas. It buys the ability to look;
+   it does not promise an edge.
+2. **Continue on free data.** No further free structural hypothesis is
+   currently identified that is worth the effort.
+3. **Stop.** The system is honest and has reported clearly that no edge exists
+   in what it can currently see.
+
+If work continues, the standing engineering priority from V5.97 is unchanged:
+raise test coverage of the ensemble scoring path before running a third cohort.
+Three defects shipped into that harness across two milestones and two would
+have produced false positives.
 
 Standing prohibitions unchanged: V5.96's four and V5.97's three components are
-closed under the contracts they were registered against and may not be
-rescored under any corrected harness. `calm_down` hosts no component until a
-panel is found where it occurs. Tier B (every closed candidate, the V5.91-V5.93
-drawdown findings, the V5.89 ablation) requires a forward shadow and cannot be
-promoted historically.
+closed and may not be rescored under any corrected harness; V5.98's detector may
+not be re-run on a different universe or holding period; `calm_down` hosts no
+component until a panel where it occurs; Tier B requires a forward shadow.
 
-Twenty-one milestones, zero validated alpha. Live capital remains an operator
-hard gate that no work in this session moved.
+Live capital remains an operator hard gate that no work in this session moved.
