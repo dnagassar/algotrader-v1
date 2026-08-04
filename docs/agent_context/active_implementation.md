@@ -222,6 +222,37 @@ Recorded in the V5.96 terminal decision, both blocking:
 Neither fix may rescore this cohort; those four components are closed under the
 contract they were registered against.
 
+## V5.97 harness repair and Tier A cohort 2 (closed)
+
+Both V5.96 defects repaired, then cohort 2 run against them.
+
+- **Occupancy precondition** (`regime_occupancy`): a regime must clear a
+  minimum scoreable-episode count on the intended panel before any component
+  may be declared against it. Outcome-blind — depends on dates and labels only.
+  `calm_down` measured 1 episode against a required 8 and was excluded.
+- **Scoring aligned to holdings** (`effective_action_labels`): targets form on
+  raw month-end labels; scoring conditions on the effective labels those
+  targets imply. Contract fingerprint moved to
+  `9b5e97b43e7d59578fdcce38eee0b22b04cfa5b6971361720ef94e1e3a2ea564`.
+
+Route: `cohort_closed_no_component_admitted`, **0 of 3**.
+`value_size_factor_tilt` +0.0012 edge / 6-of-13 episodes;
+`convertible_crossover_credit` -0.075 / 4-of-15;
+`precious_metals_crisis_hedge` -0.118 / 3-of-8. Two of three had negative
+in-regime edges: conditioning was worse than always-holding.
+
+**A third defect was found while verifying the second repair.** The first
+cohort-2 run passed effective labels to both target formation and scoring,
+double-lagging the component. Out-of-regime drag stayed nonzero — the exact
+symptom the repair should have removed — so the number was interrogated rather
+than accepted. `precious_metals_crisis_hedge` scored +0.353 under the double
+lag and -0.118 corrected: a 0.47 sign-reversing swing. Run
+`5b29717230fc692b0699439620af1ee15796e773703ffc32b5258215c5f32bda` is **void**.
+
+Residual out-of-regime drag is now small and **two-sided** (-0.0026, +0.0068,
+-0.00005) versus uniformly positive under V5.96. Mixed signs are the signature
+of the one-session exit under causal t+1 execution, not misattribution.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -239,7 +270,9 @@ contract they were registered against.
 - `tests/unit/test_forward_shadow_registry.py`: 29 passed;
   `test_forward_shadow_vault.py`: 10 passed.
 - `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
-- `tests/unit/test_ensemble_harness.py`: 25 passed.
+- `tests/unit/test_ensemble_harness.py`: 32 passed.
+- `verify_offline.ps1 -Full -Shards 4` at `8f70cec`: PASS (10,553 collected,
+  10,548 passed, 5 skipped, 0 failures).
 - `verify_offline.ps1 -Full -Shards 4` at `261766d`: PASS (10,542 collected,
   10,537 passed, 5 skipped, 0 failures).
 - `tests/unit/test_vault_volatility_managed_triage.py`: 14 passed.
@@ -269,17 +302,20 @@ contract they were registered against.
 
 ## Exact next action
 
-Fix the two V5.96 harness defects before any second cohort:
+Seven components across four mechanisms and two disjoint asset sets have run
+under the restructure; none admitted. Before a third cohort, raise test
+coverage of the scoring path itself: three defects have shipped into this
+harness across two milestones, and two of them (V5.96 label misalignment, V5.97
+double lag) would have produced false positives had the verification checks not
+caught them. New scoring machinery currently has a high enough defect rate that
+more coverage — not another cohort — is the correct next investment.
 
-1. Add an outcome-blind regime **occupancy precondition** (minimum scoreable
-   episodes on the intended panel) to regime registration.
-2. **Align action and scoring granularity** — month-end-aligned episode windows
-   or daily-acting components — frozen before anything is rescored.
+Standing prohibitions unchanged: V5.96's four and V5.97's three components are
+closed under the contracts they were registered against and may not be
+rescored under any corrected harness. `calm_down` hosts no component until a
+panel is found where it occurs. Tier B (every closed candidate, the V5.91-V5.93
+drawdown findings, the V5.89 ablation) requires a forward shadow and cannot be
+promoted historically.
 
-Then register a second Tier A cohort against regimes that actually occur. Do
-not rescore V5.96's four components under a corrected harness; they are closed.
-Tier B (every closed candidate, the V5.91-V5.93 drawdown findings, the V5.89
-ablation) still requires a forward shadow and cannot be promoted historically.
-
-Twenty milestones, zero validated alpha. Live capital remains an operator hard
-gate that no work in this session moved.
+Twenty-one milestones, zero validated alpha. Live capital remains an operator
+hard gate that no work in this session moved.
