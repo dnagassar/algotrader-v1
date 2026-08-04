@@ -371,3 +371,90 @@ def test_component_parked_in_cash_cannot_demonstrate_an_edge() -> None:
     assert result["gate_conditions"]["in_regime_sharpe_edge_at_least_minimum"] is False
     assert result["gate_conditions"]["stress_sharpe_edge_above_minimum"] is False
     assert result["all_gates_passed"] is False
+
+
+# --- multiplicity-corrected episode significance ---------------------------
+
+
+def test_binomial_tail_is_exact() -> None:
+    assert subject._binomial_tail(10, 10) == pytest.approx(1.0 / 1024.0)
+    assert subject._binomial_tail(0, 10) == pytest.approx(1.0)
+    assert subject._binomial_tail(9, 9) == pytest.approx(1.0 / 512.0)
+    with pytest.raises(ValidationError, match="out of range"):
+        subject._binomial_tail(5, 0)
+
+
+def test_bonferroni_alpha_makes_eight_episodes_unreachable() -> None:
+    """A frozen minimum of 8 episodes cannot clear the corrected alpha.
+
+    With 4 components across 4 regimes the per-hypothesis alpha is 0.003125,
+    and a perfect 8-of-8 record scores p = 0.00390625. The effective binding
+    minimum is therefore 9 episodes, not the 8 named in V5.95. Recorded here
+    rather than silently re-parameterized: the interaction only tightens the
+    bar and was found before any component was scored.
+    """
+
+    alpha = subject.ComponentGates().episode_win_alpha
+    assert alpha == pytest.approx(0.003125)
+    assert subject._binomial_tail(8, 8) > alpha
+    assert subject._binomial_tail(9, 9) <= alpha
+
+
+def test_perfect_record_clears_the_adjusted_alpha() -> None:
+    labels, component, benchmark = _specialist_case(episodes=10)
+
+    result = subject.evaluate_component(
+        component_id="significant_specialist",
+        declared_regime="calm_down",
+        labels=labels,
+        component_returns={"decision": component, "stress": component},
+        benchmark_returns={"decision": benchmark, "stress": benchmark},
+        default_returns=[0.0] * len(labels),
+    )
+
+    assert result["episodes_won"] == 10
+    assert float(result["episode_win_binomial_p"]) == pytest.approx(1.0 / 1024.0)
+    assert (
+        result["gate_conditions"]["episode_wins_significant_at_adjusted_alpha"]
+        is True
+    )
+    assert result["all_gates_passed"] is True
+
+
+def test_mediocre_win_rate_fails_significance_even_above_the_rate_floor() -> None:
+    """70% of episodes clears the 60% rate gate but not the corrected alpha."""
+
+    labels = _labelled([("calm_up", 12), ("calm_down", 12)] * 10)
+    component: list[float] = []
+    benchmark: list[float] = []
+    episode_index = -1
+    previous = None
+    for index, label in enumerate(labels):
+        if label == "calm_down" and previous != "calm_down":
+            episode_index += 1
+        previous = label
+        sign = 1.0 if index % 2 == 0 else -1.0
+        if label == "calm_down":
+            edge = 0.0005 if episode_index < 7 else -0.0005
+            component.append(edge + 0.006 * sign)
+            benchmark.append(0.005 * sign)
+        else:
+            component.append(0.0)
+            benchmark.append(0.0)
+
+    result = subject.evaluate_component(
+        component_id="mediocre",
+        declared_regime="calm_down",
+        labels=labels,
+        component_returns={"decision": component, "stress": component},
+        benchmark_returns={"decision": benchmark, "stress": benchmark},
+        default_returns=[0.0] * len(labels),
+    )
+
+    assert result["episodes_won"] == 7
+    assert result["gate_conditions"]["episode_win_rate_at_least_minimum"] is True
+    assert (
+        result["gate_conditions"]["episode_wins_significant_at_adjusted_alpha"]
+        is False
+    )
+    assert result["all_gates_passed"] is False

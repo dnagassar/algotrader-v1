@@ -48,7 +48,7 @@ __all__ = [
 ]
 
 ENSEMBLE_CONTRACT_VERSION = "v5_95_ensemble_contract_v1"
-ENSEMBLE_CONTRACT_FINGERPRINT = "817bb394ec681d733592c75f5095a433b213a75d5cc7b78658bb6fc4a1d511ca"
+ENSEMBLE_CONTRACT_FINGERPRINT = "7cb91fae9224ad635a172740dc11494c6cdc1d8a517ab2fdf376349bb6ff02a8"
 _TRADING_DAYS = 252.0
 _DECISION = "decision"
 _STRESS = "stress"
@@ -88,8 +88,11 @@ class ComponentGates:
     minimum_out_of_regime_return_drag: float = -0.005
     maximum_admitted_correlation: float = 0.70
     minimum_marginal_sharpe_improvement: float = 0.02
+    episode_win_alpha: float = 0.003125
 
     def __post_init__(self) -> None:
+        if not (0.0 < self.episode_win_alpha < 1.0):
+            raise ValidationError("episode_win_alpha must lie in (0, 1).")
         if not (0.0 < self.minimum_episode_win_rate <= 1.0):
             raise ValidationError("episode win rate must lie in (0, 1].")
         for name in ("minimum_scoreable_episodes", "minimum_episode_sessions"):
@@ -121,6 +124,7 @@ class ComponentGates:
             "minimum_marginal_sharpe_improvement": _number(
                 self.minimum_marginal_sharpe_improvement
             ),
+            "episode_win_alpha": _number(self.episode_win_alpha),
             "consistency_unit": "regime_occurrence_not_calendar_period",
         }
 
@@ -229,6 +233,10 @@ def evaluate_component(
             }
         )
     win_rate = wins / len(episodes) if episodes else 0.0
+    # Exact one-sided binomial tail against p = 0.5. With C components across R
+    # regimes the alpha is Bonferroni-adjusted upstream, so a component must
+    # clear the multiplicity-corrected bar rather than a nominal one.
+    episode_p = _binomial_tail(wins, len(episodes)) if episodes else 1.0
 
     out_drag = (
         _annualized(component_returns[_DECISION], out_regime)
@@ -282,6 +290,10 @@ def evaluate_component(
             len(episodes) >= resolved_gates.minimum_scoreable_episodes
             and win_rate >= resolved_gates.minimum_episode_win_rate
         ),
+        "episode_wins_significant_at_adjusted_alpha": (
+            len(episodes) >= resolved_gates.minimum_scoreable_episodes
+            and episode_p <= resolved_gates.episode_win_alpha
+        ),
         "out_of_regime_drag_within_floor": (
             out_drag >= resolved_gates.minimum_out_of_regime_return_drag
         ),
@@ -306,6 +318,7 @@ def evaluate_component(
         "scoreable_episodes": len(episodes),
         "episodes_won": wins,
         "episode_win_rate": _number(win_rate),
+        "episode_win_binomial_p": _number(episode_p),
         "episodes": episode_rows,
         "out_of_regime_annualized_drag": _number(out_drag),
         "admitted_correlations": correlations,
@@ -392,6 +405,16 @@ def _ensemble_metrics(
         "max_drawdown_value": max_drawdown,
         "total_return": _number(equity - 1.0),
     }
+
+
+def _binomial_tail(wins: int, trials: int) -> float:
+    """Exact one-sided P(X >= wins) for a fair coin over `trials` episodes."""
+
+    if trials < 1 or wins < 0 or wins > trials:
+        raise ValidationError("binomial inputs are out of range.")
+    return math.fsum(math.comb(trials, k) for k in range(wins, trials + 1)) / (
+        2.0**trials
+    )
 
 
 def _sharpe_edge(

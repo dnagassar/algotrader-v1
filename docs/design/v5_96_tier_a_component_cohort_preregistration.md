@@ -132,3 +132,24 @@ Broker, account, order, and position access, paper mutation, and live activity
 are forbidden. No credential value is requested, printed, returned, or persisted
 outside the trusted adapter boundary. Live capital remains an operator hard gate
 untouched by this document.
+
+## 8. Amendment recorded before any component was scored
+
+The binomial episode gate specified in section 5 was implemented after this
+document was first committed and before any component was scored, acquired, or
+evaluated. Implementing it changed the ensemble contract fingerprint from
+`817bb394ec681d733592c75f5095a433b213a75d5cc7b78658bb6fc4a1d511ca` to
+`7cb91fae9224ad635a172740dc11494c6cdc1d8a517ab2fdf376349bb6ff02a8`. The change
+is strictly tightening: it adds a requirement and removes none.
+
+Implementing it surfaced an interaction worth recording rather than quietly
+fixing. At the Bonferroni-adjusted alpha of `0.003125000000`, a **perfect
+8-of-8 episode record scores `p = 0.00390625` and fails**. The frozen
+8-episode minimum from V5.95 is therefore unreachable, and the effective
+binding minimum is **9 scoreable episodes**.
+
+The 8 is left frozen as written rather than re-parameterized. The consequence
+only makes passing harder, it was discovered before any outcome existed, and
+silently editing a frozen threshold — even in the strict direction — is the
+habit this program exists to avoid. The effective minimum is pinned by
+`test_bonferroni_alpha_makes_eight_episodes_unreachable`.
