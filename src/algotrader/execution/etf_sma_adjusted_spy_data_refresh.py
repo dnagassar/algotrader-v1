@@ -151,6 +151,18 @@ APPROVED_ADJUSTED_ETF_SYMBOLS = (
     "SLV",
     "UNG",
     "USO",
+    "VGLT",
+    "EDV",
+    "GOVT",
+    "USMV",
+    "SPHD",
+    "NOBL",
+    "VCSH",
+    "BKLN",
+    "FLOT",
+    "MTUM",
+    "SMH",
+    "VBK",
 )
 APPROVED_NEXUSTRADE_MONTHLY_SYMBOLS = (
     "AAPL",
