@@ -176,6 +176,52 @@ negative is closer to independent and correspondingly stronger.
 Any further triage needs a different asset class or a genuinely new hypothesis;
 the remaining vault is non-equity.
 
+## V5.94-V5.96 regime-conditional ensemble restructure
+
+The operator restated the program objective on 2026-08-03: the goal is an
+ensemble of regime-conditional components, not a standalone SPY-beater. The
+prior harness was structurally hostile to that — its calendar-wide consistency
+gate rejected specialists by construction, and its closure rule prevented any
+finding from composing into a system.
+
+- `v5_94_...restructure.md`: design rationale, ADOPTED.
+- `v5_95_ensemble_objective_and_regime_preregistration.md`: the binding
+  contract. Objective is **maximize Sharpe subject to a hard 0.20 drawdown
+  ceiling**; four causal regimes on trend x volatility from SPY; component
+  gates including occurrence-based consistency.
+- `src/algotrader/research/regime_classifier.py`, `ensemble_harness.py`,
+  `tier_a_cohort_scoring.py` plus tests.
+- `v5_96_..._preregistration.md` / `..._terminal_decision.md`: first Tier A
+  cohort, four components, one per regime.
+
+**Key repair:** consistency is measured across *regime occurrences*, never
+calendar periods. A bear-regime component is judged on bear-market episodes and
+is never penalized for sitting flat elsewhere.
+
+**Cohort result: 0 of 4 admitted** (`cohort_closed_no_component_admitted`).
+`defensive_quality_equity` posted a +0.126 aggregate in-regime Sharpe edge that
+cleared the threshold and would have been admitted by a naive regime harness —
+but won only 2 of 19 episodes. The occurrence gate and its Bonferroni binomial
+test rejected it. That discrimination is the restructure working.
+
+## Two harness defects to fix before a second cohort
+
+Recorded in the V5.96 terminal decision, both blocking:
+
+1. **Regime occupancy was never checked.** `calm_down` occupied 17 of 3,220
+   sessions, giving zero scoreable episodes, so
+   `short_duration_credit_carry` was untestable rather than tested. Add an
+   outcome-blind occupancy precondition to regime registration.
+2. **Monthly actions scored against daily labels.** Components act at
+   month-end but episodes are daily-label runs, so a component can be scored
+   over an episode it did not hold. Out-of-regime drag was positive for all
+   four despite each being nominally in cash. This means the +0.126 vs 2/19
+   divergence cannot be attributed between genuine inconsistency and
+   misalignment. Align the granularities, frozen before any rescoring.
+
+Neither fix may rescore this cohort; those four components are closed under the
+contract they were registered against.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -193,6 +239,9 @@ the remaining vault is non-equity.
 - `tests/unit/test_forward_shadow_registry.py`: 29 passed;
   `test_forward_shadow_vault.py`: 10 passed.
 - `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
+- `tests/unit/test_ensemble_harness.py`: 25 passed.
+- `verify_offline.ps1 -Full -Shards 4` at `261766d`: PASS (10,542 collected,
+  10,537 passed, 5 skipped, 0 failures).
 - `tests/unit/test_vault_volatility_managed_triage.py`: 14 passed.
 - V5.92 allowlist contract suites: 121 passed.
 - `verify_offline.ps1 -Full -Shards 4` at the V5.91 tip `6eb1579`: PASS
@@ -220,28 +269,17 @@ the remaining vault is non-equity.
 
 ## Exact next action
 
-Both vault triages are closed and the single-country equity vault is spent.
-The forward-shadow registry remains built and deliberately unused. The next
-action is an operator decision, not an implementation task:
+Fix the two V5.96 harness defects before any second cohort:
 
-1. Accept the replicated finding — defensive overlays buy drawdown and pay in
-   return — and stop testing that family entirely; or
-2. Triage a different asset class from the remaining non-equity vault; or
-3. Register a first forward-shadow hypothesis and accept its frozen window.
+1. Add an outcome-blind regime **occupancy precondition** (minimum scoreable
+   episodes on the intended panel) to regime registration.
+2. **Align action and scoring granularity** — month-end-aligned episode windows
+   or daily-acting components — frozen before anything is rescored.
 
-Do not re-run either closed rule on a new cohort, and do not adjust the 15%
-volatility target or the 200-session lookback: both are frozen failures.
+Then register a second Tier A cohort against regimes that actually occur. Do
+not rescore V5.96's four components under a corrected harness; they are closed.
+Tier B (every closed candidate, the V5.91-V5.93 drawdown findings, the V5.89
+ablation) still requires a forward shadow and cannot be promoted historically.
 
-Note for any future triage: V5.91 shows a cost-robustness gate and a
-regime-consistency gate both earn their keep. Do not drop them to make a
-primary gate carry a milestone alone.
-
-If a hypothesis is registered, wire one
-`append_forward_shadow_observation` call per completed trading session into
-the existing EOD refresh cadence, with targets computed causally from data
-through the prior session.
-
-Do not reopen, re-tune, combine, or rescue any closed candidate, and do not
-promote any control or ablation on its historical numbers. The sealed Crypto
-Tournament V2 reveal remains preregistered for `2026-08-13T00:00:00Z`. Live
-capital remains a separate operator hard gate.
+Twenty milestones, zero validated alpha. Live capital remains an operator hard
+gate that no work in this session moved.
