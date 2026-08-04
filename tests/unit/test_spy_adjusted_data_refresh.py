@@ -35,7 +35,9 @@ def test_refresh_script_contract_defaults_to_dry_run_and_requires_live_flag() ->
         '"AGG", "VEA", "VWO", "BND", "SHY", "IEF", "LQD", "EFA", "VNQ", '
         '"DBC", "QUAL", "PBUS", "IWD", "IWF", "RSP", "VBR", "VIG", '
         '"SPLV", "URTH", "VTI", "GSG", "EEM", "EWJ", "ICF", "RWX", '
-        '"VGK", "HYG", "TIP", "AAPL", "MSFT", '
+        '"VGK", "HYG", "TIP", '
+        '\"EWA\", \"EWC\", \"EWD\", \"EWG\", \"EWH\", \"EWI\", \"EWK\", \"EWL\", \"EWM\", \"EWN\", \"EWO\", \"EWP\", \"EWQ\", \"EWS\", \"EWU\", \"EWW\", \"EWY\", \"EWZ\", '
+        '"AAPL", "MSFT", '
         '"GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]'
         in script
     )
@@ -94,7 +96,7 @@ def test_dry_run_builds_tiingo_request_without_network(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "symbol",
-    ("QQQ", "XLK", "VEU", "VEA", "LQD", "EFA", "VNQ", "DBC", "QUAL", "PBUS", "IWD", "IWF", "RSP", "VBR", "VIG", "SPLV", "URTH", "VTI", "GSG", "EEM", "EWJ", "ICF", "RWX", "VGK", "HYG", "TIP", "BRK-B"),
+    ("QQQ", "XLK", "VEU", "VEA", "LQD", "EFA", "VNQ", "DBC", "QUAL", "PBUS", "IWD", "IWF", "RSP", "VBR", "VIG", "SPLV", "URTH", "VTI", "GSG", "EEM", "EWJ", "ICF", "RWX", "VGK", "HYG", "TIP", "EWA", "EWZ", "BRK-B"),
 )
 def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
     tmp_path: Path,

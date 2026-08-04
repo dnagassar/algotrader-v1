@@ -27,7 +27,7 @@ param(
     [string]$SoakReport,
     [ValidateRange(1, 20)]
     [int]$SoakRequiredSessions = 5,
-    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY", "VEU", "BIL", "AGG", "VEA", "VWO", "BND", "SHY", "IEF", "LQD", "EFA", "VNQ", "DBC", "QUAL", "PBUS", "IWD", "IWF", "RSP", "VBR", "VIG", "SPLV", "URTH", "VTI", "GSG", "EEM", "EWJ", "ICF", "RWX", "VGK", "HYG", "TIP", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]
+    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD", "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY", "VEU", "BIL", "AGG", "VEA", "VWO", "BND", "SHY", "IEF", "LQD", "EFA", "VNQ", "DBC", "QUAL", "PBUS", "IWD", "IWF", "RSP", "VBR", "VIG", "SPLV", "URTH", "VTI", "GSG", "EEM", "EWJ", "ICF", "RWX", "VGK", "HYG", "TIP", "EWA", "EWC", "EWD", "EWG", "EWH", "EWI", "EWK", "EWL", "EWM", "EWN", "EWO", "EWP", "EWQ", "EWS", "EWU", "EWW", "EWY", "EWZ", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "GS", "JPM", "BRK-B", "COST")]
     [string]$Symbol = "SPY",
     [ValidateSet("offline_fixture", "dry_run", "live_market_data_fetch")]
     [string]$Mode = "dry_run",
