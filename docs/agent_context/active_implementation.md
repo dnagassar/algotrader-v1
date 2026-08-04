@@ -13,8 +13,8 @@ live capital remains prohibited behind a separate operator hard gate.
 ## Checkout and writer ownership
 
 - Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
-- Branch: `claude/v5.91-vault-cross-sectional-triage`, branched from the
-  V5.90 tip after that merged to `main`.
+- Branch: `claude/v5.92-vault-volatility-managed-triage`, branched from the
+  V5.91 tip after that merged to `main`.
 - Exactly one implementation writer at a time.
 
 ## V5.90 forward-shadow infrastructure (built)
@@ -130,6 +130,52 @@ decisions; a six-month forward shadow of a monthly rule would give six. The
 triage layer did its job — a published effect was screened out in hours rather
 than after a forward window.
 
+## V5.92 vault volatility-managed triage (closed)
+
+Second and final vault triage, on the eighteen single-country markets left
+untouched after V5.91 spent the first eighteen. Deliberately a **different
+mechanism**, not a re-run: V5.91's protocol forbids adjusting the universe after
+a failure, so re-testing absolute trend on a fresh cohort would have been
+universe-shopping. V5.92 tests volatility-managed sizing, which never consults
+direction at all.
+
+- `docs/design/v5_92_..._preregistration.md` (`a24198f`): frozen protocol,
+  including an explicit disclosure that the mechanism was chosen because V5.77
+  was the strongest prior candidate.
+- `b67aa35`: eighteen markets added to the adjusted-EOD allowlist.
+- `5ec8dd7`: engine, tests, admission, receipt — committed before the reveal.
+- `docs/design/v5_92_..._terminal_decision.md`: closure evidence.
+
+Route: `close_triage_without_tuning`, decisively. Sharpe wins **2 of 18**
+(binomial p `0.999927520752` — evidence in the opposite direction), **0 of 18**
+in the second half, median Sharpe delta `-0.050266420387`, stress 1 of 18.
+Drawdown improved in 17 of 18. Average target weight ran 0.52-0.87 because
+emerging-market volatility sits far above the frozen 15% target, so the rule was
+persistently under-invested and paid for its drawdown protection in return.
+
+**Caveat that governs interpretation:** the repository forbids leverage, so the
+frozen rule capped weight at 1.0 and could only de-risk. Moreira-Muir's
+published construction also levers *up* in calm periods, which is where much of
+the source effect originates. This therefore closes "volatility-capped exposure
+without leverage", not volatility-managed portfolios as published. Do not
+report it as a refutation of the paper.
+
+## Replicated cross-triage finding
+
+Across V5.91 and V5.92 — two different mechanisms, 36 disjoint never-acquired
+markets — the same result holds: drawdown improves almost universally (18/18 and
+17/18), annualized return falls in the large majority, and neither clears a
+cost-robust, regime-consistent Sharpe bar. Defensive overlays buy drawdown
+reduction and pay in return; at realistic costs the exchange has not been
+favorable. This is the same trade V5.88 and V5.89 found on contaminated
+US-centric data, now confirmed on clean data. V5.92's mean pairwise excess
+correlation of `0.422316794291` is well below V5.91's `0.630936283855`, so this
+negative is closer to independent and correspondingly stronger.
+
+**The single-country equity vault is now spent.** 91 distinct symbols acquired.
+Any further triage needs a different asset class or a genuinely new hypothesis;
+the remaining vault is non-equity.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -147,6 +193,10 @@ than after a forward window.
 - `tests/unit/test_forward_shadow_registry.py`: 29 passed;
   `test_forward_shadow_vault.py`: 10 passed.
 - `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
+- `tests/unit/test_vault_volatility_managed_triage.py`: 14 passed.
+- V5.92 allowlist contract suites: 121 passed.
+- `verify_offline.ps1 -Full -Shards 4` at the V5.91 tip `6eb1579`: PASS
+  (10,477 collected, 10,472 passed, 5 skipped, 0 failures, 0 errors).
 - V5.91 allowlist contract suites: 117 passed.
 - Architecture and safety invariants after V5.90: 69 passed
   (dependency direction, broker mutation surface, network guard).
@@ -170,12 +220,17 @@ than after a forward window.
 
 ## Exact next action
 
-The triage layer is proven and the forward-shadow registry remains built and
-deliberately unused. The next action is an operator decision, not an
-implementation task: either run further vault triages on the remaining
-untouched markets (18 more single-country ETFs are vault-eligible, plus the
-whole non-equity vault), or register a first forward-shadow hypothesis and
-accept its frozen window.
+Both vault triages are closed and the single-country equity vault is spent.
+The forward-shadow registry remains built and deliberately unused. The next
+action is an operator decision, not an implementation task:
+
+1. Accept the replicated finding — defensive overlays buy drawdown and pay in
+   return — and stop testing that family entirely; or
+2. Triage a different asset class from the remaining non-equity vault; or
+3. Register a first forward-shadow hypothesis and accept its frozen window.
+
+Do not re-run either closed rule on a new cohort, and do not adjust the 15%
+volatility target or the 200-session lookback: both are frozen failures.
 
 Note for any future triage: V5.91 shows a cost-robustness gate and a
 regime-consistency gate both earn their keep. Do not drop them to make a
