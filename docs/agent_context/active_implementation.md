@@ -482,19 +482,29 @@ in which its ticker's price series can be trusted.
 
 ## Verification
 
-- **V6.03 note on this worktree.** `verify_offline.ps1 -Full -Shards 4` does
-  **not** return PASS here, and the reason is environmental, not regression.
-  `runs/` is gitignored, so a fresh worktree has none of the canonical CSVs and
-  manifests the prior-milestone replay tests require. 39 failures across four
-  shards, 10,604 passed, 20 skipped.
+- **`verify_offline.ps1 -Full -Shards 4` at the V6.03 tip `ee78f12`: PASS**,
+  run in the writer checkout `C:\Users\danie\.codex\worktrees\c029\algo_trader`
+  on a named branch. `bounded_full_suite=PASS`, all four shards exit 0 (2,666 /
+  2,666 / 2,666 / 2,665 tests), `collection_equivalence=PASS`,
+  `execution_equivalence=PASS`, offline guard tests 109 passed, preflight PASS
+  (offline, credential-free). The checkout was restored to
+  `claude/v6.00-funding-carry-synchronized` at `2810f7a`, clean, afterwards.
+- **The same tip does not pass in a lane worktree, for two environmental
+  reasons that are not regressions.** `runs/` is gitignored, so a fresh
+  checkout lacks the canonical CSVs and manifests the prior-milestone replay
+  tests require: 39 failures, 10,604 passed, 20 skipped.
 - That was established rather than asserted. A detached worktree at pristine
   `HEAD` (`2810f7a`, none of the V6.03 changes present) was created and the full
   sharded suite run there. **Set-differencing the failure IDs gives zero
-  regressions**; the only difference is one test that fails on the clean
-  baseline and passes here because this checkout happens to have
-  `runs/crypto_supervised_readiness_trial`. Same cause, opposite direction.
-- Anyone needing a true PASS must run in a checkout that carries the prior
-  milestones' `runs/` data — the writer checkout does.
+  regressions.**
+- **`test_crypto_supervised_readiness_trial` requires a named branch**, not
+  particular `runs/` data. It asserts `packet["branch_and_commit"]["branch"]` is
+  non-empty, so it fails in any detached checkout. Both the pristine baseline
+  worktree and the first writer-checkout run were detached, and both failed it
+  for that reason alone. Verify on a named branch or this test will report a
+  false failure.
+- So a true PASS requires a checkout carrying the prior milestones' `runs/` data
+  **and** a named branch — which is what the writer-checkout run above was.
 - `tests/unit/test_delisting_registry.py`: 29 passed.
 - `tests/unit/test_edgar_delisting_pipeline.py`: 30 passed.
 - Dependency direction, default network guard, broker mutation surface, and
