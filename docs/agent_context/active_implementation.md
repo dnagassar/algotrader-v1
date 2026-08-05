@@ -477,8 +477,42 @@ gives ~14x, so the faithful full fetch was affordable.
 - `docs/design/v6_03_full_history_delisting_registry.md`.
 
 Output (gitignored, local): `runs/v6_03_full_history_delisting_registry/`,
-including `delisting_registry.jsonl` — 15,191 records each carrying the window
-in which its ticker's price series can be trusted.
+including `delisting_registry.jsonl` — 15,191 delisting events.
+
+## V6.03a DEFECT: the registry may not be joined to a price universe
+
+Found immediately afterwards, when the operator asked for the survivorship
+measurement. **The registry records which CIK delisted and when. It does not
+record which security delisted.** Cover pages tag every registered class, and
+all of them were attributed to the episode.
+
+- **620 of 6,318 symbols (9.8%) are marked delisted on more than one date**,
+  including `AAPL` and `ABBV`, which have never delisted.
+- `price_admission_window` as it stands would truncate Apple's series in 2022 —
+  a worse and quieter failure than the `BBBY` splice this was built to fix.
+- The recovery rates are still correct: they measure recall. **Precision was
+  never measured.** That is the defect, and it is the same family as the V6.02
+  parser — a number that describes something other than what it appears to.
+
+**The fix is verified feasible, not built.** V6.02 concluded Form 25 carries no
+ticker, which is true, and stopped one step short: `primary_doc.xml` is ~1 KB
+and carries `descriptionClassSecurity` (e.g. `ProShares Ultra Australian
+Dollar`). The cover page supplies the other half — each class's facts share an
+XBRL `contextRef`, so title/ticker/exchange group into per-class triples, 20 of
+20 complete on the ProShares cover page. Exact attribution is a title match
+between the two. It needs `extract_trading_symbols` to return context-grouped
+triples instead of a flat list, plus one extra ~1 KB fetch per Form 25.
+
+**A second, independent blocker.** Every universe this program has tested is an
+ETF universe, and registered funds file N-CSR / N-PORT, so
+`entityType=investment` resolves 0 of 302. No dead ETF or ETN ticker is in the
+registry at all — `XIV`, `TVIX`, `UWT`, `DWT`, `JNUG`, `DGAZ`, `UGAZ`, `NUGT`
+are all absent. Fixing attribution does not fix this; it needs the accepted
+source-filing forms extended to the fund reports.
+
+Until both are addressed, use the registry for **delisting events only**. The
+survivorship inflation measurement is blocked, and would have produced a
+confidently wrong number had it been run.
 
 ## Verification
 

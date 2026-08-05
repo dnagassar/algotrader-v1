@@ -252,6 +252,70 @@ an upward bias of unknown size.
 inline XBRL phased in from 2019. That is 9,543 of 15,191 episodes. They are
 exported and flagged `not_attempted` rather than dropped or guessed.
 
+## DEFECT: symbols are over-attributed. Do not join this registry to a universe.
+
+Found while attempting to wire the registry into a price universe. **The
+registry records which CIK delisted and when, correctly. It does not record
+*which security* delisted.**
+
+`extract_trading_symbols` returns every `dei:TradingSymbol` on the cover page,
+and a cover page tags every class the filer has registered. A Form 25 covering
+one series of a multi-series trust therefore marks all of them.
+
+Evidence, internal to the data:
+
+- **620 of 6,318 symbols (9.8%) are marked delisted on more than one date.**
+- Those include `AAPL` (2022-11-09, 2024-01-17, 2025-05-22) and `ABBV`
+  (2019-10-18, 2021-05-04, 2023-11-15). Neither has ever delisted; they appear
+  on the cover pages of structured-note programmes referencing them.
+- ProShares Trust II's 2020-04-03 episode claims twenty tickers including
+  `SVXY`, `UVXY` and `VIXY`, all still trading.
+
+Applying `price_admission_window` as it stands would truncate Apple's price
+series in 2022. That is a worse failure than the `BBBY` splice this registry was
+built to fix, because it is silent and it affects live tickers.
+
+**The recovery rates above are still correct as stated** — they measure whether
+a symbol was recovered, and one was. They do not measure whether it was the
+right symbol. Precision was never measured, only recall. That distinction is the
+defect.
+
+### The fix, verified as feasible but not built
+
+Form 25 does identify its security, contrary to what V6.02 concluded. Its
+`primary_doc.xml` is roughly 1 KB and carries
+`descriptionClassSecurity` — for example `ProShares Ultra Australian Dollar` —
+plus `fileNumber`. V6.02 checked that Form 25 carries no *ticker*, which is
+true, and stopped one step short.
+
+The cover page supplies the other half: each class's facts share an XBRL
+`contextRef`, so `dei:Security12bTitle`, `dei:TradingSymbol` and
+`dei:SecurityExchangeName` group into per-class triples. On the ProShares
+cover page all twenty contexts carry a complete title/ticker pair
+(`SVXY <- ProShares Short VIX Short-Term Futures ETF`).
+
+So exact attribution is: fetch the Form 25's `primary_doc.xml`, group cover-page
+facts by `contextRef`, and select the triple whose `Security12bTitle` matches
+`descriptionClassSecurity`. This requires `extract_trading_symbols` to return
+context-grouped triples rather than a flat symbol list.
+
+Until that is built, use this registry for **delisting events (CIK and date)**
+only, never for symbol-level price admission.
+
+## Second limit on any universe join: the program's own universes are funds
+
+Registered funds file N-CSR and N-PORT, not the four forms
+`select_symbol_source_filing` accepts, so `entityType=investment` resolves
+**0 of 302**. Not one dead ETF or ETN ticker is in the registry: `XIV`, `TVIX`,
+`UWT`, `DWT`, `JNUG`, `DGAZ`, `UGAZ`, `NUGT` are all absent. The funds that do
+resolve are commodity pools such as ProShares Trust II, which file 10-K because
+they are not registered investment companies — and those are exactly the
+over-attributed cases above.
+
+Every universe this program has tested is an ETF universe. The registry
+therefore cannot currently bound any of them, independently of the
+over-attribution defect and independently of the Tiingo price hole.
+
 ## What was produced
 
 `delisting_registry.jsonl`: 15,191 records, 3,822 carrying symbols, each with
