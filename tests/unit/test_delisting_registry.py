@@ -81,6 +81,133 @@ def test_missing_tags_yield_no_symbol_rather_than_a_guess() -> None:
     assert subject.extract_trading_symbols("<html>no xbrl here</html>") == ((), "")
 
 
+# --- the V6.02 extraction defect, pinned -----------------------------------
+#
+# The first parser read the character straight after the opening tag, so any
+# filing that wrapped the value in presentation markup returned nothing. That
+# turned parseable filings into "unrecoverable" records and produced a false
+# filer-type coverage story. Each fixture below is the real markup shape taken
+# from the filing named in its comment.
+
+
+def test_symbols_wrapped_in_presentation_markup_are_recovered() -> None:
+    # BlueRiver Acquisition Corp 10-K: value inside <b>.
+    bold = (
+        '<ix:nonNumeric contextRef="Duration_1_1_2022_To_12_31_2022" '
+        'name="dei:TradingSymbol" id="Tc_pSZk3">'
+        '<b style="font-size:8pt;font-weight:bold;">BLUA</b></ix:nonNumeric>'
+    )
+    # 51Talk 20-F: value inside <span>.
+    span = (
+        '<ix:nonNumeric contextRef="Duration_1_1_2022_To_12_31_2022" '
+        'name="dei:TradingSymbol" id="Tc_h8tLg">'
+        '<span style="font-size:9pt;">COE</span></ix:nonNumeric>'
+    )
+    # Banco Santander Mexico 20-F: value inside <span>, exchange tagged with a
+    # leading format attribute so `name` is not the first attribute.
+    foreign = (
+        '<ix:nonNumeric contextRef="Duration_1_1_2022" name="dei:TradingSymbol" '
+        'id="Tc_jgM57">'
+        '<span style="font-family:\'Times New Roman\';">BSMX</span>'
+        "</ix:nonNumeric>"
+        '<ix:nonNumeric format="ixt-sec:exchnameen" contextRef="Duration_1_1_2022" '
+        'name="dei:SecurityExchangeName"><span>New York Stock Exchange</span>'
+        "</ix:nonNumeric>"
+    )
+
+    assert subject.extract_trading_symbols(bold)[0] == ("BLUA",)
+    assert subject.extract_trading_symbols(span)[0] == ("COE",)
+    assert subject.extract_trading_symbols(foreign) == (
+        ("BSMX",),
+        "New York Stock Exchange",
+    )
+
+
+def test_bare_and_wrapped_values_are_read_the_same_way() -> None:
+    """SVB tagged a bare value and passed the old parser; the others did not.
+
+    Both forms must yield the same symbol, or the recovery rate measures the
+    parser rather than EDGAR.
+    """
+
+    bare = '<ix:nonNumeric name="dei:TradingSymbol">SIVB</ix:nonNumeric>'
+    wrapped = '<ix:nonNumeric name="dei:TradingSymbol"><b>SIVB</b></ix:nonNumeric>'
+
+    assert subject.extract_trading_symbols(bare) == subject.extract_trading_symbols(
+        wrapped
+    )
+
+
+def test_layout_spacers_and_entities_are_not_part_of_the_symbol() -> None:
+    document = (
+        '<ix:nonNumeric name="dei:TradingSymbol">'
+        "&#8203; <span>&#160;</span>BRK.B&#160;</ix:nonNumeric>"
+    )
+
+    assert subject.extract_trading_symbols(document)[0] == ("BRK.B",)
+
+
+def test_tagged_placeholders_are_absences_not_symbols() -> None:
+    document = (
+        '<ix:nonNumeric name="dei:TradingSymbol"><span>None</span></ix:nonNumeric>'
+        '<ix:nonNumeric name="dei:TradingSymbol">N/A</ix:nonNumeric>'
+        '<ix:nonNumeric name="dei:TradingSymbol"><b>REAL</b></ix:nonNumeric>'
+    )
+
+    assert subject.extract_trading_symbols(document)[0] == ("REAL",)
+
+
+def test_plain_instance_elements_are_read_as_well_as_inline_xbrl() -> None:
+    instance = (
+        '<dei:TradingSymbol contextRef="c1">TWTR</dei:TradingSymbol>'
+        '<dei:SecurityExchangeName contextRef="c1">NYSE</dei:SecurityExchangeName>'
+    )
+
+    assert subject.extract_trading_symbols(instance) == (("TWTR",), "NYSE")
+
+
+def test_a_concept_whose_name_merely_contains_the_target_is_not_matched() -> None:
+    document = (
+        '<ix:nonNumeric name="dei:TradingSymbolAxis">NOTASYMBOL</ix:nonNumeric>'
+        '<ix:nonNumeric name="custom:TradingSymbol">ALSONOT</ix:nonNumeric>'
+    )
+
+    assert subject.extract_trading_symbols(document)[0] == ()
+
+
+# --- recovery reporting ----------------------------------------------------
+
+
+def test_recovery_is_summarised_with_denominators_per_stratum() -> None:
+    rows = [
+        {"ticker_recoverable": True, "source_form": "10-K", "era": "tagging_era"},
+        {"ticker_recoverable": True, "source_form": "20-F", "era": "tagging_era"},
+        {"ticker_recoverable": False, "source_form": "20-F", "era": "tagging_era"},
+        {"ticker_recoverable": False, "source_form": "", "era": "pre_tagging_era"},
+    ]
+
+    summary = subject.summarize_symbol_recovery(
+        rows, strata=("source_form", "era")
+    )
+
+    assert summary["total"] == 4
+    assert summary["resolved"] == 2
+    assert summary["recovery_rate"] == 0.5
+    by_form = summary["by"]["source_form"]
+    assert by_form["10-K"] == {"total": 1, "resolved": 1, "recovery_rate": 1.0}
+    assert by_form["20-F"] == {"total": 2, "resolved": 1, "recovery_rate": 0.5}
+    # An absent stratum value is labelled rather than dropped.
+    assert by_form["unknown"]["total"] == 1
+    assert summary["by"]["era"]["pre_tagging_era"]["recovery_rate"] == 0.0
+
+
+def test_recovery_summary_of_nothing_does_not_divide_by_zero() -> None:
+    summary = subject.summarize_symbol_recovery([])
+
+    assert summary["total"] == 0
+    assert summary["recovery_rate"] == 0.0
+
+
 def test_document_filename_is_a_usable_cross_check() -> None:
     assert subject.symbol_from_document_name("sivb-20221231.htm") == "SIVB"
     assert subject.symbol_from_document_name("twtr-20220630.htm") == "TWTR"

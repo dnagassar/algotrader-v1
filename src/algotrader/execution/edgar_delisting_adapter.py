@@ -34,6 +34,7 @@ __all__ = [
     "DESTINATION_ALLOWLIST",
     "EdgarRequestConfig",
     "build_edgar_request",
+    "edgar_get",
     "run_edgar_fetch",
 ]
 
@@ -160,7 +161,7 @@ def run_edgar_fetch(
         _write_jsonl(root / f"{stem}_receipt.jsonl", receipt)
         return receipt
 
-    payload = (http_get or _https_get)(
+    payload = (http_get or edgar_get)(
         request["destination_host"], request["destination_path"], config.user_agent
     )
     raw_path = root / f"{stem}.bin"
@@ -189,7 +190,7 @@ def _stem(config: EdgarRequestConfig) -> str:
     ).hexdigest()[:16]
 
 
-def _https_get(host: str, path: str, user_agent: str, timeout: float = 60.0) -> bytes:
+def edgar_get(host: str, path: str, user_agent: str, timeout: float = 60.0) -> bytes:
     if host not in DESTINATION_ALLOWLIST:
         raise ValidationError("destination host is not allowlisted.")
     connection = http.client.HTTPSConnection(host, timeout=timeout)
@@ -210,6 +211,11 @@ def _https_get(host: str, path: str, user_agent: str, timeout: float = 60.0) -> 
         return body
     finally:
         connection.close()
+
+
+# Retained under the private name the first version exposed, so existing
+# callers and their allowlist tests keep working.
+_https_get = edgar_get
 
 
 def _write_bytes(path: Path, payload: bytes) -> None:
