@@ -41,32 +41,50 @@ Two dead ends were checked and ruled out rather than assumed:
 EDGAR also drops the ticker from `submissions` once a company delists: SVB
 Financial returns `tickers: []`, `exchanges: []`.
 
+## Correction issued by V6.03
+
+**The "3 of 7, systematic by filer type" finding below was wrong, and the cause
+was a defect in this milestone's own parser, not a limit of EDGAR.**
+
+`_SYMBOL_TAG` matched the character immediately following the fact's opening
+tag. Issuers routinely wrap the value in presentation markup —
+`<b>BLUA</b>`, `<span>COE</span>` — so for those filings the next character is
+`<` and the match failed. SVB Financial happened to tag a bare `>SIVB<` and
+passed, which is why the misses appeared to sort by filer type.
+
+Re-run against the same seven documents with the repaired parser, recovery is
+**6 of 7**. Banco Santander Mexico (`BSMX`), 51Talk (`COE`) and BlueRiver
+(`BLUA`, `BLUA.U`) all resolve; two of those are foreign private issuers and one
+is the SPAC. Only BONSO Electronics still fails, and inspection confirms its
+20-F carries no `dei:TradingSymbol` at all — a real absence.
+
+There was no filer-type effect. A sample of seven was read as a coverage story
+when it was measuring the parser. See
+`v6_03_full_history_delisting_registry.md`; the defect is pinned by tests in
+`tests/unit/test_delisting_registry.py`.
+
 ## Verified end to end
 
 One quarter, 2023 QTR2: **554** Form 25 / 25-NSE filings enumerated. On a
-seven-company sample:
+seven-company sample, as re-measured after the correction above:
 
 | CIK | Delisted | Symbols | Source |
 | --- | --- | --- | --- |
 | 0000719739 | 2023-05-02 | `SIVB`, `SIVBP` | cover-page XBRL |
 | 0001091587 | 2023-05-12 | `ABB` | cover-page XBRL |
-| 0001851908 | 2023-06-26 | `BSAQ`, `BSAQWS` | cover-page XBRL |
-| 0001831006 | 2023-04-10 | — | unrecoverable |
-| 0001698287 | 2023-04-24 | — | unrecoverable |
-| 0001659494 | 2023-06-01 | — | unrecoverable |
-| 0000846546 | 2023-06-23 | — | unrecoverable |
+| 0001851908 | 2023-06-26 | `BSAQ`, `BSAQWS`, `BSAQU` | cover-page XBRL |
+| 0001831006 | 2023-04-10 | `BLUA`, `BLUA.U` | cover-page XBRL |
+| 0001698287 | 2023-04-24 | `BSMX` | cover-page XBRL |
+| 0001659494 | 2023-06-01 | `COE` | cover-page XBRL |
+| 0000846546 | 2023-06-23 | — | not tagged in filing |
 
 SVB Financial — the case that motivated the whole exercise, and the one Tiingo
 serves as a 404 — resolves correctly to `SIVB` and `SIVBP`.
 
 ## Coverage limits, stated rather than smoothed over
 
-**Recovery was 3 of 7 on this sample, and the misses look systematic.** The four
-unresolved are Banco Santander Mexico, 51Talk, BONSO Electronics and BlueRiver
-Acquisition: foreign private issuers and a SPAC. Domestic operating companies
-resolved; foreign filers and blank-check vehicles did not. Seven is far too
-small a sample to put a number on, and a full-history run is needed before any
-recovery rate is quoted.
+Seven is far too small a sample to put a number on, and a full-history run is
+needed before any recovery rate is quoted. That run is V6.03.
 
 **Pre-2019 delistings are largely unrecoverable by construction.** Cover-page
 inline XBRL phased in from 2019, so earlier delistings yield a CIK and a date

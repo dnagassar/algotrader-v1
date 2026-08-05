@@ -419,8 +419,100 @@ records are kept and flagged via `TICKER_TAGGING_ERA_START`, never guessed. And
 the price-side hole stands: abrupt failures are absent from Tiingo entirely, so
 any universe from this is survivorship-**reduced**, not survivorship-free.
 
+## V6.03 full-history delisting registry (done)
+
+Thread 1 of the V6.02 handoff, run to completion. Also **corrects V6.02's
+headline coverage finding, which was wrong.**
+
+**The V6.02 defect.** Its "recovery 3 of 7, misses systematic by filer type —
+foreign private issuers and SPACs fail where domestic operating companies
+succeed" was produced by its own parser. `_SYMBOL_TAG` matched the character
+straight after the fact's opening tag, but issuers wrap the value in
+presentation markup (`<b>BLUA</b>`, `<span>COE</span>`); SVB happened to tag a
+bare `>SIVB<` and passed, which made the failures look categorical. Repaired
+parser on the same seven documents: **6 of 7**, no filer-type effect, only BONSO
+still failing and its 20-F genuinely carries no tag. Six regressions pin the
+markup shapes, including "bare and wrapped must agree" — the missing property.
+
+**Stage A.** 135 quarters, 1993 Q1 - 2026 Q3, 4.22 GB of `form.idx`. 37,253
+Form 25 / 25-NSE filings, **15,191 delisting episodes**, 11,773 CIKs. Coverage
+starts 1999, not 2005: SEC retroactively indexed paper filings under the
+`9999999997-` accession prefix. Verified the pre-1999 zeros are real absence,
+not a parse failure, by confirming the row parser reads 99.97% of lines in
+every era.
+
+**Stage B.** All 5,648 tagging-era episodes, 10,416 requests, 13.2 GB.
+**3,822 resolved, 6,318 distinct symbols**, including `SIVB`, `BBBY`, `ATVI`.
+
+Three rates, never the first alone:
+`0.6767` all tagging-era episodes; `0.7992` given an eligible source filing;
+`0.9712` for source filings from 2022 on — the mature regime. Recovery is
+governed by the *source filing's* year, not the delisting's, and the by-year
+curve (2018 `0.011`, 2019 `0.254`, 2020 `0.524`, 2021 `0.776`, 2022+ `~0.96`)
+reproduces SEC's three-tier phase-in unprompted.
+
+**Two structural gaps found, named, and left unrepaired.**
+
+1. **Investment companies: 0 of 302.** Closed-end funds and ETFs file N-CSR /
+   N-PORT, not the four forms `select_symbol_source_filing` accepts. Known
+   cause, known fix, deliberately not applied — changing the source rule after
+   seeing which bucket failed is the tuning this program forbids.
+2. **Some failed banks are absent from EDGAR entirely.** First Republic Bank
+   and Signature Bank have **zero** Form 25 filings: state-chartered banks
+   without a holding company register under section 12(i) with their banking
+   regulator, not the SEC. The abrupt failures survivorship bias is about are
+   partly missing from the *event* source, not just the price vendor.
+
+Two shortcuts tested and rejected on evidence: rendered `R1.htm` cover pages
+are 70 KB but drop share classes (SVB keeps `SIVB`, loses `SIVBP`), and HTTP
+`Range` is unsupported by `www.sec.gov`. Neither was needed — gzip already
+gives ~14x, so the faithful full fetch was affordable.
+
+- `src/algotrader/execution/edgar_delisting_pipeline.py`: two resumable stages,
+  paced under SEC fair access, all network through the audited adapter, payloads
+  hashed and dropped, `dry_run` performs zero network access.
+- `scripts/run_delisting_registry_full_history.ps1`,
+  `scripts/report_delisting_registry.py`.
+- `tests/unit/test_edgar_delisting_pipeline.py`: 30 tests.
+- `docs/design/v6_03_full_history_delisting_registry.md`.
+
+Output (gitignored, local): `runs/v6_03_full_history_delisting_registry/`,
+including `delisting_registry.jsonl` — 15,191 records each carrying the window
+in which its ticker's price series can be trusted.
+
 ## Verification
 
+- **`verify_offline.ps1 -Full -Shards 4` at the V6.03 tip `ee78f12`: PASS**,
+  run in the writer checkout `C:\Users\danie\.codex\worktrees\c029\algo_trader`
+  on a named branch. `bounded_full_suite=PASS`, all four shards exit 0 (2,666 /
+  2,666 / 2,666 / 2,665 tests), `collection_equivalence=PASS`,
+  `execution_equivalence=PASS`, offline guard tests 109 passed, preflight PASS
+  (offline, credential-free). The checkout was restored to
+  `claude/v6.00-funding-carry-synchronized` at `2810f7a`, clean, afterwards.
+- **The same tip does not pass in a lane worktree, for two environmental
+  reasons that are not regressions.** `runs/` is gitignored, so a fresh
+  checkout lacks the canonical CSVs and manifests the prior-milestone replay
+  tests require: 39 failures, 10,604 passed, 20 skipped.
+- That was established rather than asserted. A detached worktree at pristine
+  `HEAD` (`2810f7a`, none of the V6.03 changes present) was created and the full
+  sharded suite run there. **Set-differencing the failure IDs gives zero
+  regressions.**
+- **`test_crypto_supervised_readiness_trial` requires a named branch**, not
+  particular `runs/` data. It asserts `packet["branch_and_commit"]["branch"]` is
+  non-empty, so it fails in any detached checkout. Both the pristine baseline
+  worktree and the first writer-checkout run were detached, and both failed it
+  for that reason alone. Verify on a named branch or this test will report a
+  false failure.
+- So a true PASS requires a checkout carrying the prior milestones' `runs/` data
+  **and** a named branch — which is what the writer-checkout run above was.
+- `tests/unit/test_delisting_registry.py`: 29 passed.
+- `tests/unit/test_edgar_delisting_pipeline.py`: 30 passed.
+- Dependency direction, default network guard, broker mutation surface, and
+  architecture invariants after V6.03: 104 and 72 passed.
+- V6.03 live run: zero ambient credential-bearing environment variables before
+  stage A and stage B; 10,551 requests total, all GET, all against
+  `www.sec.gov` or `data.sec.gov`, `destination_allowlist_match` true on every
+  manifest row and `credentials_used` false on every row.
 - Credential preflight: zero ambient credential-bearing environment
   variables before every offline run.
 - `verify_offline.ps1 -Full -Shards 8` at `6035d68`: PASS
@@ -481,19 +573,27 @@ any universe from this is survivorship-**reduced**, not survivorship-free.
 
 Operator decision. Twenty-eight milestones, zero validated alpha.
 
-Two live threads, both now unblocked rather than theoretical:
+Thread 1 is closed by V6.03 above. The remaining thread, plus what V6.03 opened:
 
-1. **Full-history delisting registry.** V6.02 works on one quarter. Running it
-   across all quarters would give the first survivorship-reduced universe this
-   program has had, plus a real recovery-rate measurement to replace the 3-of-7
-   sample. Cost is bandwidth and patience: `form.idx` is ~48 MB per quarter.
-   Characterise recovery by filer type before quoting any number.
-2. **Continuously-held funding carry.** V6.00 showed the carry is real and
+1. **Continuously-held funding carry.** V6.00 showed the carry is real and
    collectable (21-49% cumulative funding, favourable basis) and that the frozen
    entry rule destroyed it through 667-733 position flips. A permanently-held
    variant is the obvious next hypothesis and must be treated as one: new
    preregistration, frozen before scoring, with explicit gates on the tail risk
    permanent short-perpetual exposure carries. Do not call it a fix to V6.00.
+
+2. **Decide what the delisting registry is for.** It now exists: 15,191 dated
+   events, 6,318 symbols, trustworthy price windows. It is not yet wired to
+   anything. The honest options are (a) use it to bound an existing universe and
+   measure how much of the program's prior results were survivorship-inflated,
+   or (b) leave it as infrastructure. Note (a) cannot be done on Tiingo alone —
+   the abrupt failures have no prices there, so bounding reduces bias without
+   eliminating it, and the residual is unquantified.
+3. **Investment-company recovery is a bounded, known repair** (0 of 302; they
+   file N-CSR / N-PORT). Doing it means extending the accepted source-filing
+   forms and re-running stage B for those episodes only. Deliberately left
+   undone so the 0.6767 / 0.7992 / 0.9712 rates stand as measured against the
+   rule that was frozen before the run.
 
 Standing prohibitions unchanged: V5.96's four and V5.97's three components are
 closed and may not be rescored; V5.98's detector may not be re-run on a
@@ -509,5 +609,14 @@ and three in tests. Two engine defects would have produced false positives (the
 the signal-to-noise guard is a precondition, so that class cannot reach a result
 again. Treat new scoring code as defect-prone and write known-answer tests
 first.
+
+V6.03 adds a seventh and a variant of the class: a parse defect that did not
+merely produce a wrong number but **invented a causal explanation for it** — a
+coverage gap that sorted neatly by filer type. A wrong number invites scrutiny;
+a wrong number with a tidy story attached suppresses it, and this one was
+written into a design document as a limitation of an external data source.
+Before recording any limitation of an external source, open the raw bytes of at
+least one failing case and confirm the thing claimed missing is actually
+missing. One `find("dei:tradingsymbol")` would have caught it.
 
 Live capital remains an operator hard gate that no work in this session moved.
