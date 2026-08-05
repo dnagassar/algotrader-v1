@@ -326,6 +326,51 @@ misalignment). The adapter's credential test parses the AST rather than
 string-matching, after an earlier version tripped on the word "dotenv" in a
 docstring.
 
+## V6.00 funding carry with synchronized marks (closed, VALID)
+
+Retry of the voided V5.99 as a new milestone. Every scoring rule inherited
+unchanged; the only change was the perpetual mark alignment.
+
+**The alignment defect and its fix.** Deribit chart ticks are bar OPEN times, so
+the close at tick `T` is the price at `T + 1h`; V5.99 compared it against an
+index stamped at `T`. The correct offset was established by a physical
+criterion — a perpetual sits within a fraction of a percent of its index, so the
+true alignment is whichever makes the LEVELS agree — measured before any V6.00
+return was computed. At `T - 1h` mean premium is 3.8 bps; every other offset is
+10-18x worse. Constant `_PERP_TICK_OFFSET_MS`.
+
+Basis-to-funding ratio fell **65.5 -> 3.4-4.2** and the worst interval fell
+`-0.0699 -> -0.0026`, which is what a delta-neutral book should look like.
+
+Route: `close_detector_without_tuning`. `-0.061849041342` annualised,
+`0.245661428187` drawdown against a `0.15` ceiling, 1 of 4 quarters positive,
+0 of 3 symbols positive. Five of six gates fail.
+
+**The economic premise is confirmed; the implementation fails.** P&L decomposed
+per symbol:
+
+| Symbol | Flips | Cost @5bps | Funding | Basis | Net |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| BTC | 685 | `-0.6850` | `+0.2569` | `+0.0648` | `-0.3634` |
+| ETH | 733 | `-0.7330` | `+0.2128` | `+0.0749` | `-0.4453` |
+| SOL | 667 | `-0.6670` | `+0.4870` | `+0.1502` | `-0.0298` |
+
+Funding was positive 72%/65%/59% of intervals and collected in size; the basis
+leg was mildly favourable. The loss is entirely churn: the frozen signal flips
+whenever funding crosses zero, 667-733 times over 4.4 years, at two legs per
+flip. Sharpe `-4.251310220835` on a `-0.0026` worst interval is the signature of
+a low-variance cost bleed, not tail risk.
+
+**Deliberately not rescued.** A continuously-held variant would avoid nearly all
+the churn and the table makes that obvious — which is exactly why it was not
+run. Changing the entry rule after seeing which component caused the loss is the
+tuning this program forbids. It is a different hypothesis requiring its own
+preregistration, its own evaluation, and honest accounting for the tail risk
+permanent short-perpetual exposure carries.
+
+This is the first milestone in twenty-six where a hypothesis's economic premise
+was confirmed and only the implementation failed.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -344,6 +389,8 @@ docstring.
   `test_forward_shadow_vault.py`: 10 passed.
 - `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
 - `tests/unit/test_ensemble_harness.py`: 32 passed.
+- `verify_offline.ps1 -Full -Shards 4` at `ca901cf`: PASS (10,604 collected,
+  10,599 passed, 5 skipped, 0 failures).
 - Scoring-path suites: 51 passed (funding carry 14, tax loss 11, adapter 14,
   cohort paths 12).
 - `verify_offline.ps1 -Full -Shards 4` at `7285547`: PASS (10,604 collected,
@@ -381,31 +428,35 @@ docstring.
 
 ## Exact next action
 
-Operator decision. Twenty-five milestones, zero validated alpha.
+Operator decision. Twenty-six milestones, zero validated alpha.
 
-The structural direction (V5.98, V5.99) is the better hunting ground but is
-**data-bound, not engineering-bound**. Of four candidate structural edges, one
-was reachable and closed (tax-loss: December pressure real, January reversal a
-coin flip), one is void on measurement, and the remaining two need paid
-corporate-action or delisted-inclusive feeds. Crypto moved the wall from "costs
-money" to "geo-blocked and desynchronised", not away.
+The nearest live thread is the **continuously-held funding carry**. V6.00 showed
+the carry itself is real and collectable (21-49% cumulative funding, favourable
+basis) and that the frozen entry rule destroyed it through 667-733 position
+flips. A permanently-held variant is the obvious next hypothesis and must be
+treated as such: new preregistration, frozen before scoring, with explicit
+gates on the tail risk that permanent short-perpetual exposure carries and that
+the flipping rule was expensively avoiding. Do not describe it as a fix to
+V6.00; V6.00 is closed.
 
-If V5.99 is retried, it is a **new milestone** needing synchronised marks — the
-index and perpetual sampled at the same instant — plus its own tests. The frozen
-protocol, symbols, thresholds, and 0.15 drawdown ceiling may be reused unchanged.
+Data-access status is unchanged and still binding. Of four structural edges, one
+is closed (tax-loss: December pressure real, January reversal a coin flip), one
+is now validly closed (funding carry), and two need paid corporate-action or
+delisted-inclusive feeds.
 
-Defect record for calibration: six defects were written this session (three in
-scoring engines, three in tests). Two of the engine defects would have produced
-false positives — the +0.353 double lag and the -6.3% desync. All were caught,
-but only because a specific check was written and its output was not explained
-away. Treat new scoring code as defect-prone by default and write the
-known-answer tests first.
+Defect record for calibration: six defects were written this session — three in
+scoring engines, three in tests. Two engine defects would have produced false
+positives (the `+0.353` double lag, the `-6.3%` desync). All were caught only
+because a specific check was written and its output was not explained away.
+Scoring-path coverage now exists (51 tests) and the signal-to-noise guard is a
+precondition, so the V5.99 class of defect cannot reach a result again.
 
 Standing prohibitions unchanged: V5.96's four and V5.97's three components are
 closed and may not be rescored; V5.98's detector may not be re-run on a
-different universe or holding period; `calm_down` hosts no component until a
-panel where it occurs; Tier B requires a forward shadow. Sealed Crypto
-Tournament V2 opens 2026-08-13 — it tests trend/breakout/MA rules over a 28-day
-window (~4-9 independent decisions) and should be recorded, not built upon.
+different universe or holding period; V6.00's rule may not be re-run with a
+different entry condition; `calm_down` hosts no component until a panel where it
+occurs; Tier B requires a forward shadow. Sealed Crypto Tournament V2 opens
+2026-08-13 — trend/breakout/MA rules over a 28-day window (~4-9 independent
+decisions); record it, do not build on it.
 
 Live capital remains an operator hard gate that no work in this session moved.
