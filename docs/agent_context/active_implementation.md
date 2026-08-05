@@ -287,6 +287,45 @@ binding constraint on this direction.** The ETF substitution used here was
 disclosed in advance as a reason a null could occur even if the mechanism is
 real, and that is roughly what happened.
 
+## V5.99 funding carry detector (INCONCLUSIVE) and scoring-path coverage
+
+**V5.99 is void, not negative.** The detector ran and produced `-0.063114351251`
+annualised. That number is meaningless: a post-run check showed per-interval
+basis noise roughly **100x** the funding signal it was measuring (BTC 96x, ETH
+178x, SOL 700x), which is physically impossible for a delta-neutral pair and
+indicates the two price legs were stamped at different instants. Median basis
+was ~0 with ±3% tails — the signature of desynchronised series.
+
+Venue history worth keeping: Binance returned **HTTP 451** (geo-blocked from
+this jurisdiction), so five venues were probed before Deribit was chosen on
+history depth. Two amendments were made before any scoring — venue change, and
+summing Deribit's hourly funding inside the frozen 8-hour interval rather than
+altering the holding period.
+
+Structural premise confirmed on raw data (funding positive in 72%/65%/59% of
+BTC/ETH/SOL intervals). Whether collecting it is profitable remains **untested**.
+
+## Scoring-path coverage (the standing V5.97 priority, now done)
+
+Four previously untested scoring engines now have coverage: 51 new tests across
+`test_funding_carry_detector.py`, `test_tax_loss_detector.py`,
+`test_perp_funding_refresh_adapter.py`, and `test_cohort_scoring_paths.py`.
+Every test uses synthetic data with a hand-computable answer, because structural
+checks are exactly what let three defects through.
+
+**The durable fix is a precondition, not a test.**
+`funding_carry_detector.validate_signal_to_noise` blocks any panel whose basis
+noise exceeds 10x the funding signal. The data that produced the fake -6.3% now
+returns `blocked: basis noise swamps the funding signal (ratio 65.5 exceeds
+10.0)`. That defect can no longer reach a result.
+
+Three regressions pin the session's three defects directly: the signal-to-noise
+guard (V5.99), raw-vs-effective label formation (V5.97 double lag, which swung a
+component from -0.118 to +0.353), and flat-when-idle (V5.96 label
+misalignment). The adapter's credential test parses the AST rather than
+string-matching, after an earlier version tripped on the word "dotenv" in a
+docstring.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -305,6 +344,10 @@ real, and that is roughly what happened.
   `test_forward_shadow_vault.py`: 10 passed.
 - `tests/unit/test_vault_cross_sectional_trend_triage.py`: 13 passed.
 - `tests/unit/test_ensemble_harness.py`: 32 passed.
+- Scoring-path suites: 51 passed (funding carry 14, tax loss 11, adapter 14,
+  cohort paths 12).
+- `verify_offline.ps1 -Full -Shards 4` at `7285547`: PASS (10,604 collected,
+  10,599 passed, 5 skipped, 0 failures).
 - `verify_offline.ps1 -Full -Shards 4` at `a88622e`: PASS (10,553 collected,
   10,548 passed, 5 skipped, 0 failures).
 - `verify_offline.ps1 -Full -Shards 4` at `8f70cec`: PASS (10,553 collected,
@@ -338,27 +381,31 @@ real, and that is roughly what happened.
 
 ## Exact next action
 
-This is an operator decision, not an implementation task. Twenty-three
-milestones, zero validated alpha, and the free-data search space is close to
-exhausted. Three options, stated without preference:
+Operator decision. Twenty-five milestones, zero validated alpha.
 
-1. **Acquire event data** (corporate actions, point-in-time universe including
-   delisted names). This is the only path that unlocks the three remaining
-   structural edges, which are the better ideas. It buys the ability to look;
-   it does not promise an edge.
-2. **Continue on free data.** No further free structural hypothesis is
-   currently identified that is worth the effort.
-3. **Stop.** The system is honest and has reported clearly that no edge exists
-   in what it can currently see.
+The structural direction (V5.98, V5.99) is the better hunting ground but is
+**data-bound, not engineering-bound**. Of four candidate structural edges, one
+was reachable and closed (tax-loss: December pressure real, January reversal a
+coin flip), one is void on measurement, and the remaining two need paid
+corporate-action or delisted-inclusive feeds. Crypto moved the wall from "costs
+money" to "geo-blocked and desynchronised", not away.
 
-If work continues, the standing engineering priority from V5.97 is unchanged:
-raise test coverage of the ensemble scoring path before running a third cohort.
-Three defects shipped into that harness across two milestones and two would
-have produced false positives.
+If V5.99 is retried, it is a **new milestone** needing synchronised marks — the
+index and perpetual sampled at the same instant — plus its own tests. The frozen
+protocol, symbols, thresholds, and 0.15 drawdown ceiling may be reused unchanged.
+
+Defect record for calibration: six defects were written this session (three in
+scoring engines, three in tests). Two of the engine defects would have produced
+false positives — the +0.353 double lag and the -6.3% desync. All were caught,
+but only because a specific check was written and its output was not explained
+away. Treat new scoring code as defect-prone by default and write the
+known-answer tests first.
 
 Standing prohibitions unchanged: V5.96's four and V5.97's three components are
-closed and may not be rescored under any corrected harness; V5.98's detector may
-not be re-run on a different universe or holding period; `calm_down` hosts no
-component until a panel where it occurs; Tier B requires a forward shadow.
+closed and may not be rescored; V5.98's detector may not be re-run on a
+different universe or holding period; `calm_down` hosts no component until a
+panel where it occurs; Tier B requires a forward shadow. Sealed Crypto
+Tournament V2 opens 2026-08-13 — it tests trend/breakout/MA rules over a 28-day
+window (~4-9 independent decisions) and should be recorded, not built upon.
 
 Live capital remains an operator hard gate that no work in this session moved.
