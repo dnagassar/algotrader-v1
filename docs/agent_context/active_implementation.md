@@ -371,6 +371,54 @@ permanent short-perpetual exposure carries.
 This is the first milestone in twenty-six where a hypothesis's economic premise
 was confirmed and only the implementation failed.
 
+## V6.01 / V6.02 survivorship infrastructure
+
+**V6.01 delisted-coverage probe.** Tested whether the free Tiingo tier serves
+securities that no longer trade. Partial, with a trap worse than the gap.
+
+- Acquisitions/take-privates are served correctly and terminate on the right
+  date: `TWTR` 2,260 bars to 2022-10-28, `XLNX` to 2022-02-14, `ATVI` to
+  2023-10-13, `VMW` to 2023-11-22.
+- Catastrophic failures are absent: `SIVB` and `FRC` return HTTP 404, `LEH`
+  returns null coverage. Those are the observations survivorship bias is about.
+- **Ticker reuse splices unrelated companies silently.** `SHLD` returns 723 bars
+  beginning 2023-09-13 for a company delisted in 2018. `BBBY` returns 2,911
+  bars with **no multi-month gap anywhere**, spanning a bankruptcy and a
+  corporate identity change. A missing ticker fails loudly; a reused one does
+  not fail at all.
+
+**V6.02 EDGAR delisting pipeline.** Fixes identity, since a ticker is not a
+security identifier. `form.idx` -> Form 25/25-NSE -> `submissions` -> the last
+periodic report filed **at or before** the delisting -> cover-page inline XBRL
+`dei:TradingSymbol`.
+
+- `src/algotrader/execution/edgar_delisting_adapter.py` (GET-only, two SEC
+  hosts, no credentials, mandatory contact User-Agent per SEC fair access,
+  dry-run makes zero calls, path traversal refused).
+- `src/algotrader/research/delisting_registry.py` (pure parsing, no network).
+- `tests/unit/test_delisting_registry.py`: 21 tests.
+- Verified live: 554 Form 25 filings in 2023 QTR2; SVB Financial resolves to
+  `SIVB`/`SIVBP` — the exact case Tiingo 404s.
+
+Two dead ends ruled out by inspection rather than assumption: Form 25 itself
+carries no ticker, and the XBRL `companyfacts` API exposes only
+`EntityCommonStockSharesOutstanding` and `EntityPublicFloat`. EDGAR also clears
+`tickers`/`exchanges` once a company delists.
+
+`select_symbol_source_filing` is load-bearing: only a report filed while still
+listed can attest to the symbol, because shells keep filing and successors reuse
+tickers. `price_admission_window` then admits prices only through the delisting
+date, which severs the `BBBY` splice and discards `SHLD` outright.
+
+**Coverage limits, not smoothed over.** Recovery was 3 of 7 on a small sample
+and the misses look systematic — foreign private issuers and a SPAC failed
+where domestic operating companies succeeded. Seven is too few to quote a rate;
+a full-history run is needed first. Pre-2019 delistings are largely
+unrecoverable by construction (cover-page XBRL phased in from 2019); those
+records are kept and flagged via `TICKER_TAGGING_ERA_START`, never guessed. And
+the price-side hole stands: abrupt failures are absent from Tiingo entirely, so
+any universe from this is survivorship-**reduced**, not survivorship-free.
+
 ## Verification
 
 - Credential preflight: zero ambient credential-bearing environment
@@ -391,6 +439,9 @@ was confirmed and only the implementation failed.
 - `tests/unit/test_ensemble_harness.py`: 32 passed.
 - `verify_offline.ps1 -Full -Shards 4` at `ca901cf`: PASS (10,604 collected,
   10,599 passed, 5 skipped, 0 failures).
+- `verify_offline.ps1 -Full -Shards 4` at `4eb0d62`: PASS (10,625 collected,
+  10,620 passed, 5 skipped, 0 failures).
+- `tests/unit/test_delisting_registry.py`: 21 passed.
 - Scoring-path suites: 51 passed (funding carry 14, tax loss 11, adapter 14,
   cohort paths 12).
 - `verify_offline.ps1 -Full -Shards 4` at `7285547`: PASS (10,604 collected,
@@ -428,35 +479,35 @@ was confirmed and only the implementation failed.
 
 ## Exact next action
 
-Operator decision. Twenty-six milestones, zero validated alpha.
+Operator decision. Twenty-eight milestones, zero validated alpha.
 
-The nearest live thread is the **continuously-held funding carry**. V6.00 showed
-the carry itself is real and collectable (21-49% cumulative funding, favourable
-basis) and that the frozen entry rule destroyed it through 667-733 position
-flips. A permanently-held variant is the obvious next hypothesis and must be
-treated as such: new preregistration, frozen before scoring, with explicit
-gates on the tail risk that permanent short-perpetual exposure carries and that
-the flipping rule was expensively avoiding. Do not describe it as a fix to
-V6.00; V6.00 is closed.
+Two live threads, both now unblocked rather than theoretical:
 
-Data-access status is unchanged and still binding. Of four structural edges, one
-is closed (tax-loss: December pressure real, January reversal a coin flip), one
-is now validly closed (funding carry), and two need paid corporate-action or
-delisted-inclusive feeds.
-
-Defect record for calibration: six defects were written this session — three in
-scoring engines, three in tests. Two engine defects would have produced false
-positives (the `+0.353` double lag, the `-6.3%` desync). All were caught only
-because a specific check was written and its output was not explained away.
-Scoring-path coverage now exists (51 tests) and the signal-to-noise guard is a
-precondition, so the V5.99 class of defect cannot reach a result again.
+1. **Full-history delisting registry.** V6.02 works on one quarter. Running it
+   across all quarters would give the first survivorship-reduced universe this
+   program has had, plus a real recovery-rate measurement to replace the 3-of-7
+   sample. Cost is bandwidth and patience: `form.idx` is ~48 MB per quarter.
+   Characterise recovery by filer type before quoting any number.
+2. **Continuously-held funding carry.** V6.00 showed the carry is real and
+   collectable (21-49% cumulative funding, favourable basis) and that the frozen
+   entry rule destroyed it through 667-733 position flips. A permanently-held
+   variant is the obvious next hypothesis and must be treated as one: new
+   preregistration, frozen before scoring, with explicit gates on the tail risk
+   permanent short-perpetual exposure carries. Do not call it a fix to V6.00.
 
 Standing prohibitions unchanged: V5.96's four and V5.97's three components are
 closed and may not be rescored; V5.98's detector may not be re-run on a
 different universe or holding period; V6.00's rule may not be re-run with a
 different entry condition; `calm_down` hosts no component until a panel where it
 occurs; Tier B requires a forward shadow. Sealed Crypto Tournament V2 opens
-2026-08-13 — trend/breakout/MA rules over a 28-day window (~4-9 independent
+2026-08-13 — trend/breakout/MA over a 28-day window (~4-9 independent
 decisions); record it, do not build on it.
+
+Defect record: six defects were written this session, three in scoring engines
+and three in tests. Two engine defects would have produced false positives (the
+`+0.353` double lag, the `-6.3%` desync). Scoring-path coverage now exists and
+the signal-to-noise guard is a precondition, so that class cannot reach a result
+again. Treat new scoring code as defect-prone and write known-answer tests
+first.
 
 Live capital remains an operator hard gate that no work in this session moved.
