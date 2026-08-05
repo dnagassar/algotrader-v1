@@ -175,6 +175,222 @@ def test_a_concept_whose_name_merely_contains_the_target_is_not_matched() -> Non
     assert subject.extract_trading_symbols(document)[0] == ()
 
 
+# --- exact per-security attribution (the V6.03a defect) --------------------
+#
+# V6.03 attached every cover-page ticker to the delisting, which marked AAPL
+# and ABBV as delisted and would have truncated live price series. These pin
+# the repair, and in particular pin that it fails closed.
+
+# Shaped like ProShares Trust II's cover page, where twenty series share one
+# filing and each class's facts are joined only by contextRef.
+_MULTI_CLASS_COVER = """
+<ix:nonNumeric contextRef="cA" name="dei:Security12bTitle">ProShares Short VIX Short-Term Futures ETF</ix:nonNumeric>
+<ix:nonNumeric contextRef="cA" name="dei:TradingSymbol"><b>SVXY</b></ix:nonNumeric>
+<ix:nonNumeric contextRef="cA" name="dei:SecurityExchangeName">NYSEARCA</ix:nonNumeric>
+<ix:nonNumeric contextRef="cB" name="dei:Security12bTitle">ProShares Ultra Gold</ix:nonNumeric>
+<ix:nonNumeric contextRef="cB" name="dei:TradingSymbol"><span>UGL</span></ix:nonNumeric>
+<ix:nonNumeric contextRef="cB" name="dei:SecurityExchangeName">NYSEARCA</ix:nonNumeric>
+"""
+
+_FORM25_XML = """<?xml version="1.0"?>
+<edgarSubmission>
+  <issuerName>ProShares Trust II</issuerName>
+  <fileNumber>001-34200</fileNumber>
+  <descriptionClassSecurity>ProShares Ultra Gold</descriptionClassSecurity>
+  <ruleProvision>17 CFR 240.12d2-2(a)(3)</ruleProvision>
+</edgarSubmission>
+"""
+
+# Shaped like a real N-CEN, where the ticker is an attribute, not an element.
+_NCEN_XML = """<?xml version="1.0"?>
+<edgarSubmission>
+ <managementInvestmentQuestionSeriesInfo>
+  <managementInvestmentQuestion>
+   <mgmtInvFundName>JPMorgan Ultra-Short Municipal Income ETF</mgmtInvFundName>
+   <mgmtInvSeriesId>S000063269</mgmtInvSeriesId>
+   <sharesOutstandings>
+    <sharesOutstanding sharesOutstandingClassId="C000205216" sharesOutstandingTickerSymbol="JMST"/>
+   </sharesOutstandings>
+   <fundTypes><fundType>Exchange-Traded Fund</fundType></fundTypes>
+  </managementInvestmentQuestion>
+  <managementInvestmentQuestion>
+   <mgmtInvFundName>JPMorgan Something Else ETF</mgmtInvFundName>
+   <mgmtInvSeriesId>S000099999</mgmtInvSeriesId>
+   <sharesOutstandings>
+    <sharesOutstanding sharesOutstandingClassId="C000111111" sharesOutstandingTickerSymbol="JOTH"/>
+   </sharesOutstandings>
+   <fundTypes><fundType>Exchange-Traded Fund</fundType></fundTypes>
+  </managementInvestmentQuestion>
+ </managementInvestmentQuestionSeriesInfo>
+</edgarSubmission>
+"""
+
+
+def test_form25_names_the_class_it_delists() -> None:
+    """V6.02 concluded Form 25 carries no ticker. True, and one step short."""
+
+    parsed = subject.parse_form25_security(_FORM25_XML)
+
+    assert parsed["description_class_security"] == "ProShares Ultra Gold"
+    assert parsed["file_number"] == "001-34200"
+    assert parsed["issuer_name"] == "ProShares Trust II"
+
+
+def test_cover_page_classes_keep_the_title_to_ticker_pairing() -> None:
+    classes = subject.extract_cover_page_classes(_MULTI_CLASS_COVER)
+
+    assert {(c.title, c.symbol) for c in classes} == {
+        ("ProShares Short VIX Short-Term Futures ETF", "SVXY"),
+        ("ProShares Ultra Gold", "UGL"),
+    }
+    assert all(c.exchange == "NYSEARCA" for c in classes)
+
+
+def test_only_the_delisted_class_is_attributed() -> None:
+    """The V6.03a defect, directly: SVXY must not inherit UGL's delisting."""
+
+    result = subject.attribute_delisted_symbols(
+        "ProShares Ultra Gold",
+        cover_page_classes=subject.extract_cover_page_classes(_MULTI_CLASS_COVER),
+    )
+
+    assert result["symbols"] == ("UGL",)
+    assert result["attribution"] == "matched_delisted_class"
+    assert result["candidate_count"] == 2
+
+
+def test_a_sole_registered_class_needs_no_match() -> None:
+    single = (
+        '<ix:nonNumeric contextRef="c1" name="dei:Security12bTitle">Common Stock</ix:nonNumeric>'
+        '<ix:nonNumeric contextRef="c1" name="dei:TradingSymbol">SIVB</ix:nonNumeric>'
+    )
+
+    result = subject.attribute_delisted_symbols(
+        "Common Stock, par value $0.001",
+        cover_page_classes=subject.extract_cover_page_classes(single),
+    )
+
+    assert result["symbols"] == ("SIVB",)
+    assert result["attribution"] == "sole_registered_class"
+
+
+def test_attribution_fails_closed_when_the_class_cannot_be_identified() -> None:
+    """Emitting nothing beats truncating a live series, which is what V6.03 did."""
+
+    classes = subject.extract_cover_page_classes(_MULTI_CLASS_COVER)
+
+    unmatched = subject.attribute_delisted_symbols(
+        "Some Entirely Different Security", cover_page_classes=classes
+    )
+    blank = subject.attribute_delisted_symbols("", cover_page_classes=classes)
+
+    assert unmatched["symbols"] == ()
+    assert unmatched["attribution"] == "unmatched_delisted_class"
+    assert blank["symbols"] == ()
+    assert blank["attribution"] == "unmatched_delisted_class"
+
+
+def test_no_candidates_is_reported_rather_than_guessed() -> None:
+    result = subject.attribute_delisted_symbols("Common Stock")
+
+    assert result["symbols"] == ()
+    assert result["attribution"] == "no_candidate_classes"
+
+
+def test_ncen_yields_fund_series_and_class_tickers() -> None:
+    """The only route by which a dead ETF can be named at all."""
+
+    series = subject.parse_ncen_series(_NCEN_XML)
+
+    assert len(series) == 2
+    first = series[0]
+    assert first.name == "JPMorgan Ultra-Short Municipal Income ETF"
+    assert first.series_id == "S000063269"
+    assert first.fund_type == "Exchange-Traded Fund"
+    assert first.symbols == ("JMST",)
+
+
+def test_a_delisted_fund_series_resolves_to_its_own_ticker_only() -> None:
+    result = subject.attribute_delisted_symbols(
+        "JPMorgan Ultra-Short Municipal Income ETF",
+        fund_series=subject.parse_ncen_series(_NCEN_XML),
+    )
+
+    assert result["symbols"] == ("JMST",)
+    assert result["attribution"] == "matched_delisted_class"
+
+
+def test_legal_form_differences_do_not_defeat_the_match() -> None:
+    """Filers write the same security differently in Form 25 and on the cover."""
+
+    result = subject.attribute_delisted_symbols(
+        "ProShares Ultra Gold Fund",
+        cover_page_classes=subject.extract_cover_page_classes(_MULTI_CLASS_COVER),
+    )
+
+    assert result["symbols"] == ("UGL",)
+
+
+_SGML_HEADER = """<SEC-HEADER>
+<SERIES-AND-CLASSES-CONTRACTS-DATA>
+<EXISTING-SERIES-AND-CLASSES-CONTRACTS>
+<SERIES>
+<OWNER-CIK>0001547950
+<SERIES-ID>S000067929
+<SERIES-NAME>Armor US Equity Index ETF
+<CLASS-CONTRACT>
+<CLASS-CONTRACT-ID>C000217769
+<CLASS-CONTRACT-NAME>Armor US Equity Index ETF
+<CLASS-CONTRACT-TICKER-SYMBOL>ARMR
+</CLASS-CONTRACT>
+</SERIES>
+</EXISTING-SERIES-AND-CLASSES-CONTRACTS>
+</SERIES-AND-CLASSES-CONTRACTS-DATA>
+</SEC-HEADER>
+"""
+
+
+def test_sgml_header_yields_fund_series_and_ticker() -> None:
+    """Preferred fund route: kilobytes, and available from 2006 not 2018."""
+
+    series = subject.parse_filing_header_series(_SGML_HEADER)
+
+    assert len(series) == 1
+    assert series[0].name == "Armor US Equity Index ETF"
+    assert series[0].series_id == "S000067929"
+    assert series[0].symbols == ("ARMR",)
+
+
+def test_a_header_without_series_data_yields_nothing() -> None:
+    assert subject.parse_filing_header_series("<SEC-HEADER>plain</SEC-HEADER>") == ()
+
+
+def test_a_delisted_fund_resolves_through_the_header_route() -> None:
+    result = subject.attribute_delisted_symbols(
+        "Armor US Equity Index ETF",
+        fund_series=subject.parse_filing_header_series(_SGML_HEADER),
+    )
+
+    assert result["symbols"] == ("ARMR",)
+    assert result["attribution"] == "sole_registered_class"
+
+
+def test_a_name_matching_several_classes_is_refused() -> None:
+    ambiguous = (
+        '<ix:nonNumeric contextRef="c1" name="dei:Security12bTitle">Growth Fund</ix:nonNumeric>'
+        '<ix:nonNumeric contextRef="c1" name="dei:TradingSymbol">AAA</ix:nonNumeric>'
+        '<ix:nonNumeric contextRef="c2" name="dei:Security12bTitle">Growth Fund</ix:nonNumeric>'
+        '<ix:nonNumeric contextRef="c2" name="dei:TradingSymbol">BBB</ix:nonNumeric>'
+    )
+
+    result = subject.attribute_delisted_symbols(
+        "Growth Fund", cover_page_classes=subject.extract_cover_page_classes(ambiguous)
+    )
+
+    assert result["symbols"] == ()
+    assert result["attribution"] == "ambiguous_class_match"
+
+
 # --- recovery reporting ----------------------------------------------------
 
 

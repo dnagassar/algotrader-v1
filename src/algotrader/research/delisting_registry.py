@@ -33,11 +33,18 @@ __all__ = [
     "PERIODIC_REPORT_FORMS",
     "RECOVERY_STRATA",
     "TICKER_TAGGING_ERA_START",
+    "CoverPageClass",
     "DelistingEpisode",
     "DelistingFiling",
     "DelistingRecord",
+    "FundSeries",
+    "attribute_delisted_symbols",
     "build_delisting_records",
+    "extract_cover_page_classes",
     "group_delisting_episodes",
+    "parse_filing_header_series",
+    "parse_form25_security",
+    "parse_ncen_series",
     "extract_trading_symbols",
     "parse_form_index",
     "price_admission_window",
@@ -347,6 +354,332 @@ def _episode(cik: str, filings: Sequence[DelistingFiling]) -> DelistingEpisode:
         filing_count=len(filings),
         form_types=tuple(sorted({filing.form_type for filing in filings})),
     )
+
+
+# --- exact per-security attribution (V6.04) --------------------------------
+#
+# V6.03 attached every cover-page ticker to the delisting, because a cover page
+# tags every registered class. That marked AAPL and ABBV as delisted. The
+# registry knew which CIK delisted; it did not know which *security* did.
+#
+# Three sources close that gap, each verified against live filings:
+#
+#   Form 25 `primary_doc.xml`  -> `descriptionClassSecurity`, the class that
+#                                 actually delisted (~1 KB per filing).
+#   cover-page inline XBRL     -> per-class triples, grouped by `contextRef`,
+#                                 pairing a class title with its ticker.
+#   N-CEN `primary_doc.xml`    -> fund series names and class tickers, which is
+#                                 how a registered fund names its securities.
+#
+# Matching **fails closed**: when the delisted class cannot be identified
+# unambiguously, no symbol is emitted. Under-reporting a delisting costs
+# coverage; over-reporting one silently truncates a live price series, which is
+# the failure this registry exists to prevent.
+
+_FORM25_FIELD = re.compile(
+    r"<(?:\w+:)?(descriptionClassSecurity|fileNumber|issuerName)\b[^>]*>(.*?)"
+    r"</(?:\w+:)?\1\s*>",
+    re.I | re.S,
+)
+_IX_FACT_FULL = re.compile(
+    r"<ix:nonnumeric\b([^>]*)>(.*?)</ix:nonnumeric\s*>", re.I | re.S
+)
+_ATTRIBUTE = r"{0}\s*=\s*[\"']([^\"']*)[\"']"
+_NCEN_SERIES_BLOCK = re.compile(
+    r"<(?:\w+:)?managementInvestmentQuestion\b[^>]*>(.*?)"
+    r"</(?:\w+:)?managementInvestmentQuestion\s*>",
+    re.I | re.S,
+)
+_NCEN_FUND_NAME = re.compile(
+    r"<(?:\w+:)?mgmtInvFundName\b[^>]*>(.*?)</(?:\w+:)?mgmtInvFundName\s*>", re.I | re.S
+)
+_NCEN_SERIES_ID = re.compile(
+    r"<(?:\w+:)?mgmtInvSeriesId\b[^>]*>(.*?)</(?:\w+:)?mgmtInvSeriesId\s*>", re.I | re.S
+)
+_NCEN_FUND_TYPE = re.compile(
+    r"<(?:\w+:)?fundType\b[^>]*>(.*?)</(?:\w+:)?fundType\s*>", re.I | re.S
+)
+_NCEN_SHARE_CLASS = re.compile(r"<(?:\w+:)?sharesOutstanding\b([^>]*)/?>", re.I)
+# Legal-form and share-class noise that differs between how a Form 25 names a
+# security and how its issuer names it. Stripped only for comparison.
+_NAME_NOISE = re.compile(
+    r"\b(etf|etn|fund|trust|inc|incorporated|corp|corporation|company|co|plc|"
+    r"ltd|limited|lp|llc|nv|sa|ag|the|shares?|units?|common|ordinary|class|"
+    r"stock|par|value|per|series|beneficial|interest|no|of|and)\b",
+    re.I,
+)
+_NAME_PUNCT = re.compile(r"[^a-z0-9]+")
+
+
+@dataclass(frozen=True, slots=True)
+class CoverPageClass:
+    """One registered class as tagged on a filing's cover page."""
+
+    context: str
+    title: str
+    symbol: str
+    exchange: str
+
+
+@dataclass(frozen=True, slots=True)
+class FundSeries:
+    """One fund series and its class tickers, from an N-CEN filing."""
+
+    name: str
+    series_id: str
+    fund_type: str
+    symbols: tuple[str, ...]
+
+
+def _comparable_name(value: str) -> str:
+    """Reduce a security name to what is stable across how filers write it."""
+
+    lowered = html.unescape(str(value)).casefold()
+    stripped = _NAME_NOISE.sub(" ", lowered)
+    return _NAME_PUNCT.sub("", stripped)
+
+
+def parse_form25_security(document: bytes | str) -> dict[str, str]:
+    """Read the class a Form 25 actually delists from its `primary_doc.xml`.
+
+    V6.02 established Form 25 carries no ticker, which is true, and stopped
+    there. It does carry a class description, which is enough to disambiguate.
+    """
+
+    text = (
+        document.decode("utf-8", "ignore")
+        if isinstance(document, bytes)
+        else document
+    )
+    found: dict[str, str] = {}
+    for field, value in _FORM25_FIELD.findall(text):
+        found.setdefault(field[0].lower() + field[1:], _clean_fact_text(value))
+    return {
+        "description_class_security": found.get("descriptionClassSecurity", ""),
+        "file_number": found.get("fileNumber", ""),
+        "issuer_name": found.get("issuerName", ""),
+    }
+
+
+def extract_cover_page_classes(document: bytes | str) -> tuple[CoverPageClass, ...]:
+    """Group cover-page facts into one record per registered class.
+
+    Each class's facts share an XBRL `contextRef`, which is what pairs a title
+    with its ticker. Reading the concepts as flat lists — as V6.03 did — throws
+    that pairing away and is what allowed twenty tickers to attach to one
+    delisting.
+    """
+
+    text = (
+        document.decode("utf-8", "ignore")
+        if isinstance(document, bytes)
+        else document
+    )
+    grouped: dict[str, dict[str, str]] = {}
+    for attributes, body in _IX_FACT_FULL.findall(text):
+        name_match = re.search(_ATTRIBUTE.format("name"), attributes, re.I)
+        if not name_match:
+            continue
+        concept = name_match.group(1).strip().casefold()
+        if concept not in (
+            "dei:security12btitle",
+            "dei:tradingsymbol",
+            "dei:securityexchangename",
+        ):
+            continue
+        context_match = re.search(_ATTRIBUTE.format("contextRef"), attributes, re.I)
+        context = context_match.group(1).strip() if context_match else ""
+        grouped.setdefault(context, {})[concept] = _clean_fact_text(body)
+
+    classes: list[CoverPageClass] = []
+    for context, facts in grouped.items():
+        symbol = facts.get("dei:tradingsymbol", "").upper()
+        if symbol in _NON_SYMBOL_VALUES or not _SYMBOL_SHAPE.match(symbol):
+            continue
+        classes.append(
+            CoverPageClass(
+                context=context,
+                title=facts.get("dei:security12btitle", ""),
+                symbol=symbol,
+                exchange=facts.get("dei:securityexchangename", ""),
+            )
+        )
+    return tuple(classes)
+
+
+def parse_ncen_series(document: bytes | str) -> tuple[FundSeries, ...]:
+    """Read fund series and their class tickers from an N-CEN filing.
+
+    Registered funds file N-CEN rather than the periodic reports the cover-page
+    route depends on, so this is the only route by which a dead ETF can be
+    named at all.
+    """
+
+    text = (
+        document.decode("utf-8", "ignore")
+        if isinstance(document, bytes)
+        else document
+    )
+    series: list[FundSeries] = []
+    for block in _NCEN_SERIES_BLOCK.findall(text):
+        name_match = _NCEN_FUND_NAME.search(block)
+        if not name_match:
+            continue
+        symbols: list[str] = []
+        for attributes in _NCEN_SHARE_CLASS.findall(block):
+            ticker_match = re.search(
+                _ATTRIBUTE.format("sharesOutstandingTickerSymbol"), attributes, re.I
+            )
+            if not ticker_match:
+                continue
+            symbol = _clean_fact_text(ticker_match.group(1)).upper()
+            if (
+                symbol
+                and symbol not in _NON_SYMBOL_VALUES
+                and _SYMBOL_SHAPE.match(symbol)
+                and symbol not in symbols
+            ):
+                symbols.append(symbol)
+        id_match = _NCEN_SERIES_ID.search(block)
+        type_match = _NCEN_FUND_TYPE.search(block)
+        series.append(
+            FundSeries(
+                name=_clean_fact_text(name_match.group(1)),
+                series_id=_clean_fact_text(id_match.group(1)) if id_match else "",
+                fund_type=_clean_fact_text(type_match.group(1)) if type_match else "",
+                symbols=tuple(symbols),
+            )
+        )
+    return tuple(series)
+
+
+_SGML_SERIES = re.compile(r"<SERIES>(.*?)(?=<SERIES>|</EXISTING|</NEW|$)", re.I | re.S)
+_SGML_FIELD = {
+    "series_id": re.compile(r"<SERIES-ID>\s*([^\s<]+)", re.I),
+    "name": re.compile(r"<SERIES-NAME>\s*([^\n<]+)", re.I),
+}
+_SGML_TICKER = re.compile(r"<CLASS-CONTRACT-TICKER-SYMBOL>\s*([^\s<]+)", re.I)
+
+
+def parse_filing_header_series(document: bytes | str) -> tuple[FundSeries, ...]:
+    """Read fund series and tickers from an EDGAR SGML submission header.
+
+    Preferred over N-CEN for funds: the header is a few kilobytes rather than
+    megabytes, and EDGAR's series/class system dates to 2006 whereas N-CEN only
+    begins in 2018. A single filing's header names only the series that filing
+    concerns, so it is a partial map — complete enough to confirm one delisted
+    series, not to enumerate a trust.
+    """
+
+    text = (
+        document.decode("utf-8", "ignore")
+        if isinstance(document, bytes)
+        else document
+    )
+    block_match = re.search(
+        r"SERIES-AND-CLASSES-CONTRACTS-DATA(.*?)/SERIES-AND-CLASSES-CONTRACTS-DATA",
+        text,
+        re.I | re.S,
+    )
+    if not block_match:
+        return ()
+    series: list[FundSeries] = []
+    for block in _SGML_SERIES.findall(block_match.group(1)):
+        name_match = _SGML_FIELD["name"].search(block)
+        if not name_match:
+            continue
+        symbols: list[str] = []
+        for raw in _SGML_TICKER.findall(block):
+            symbol = html.unescape(raw).strip().upper()
+            if (
+                symbol
+                and symbol not in _NON_SYMBOL_VALUES
+                and _SYMBOL_SHAPE.match(symbol)
+                and symbol not in symbols
+            ):
+                symbols.append(symbol)
+        id_match = _SGML_FIELD["series_id"].search(block)
+        series.append(
+            FundSeries(
+                name=html.unescape(name_match.group(1)).strip(),
+                series_id=id_match.group(1).strip() if id_match else "",
+                fund_type="",
+                symbols=tuple(symbols),
+            )
+        )
+    return tuple(series)
+
+
+def attribute_delisted_symbols(
+    delisted_class: str,
+    *,
+    cover_page_classes: Sequence[CoverPageClass] = (),
+    fund_series: Sequence[FundSeries] = (),
+) -> dict[str, object]:
+    """Identify only the symbols belonging to the class that delisted.
+
+    Resolution order, and the reasoning for each:
+
+    1. **One candidate.** A filer with a single registered class cannot be
+       ambiguous, so the Form 25 text is not needed.
+    2. **Name match.** Otherwise the Form 25's class description must match one
+       candidate after legal-form noise is removed.
+    3. **Otherwise nothing.** Several candidates and no clean match means the
+       delisted security is unknown, and saying so is the point.
+    """
+
+    candidates: list[tuple[str, tuple[str, ...], str]] = [
+        (item.title, (item.symbol,), item.exchange) for item in cover_page_classes
+    ]
+    candidates += [(item.name, item.symbols, "") for item in fund_series if item.symbols]
+
+    if not candidates:
+        return {
+            "symbols": (),
+            "exchange": "",
+            "attribution": "no_candidate_classes",
+            "candidate_count": 0,
+        }
+    if len(candidates) == 1:
+        title, symbols, exchange = candidates[0]
+        return {
+            "symbols": tuple(symbols),
+            "exchange": exchange,
+            "attribution": "sole_registered_class",
+            "candidate_count": 1,
+            "matched_class": title,
+        }
+
+    target = _comparable_name(delisted_class)
+    if target:
+        matches = [
+            item
+            for item in candidates
+            if (name := _comparable_name(item[0]))
+            and (name == target or name in target or target in name)
+        ]
+        if len(matches) == 1:
+            title, symbols, exchange = matches[0]
+            return {
+                "symbols": tuple(symbols),
+                "exchange": exchange,
+                "attribution": "matched_delisted_class",
+                "candidate_count": len(candidates),
+                "matched_class": title,
+            }
+        if len(matches) > 1:
+            return {
+                "symbols": (),
+                "exchange": "",
+                "attribution": "ambiguous_class_match",
+                "candidate_count": len(candidates),
+            }
+    return {
+        "symbols": (),
+        "exchange": "",
+        "attribution": "unmatched_delisted_class",
+        "candidate_count": len(candidates),
+    }
 
 
 RECOVERY_STRATA = ("era", "source_form", "entity_type", "outcome")
