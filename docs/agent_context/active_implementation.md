@@ -510,9 +510,52 @@ registry at all — `XIV`, `TVIX`, `UWT`, `DWT`, `JNUG`, `DGAZ`, `UGAZ`, `NUGT`
 are all absent. Fixing attribution does not fix this; it needs the accepted
 source-filing forms extended to the fund reports.
 
-Until both are addressed, use the registry for **delisting events only**. The
-survivorship inflation measurement is blocked, and would have produced a
-confidently wrong number had it been run.
+Both were addressed in V6.04 below, and the measurement was run.
+
+## V6.04 survivorship inflation, measured
+
+**`0.005797` annualised — about 0.58 points a year — for single-country equity
+ETFs over 2019-2026. A lower bound.** 36 surviving ETFs mean `0.108520479656`;
+adding 27 recovered dead funds gives `0.102723933243`.
+
+Attribution repaired first: Form 25 `primary_doc.xml` names the delisted class,
+cover-page facts group into per-class triples by XBRL `contextRef`, and fund
+series come from SGML filing headers. Fund recovery went from **0 of 302 to 214
+of 302**, yielding 376 dead-fund tickers. `SVXY`/`UVXY`/`VIXY` are no longer
+attributed to a ProShares delisting; `OILD` and `OILU` are.
+
+**Three ways a delisting is not a death**, all confirmed in price data:
+ticker reuse (`HAO` delisted 2019, series begins 2024 under another issuer);
+still trading (9 of 39, up to 2,592 days past the filing — **Form 25 is a
+notification of removal from a *listing*, which an exchange transfer also
+triggers**); and too little history.
+
+**The first answer, `0.002777`, was wrong**, and finding out why exposed a
+defect in the registry's episode logic: every security in an episode was stamped
+with the episode's earliest Form 25 date, though a sponsor winding down a fund
+range files across months. `FRN` was dated 2019-02-28 and traded to 2020-02-14.
+Each symbol now carries `symbol_delisted_on`. Admitted deaths rose 19 -> 27 and
+the figure roughly doubled.
+
+**What it means.** 0.58 points a year is real but small, and it neither rescues
+nor condemns any prior milestone — V5.91 and V5.92 rejected their candidates by
+far larger margins, so survivorship was never why they failed. The useful
+finding is negative: **a survivor-only ETF universe is not badly biased**,
+because closing funds are ordinary funds that failed to gather assets, several
+profitable at closure (`FM` `+0.0361`, `RWED` `+0.0331`). That is unlike
+single-stock survivorship, where the missing names include bankruptcies — and it
+means this registry buys less for ETF universes than it cost. Its value is
+higher for equity universes, which this program does not currently use.
+
+See `docs/design/v6_04_survivorship_inflation_measurement.md`.
+
+**Defects found in this stretch, all caught before publication:** the V6.02
+regex; over-attribution marking `AAPL` and `ABBV` delisted; the
+`sole_registered_class` shortcut attributing the live `CACG`; HTTP 429 read as
+"no data", which manufactured an inflation of exactly `0.0`; a cohort classifier
+matching an episode's combined fund names, which labelled a bond ETF as country
+equity; Form-25-as-death, caught by `NORW`; and the episode date-stamping above.
+Seven. Every one produced a plausible number.
 
 ## Verification
 

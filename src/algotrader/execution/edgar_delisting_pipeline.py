@@ -709,7 +709,13 @@ def _attribute_episode(
         "attributed_at": datetime.now(UTC).isoformat(),
     }
 
-    classes: list[str] = []
+    # Each description is kept with the date of the Form 25 that carried it. An
+    # episode spans every filing within a year, but a sponsor winding down a
+    # range of funds files across months, and the funds stop trading on their
+    # own dates. Stamping them all with the episode's earliest date truncates
+    # real price history — FRN's Form 25 is dated 2019-02-28 and it traded to
+    # 2020-02-14.
+    dated_classes: list[tuple[date, str]] = []
     for filing in filings:
         accession = _accession_from_archive_path(filing.archive_path)
         path = (
@@ -721,8 +727,9 @@ def _attribute_episode(
         if payload is None:
             continue
         described = parse_form25_security(payload)["description_class_security"]
-        if described and described not in classes:
-            classes.append(described)
+        if described:
+            dated_classes.append((filing.filed, described))
+    classes = list(dict.fromkeys(described for _, described in dated_classes))
     row["delisted_classes"] = list(classes)
     if not classes:
         row["attribution"] = "form25_class_unreadable"
@@ -774,7 +781,8 @@ def _attribute_episode(
     # symbol -> the security it names, so later work can classify a ticker
     # without guessing from the episode's other funds.
     symbol_classes: dict[str, str] = {}
-    for described in classes:
+    symbol_delisted_on: dict[str, str] = {}
+    for filed_on, described in dated_classes:
         result = attribute_delisted_symbols(
             described,
             cover_page_classes=cover,
@@ -788,12 +796,18 @@ def _attribute_episode(
         for symbol in result["symbols"]:
             if symbol not in symbols:
                 symbols.append(str(symbol))
+            # The latest Form 25 naming a security is the one that removed it;
+            # earlier filings in the episode concern other funds.
+            stamped = symbol_delisted_on.get(str(symbol))
+            if stamped is None or filed_on.isoformat() > stamped:
+                symbol_delisted_on[str(symbol)] = filed_on.isoformat()
         for title, matched in result.get("matched_pairs", ()):
             for symbol in matched:
                 symbol_classes.setdefault(str(symbol), str(title))
         exchange = exchange or str(result.get("exchange", ""))
     row["symbols"] = symbols
     row["symbol_classes"] = symbol_classes
+    row["symbol_delisted_on"] = symbol_delisted_on
     row["exchange"] = exchange
     row["candidate_count"] = candidate_count
     row["ticker_recoverable"] = bool(symbols)

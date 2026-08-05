@@ -259,6 +259,26 @@ def test_stage_b_resolves_symbols_wrapped_in_presentation_markup(
     assert summary["outcomes"]["resolved"] >= 1
 
 
+def test_each_symbol_carries_the_date_of_the_filing_that_removed_it(
+    tmp_path: Path,
+) -> None:
+    """An episode spans a year of filings; the funds inside it die on their own
+    dates. Stamping all with the episode's earliest truncates real history —
+    FRN's Form 25 is dated 2019-02-28 and it traded until 2020-02-14."""
+
+    _, rows, _ = _run_stage_c(tmp_path)
+
+    svb = next(row for row in rows if row["cik"] == "0000719739")
+    assert svb["symbol_delisted_on"], "per-symbol delisting dates are missing"
+    # SVB's episode has Form 25s on 2023-05-02 and 2023-05-04; the symbol is
+    # stamped with the filing that named it, not the episode's opening date.
+    assert set(svb["symbol_delisted_on"]) == set(svb["symbols"])
+    assert all(
+        value in ("2023-05-02", "2023-05-04")
+        for value in svb["symbol_delisted_on"].values()
+    )
+
+
 def test_two_form_25_filings_days_apart_are_one_delisting_episode(
     tmp_path: Path,
 ) -> None:
