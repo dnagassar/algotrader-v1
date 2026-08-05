@@ -610,22 +610,48 @@ def parse_filing_header_series(document: bytes | str) -> tuple[FundSeries, ...]:
     return tuple(series)
 
 
+# A single Form 25 routinely covers several securities, named in one string:
+#   "Gabelli Food of All Nations NextShares & Gabelli RBI NextShares"
+#   "Legg Mason US Diversified Core ETF, Legg Mason Emerging Markets ..."
+_CLASS_SEPARATOR = re.compile(r"\s*(?:;|&|,\s*(?=[A-Z])|\band\b)\s*")
+# A parenthesised ticker in the class description is the issuer stating the
+# answer outright.
+_INLINE_TICKER = re.compile(r"\(([A-Z][A-Z0-9.\-]{0,14})\)")
+
+
+def split_delisted_classes(description: str) -> tuple[str, ...]:
+    """Split one Form 25 class description into the securities it names."""
+
+    text = html.unescape(str(description)).strip()
+    if not text:
+        return ()
+    parts = [part.strip(" .,;&") for part in _CLASS_SEPARATOR.split(text)]
+    return tuple(part for part in parts if len(part) > 3)
+
+
 def attribute_delisted_symbols(
     delisted_class: str,
     *,
     cover_page_classes: Sequence[CoverPageClass] = (),
     fund_series: Sequence[FundSeries] = (),
+    candidates_are_complete: bool = True,
 ) -> dict[str, object]:
     """Identify only the symbols belonging to the class that delisted.
 
-    Resolution order, and the reasoning for each:
+    `candidates_are_complete` says whether the candidate list is the filer's
+    whole registered set. A cover page is complete: it tags every registered
+    class. A filing header is **not** — it names only its own filing's series,
+    so a single candidate there means "one was found", not "only one exists".
+    Taking the sole-candidate shortcut on a partial list is how a scan that
+    happened to surface `CACG` attributed it to a delisting of three unrelated
+    Diversified Core funds.
 
-    1. **One candidate.** A filer with a single registered class cannot be
-       ambiguous, so the Form 25 text is not needed.
-    2. **Name match.** Otherwise the Form 25's class description must match one
-       candidate after legal-form noise is removed.
-    3. **Otherwise nothing.** Several candidates and no clean match means the
-       delisted security is unknown, and saying so is the point.
+    Resolution order:
+
+    1. **Sole candidate, complete list.** Cannot be ambiguous.
+    2. **Name match.** The Form 25's description must match exactly one
+       candidate once legal-form noise is removed.
+    3. **Otherwise nothing.** Declining is the point.
     """
 
     candidates: list[tuple[str, tuple[str, ...], str]] = [
@@ -640,7 +666,7 @@ def attribute_delisted_symbols(
             "attribution": "no_candidate_classes",
             "candidate_count": 0,
         }
-    if len(candidates) == 1:
+    if len(candidates) == 1 and candidates_are_complete:
         title, symbols, exchange = candidates[0]
         return {
             "symbols": tuple(symbols),
@@ -650,34 +676,55 @@ def attribute_delisted_symbols(
             "matched_class": title,
         }
 
-    target = _comparable_name(delisted_class)
-    if target:
-        matches = [
+    # Resolved per named security, not in aggregate. One Form 25 naming two
+    # funds is legitimately two answers; one name matching two identically
+    # titled classes is ambiguous and must yield none. Pooling the two cases
+    # would turn the second into a silent over-attribution.
+    resolved: list[tuple[str, tuple[str, ...], str]] = []
+    ambiguous = False
+    for target in {
+        _comparable_name(part) for part in split_delisted_classes(delisted_class)
+    }:
+        if not target:
+            continue
+        hits = [
             item
             for item in candidates
             if (name := _comparable_name(item[0]))
             and (name == target or name in target or target in name)
         ]
-        if len(matches) == 1:
-            title, symbols, exchange = matches[0]
-            return {
-                "symbols": tuple(symbols),
-                "exchange": exchange,
-                "attribution": "matched_delisted_class",
-                "candidate_count": len(candidates),
-                "matched_class": title,
-            }
-        if len(matches) > 1:
-            return {
-                "symbols": (),
-                "exchange": "",
-                "attribution": "ambiguous_class_match",
-                "candidate_count": len(candidates),
-            }
+        if len(hits) == 1:
+            if hits[0] not in resolved:
+                resolved.append(hits[0])
+        elif len(hits) > 1:
+            ambiguous = True
+
+    if len(resolved) == 1:
+        title, symbols, exchange = resolved[0]
+        return {
+            "symbols": tuple(symbols),
+            "exchange": exchange,
+            "attribution": "matched_delisted_class",
+            "candidate_count": len(candidates),
+            "matched_class": title,
+        }
+    if len(resolved) > 1:
+        # A sponsor closing a group of funds on one day is one Form 25 and
+        # several genuinely delisted securities.
+        return {
+            "symbols": tuple(
+                dict.fromkeys(symbol for _, syms, _ in resolved for symbol in syms)
+            ),
+            "exchange": next((item[2] for item in resolved if item[2]), ""),
+            "attribution": "matched_multiple_classes",
+            "candidate_count": len(candidates),
+        }
     return {
         "symbols": (),
         "exchange": "",
-        "attribution": "unmatched_delisted_class",
+        "attribution": (
+            "ambiguous_class_match" if ambiguous else "unmatched_delisted_class"
+        ),
         "candidate_count": len(candidates),
     }
 

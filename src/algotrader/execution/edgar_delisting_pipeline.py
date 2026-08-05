@@ -41,18 +41,26 @@ import time
 
 from algotrader.errors import ValidationError
 from algotrader.execution.edgar_delisting_adapter import (
+    ARCHIVE_HOST,
+    DATA_HOST,
     EdgarRequestConfig,
     build_edgar_request,
     edgar_get,
 )
 from algotrader.research.delisting_registry import (
+    DELISTING_FORMS,
     RECOVERY_STRATA,
     TICKER_TAGGING_ERA_START,
     DelistingEpisode,
     DelistingFiling,
+    FundSeries,
+    attribute_delisted_symbols,
     build_delisting_records,
+    extract_cover_page_classes,
     extract_trading_symbols,
     group_delisting_episodes,
+    parse_filing_header_series,
+    parse_form25_security,
     parse_form_index,
     price_admission_window,
     select_symbol_source_filing,
@@ -68,6 +76,7 @@ __all__ = [
     "quarters_in_range",
     "run_stage_a",
     "run_stage_b",
+    "run_stage_c",
     "summarize_stage_b",
 ]
 
@@ -81,6 +90,7 @@ _STAGE_A_FILINGS = "stage_a_filings.jsonl"
 _STAGE_A_QUARTERS = "stage_a_quarters.jsonl"
 _STAGE_B_RESOLUTIONS = "stage_b_resolutions.jsonl"
 _STAGE_B_MANIFEST = "stage_b_manifest.jsonl"
+_STAGE_C_ATTRIBUTIONS = "stage_c_attributions.jsonl"
 _REGISTRY = "delisting_registry.jsonl"
 
 _OUTCOME_RESOLVED = "resolved"
@@ -88,6 +98,14 @@ _OUTCOME_NO_TAG = "no_tag_in_source_filing"
 _OUTCOME_NO_REPORT = "no_eligible_periodic_report"
 _OUTCOME_WINDOW = "submissions_window_insufficient"
 _OUTCOME_NO_PRIMARY_DOCUMENT = "source_filing_has_no_primary_document"
+# Fund filings whose SGML header carries SERIES-AND-CLASSES-CONTRACTS-DATA.
+_SERIES_BEARING_FORMS = frozenset(
+    {
+        "497", "497K", "497J", "485BPOS", "485APOS", "485BXT",
+        "NPORT-P", "NPORT-EX", "N-CEN", "N-CSR", "N-CSRS", "N-Q", "N-PX",
+        "24F-2NT", "N-MFP", "N-MFP2", "N-MFP3",
+    }
+)
 _OUTCOME_SUBMISSIONS_FAILED = "submissions_unavailable"
 _OUTCOME_DOCUMENT_FAILED = "document_unavailable"
 
@@ -107,6 +125,10 @@ class DelistingPipelineConfig:
     resolve_from: date = TICKER_TAGGING_ERA_START
     max_resolutions: int = 0
     request_interval_seconds: float = _DEFAULT_REQUEST_INTERVAL_SECONDS
+    # Stage C only. Funds and operating companies resolve through different
+    # sources, and the fund half is what an ETF universe needs.
+    entity_scope: str = "all"
+    max_header_scans: int = 8
 
     def __post_init__(self) -> None:
         agent = str(self.user_agent).strip()
@@ -125,6 +147,8 @@ class DelistingPipelineConfig:
             raise ValidationError(
                 "request interval must respect SEC fair access (>= 0.1s)."
             )
+        if self.entity_scope not in ("all", "investment", "non_investment"):
+            raise ValidationError(f"unsupported entity scope: {self.entity_scope}")
         object.__setattr__(self, "output_root", Path(self.output_root))
 
 
@@ -509,6 +533,40 @@ def _recent_filings(
     return filings, oldest <= delisted_on
 
 
+def _filing_columns(
+    submissions: Mapping[str, object],
+) -> tuple[list[str], list[str], list[str]]:
+    filings = submissions.get("filings", {})
+    recent = filings.get("recent", {}) if isinstance(filings, Mapping) else {}
+    if not isinstance(recent, Mapping):
+        return [], [], []
+    return (
+        [str(value) for value in recent.get("form", [])],
+        [str(value) for value in recent.get("filingDate", [])],
+        [str(value) for value in recent.get("accessionNumber", [])],
+    )
+
+
+def _window_reaches(dates: Sequence[str], delisted_on: date) -> bool:
+    parsed = []
+    for value in dates:
+        try:
+            parsed.append(date.fromisoformat(value))
+        except ValueError:
+            continue
+    return bool(parsed) and min(parsed) <= delisted_on
+
+
+def _older_submission_pages(submissions: Mapping[str, object]) -> list[str]:
+    filings = submissions.get("filings", {})
+    files = filings.get("files", []) if isinstance(filings, Mapping) else []
+    names = []
+    for entry in files if isinstance(files, list) else []:
+        if isinstance(entry, Mapping) and entry.get("name"):
+            names.append(str(entry["name"]))
+    return names
+
+
 def _record_request(
     root: Path, request: Mapping[str, object], payload: bytes, cik: str
 ) -> None:
@@ -530,6 +588,359 @@ def _record_request(
             "fetched_at": datetime.now(UTC).isoformat(),
         },
     )
+
+
+# --- stage C: exact per-security attribution -------------------------------
+
+
+def run_stage_c(
+    config: DelistingPipelineConfig,
+    *,
+    http_get: Callable[[str, str, str], bytes] | None = None,
+) -> dict[str, object]:
+    """Attribute each delisting to the security that actually delisted.
+
+    Stage B answered "did this CIK delist, and what tickers appear on its cover
+    page". That conflated a filer with its securities and marked `AAPL` as
+    delisted. Stage C asks the Form 25 which class it covers, then resolves only
+    that class — through cover-page triples for operating companies, or through
+    fund series data for registered funds, which stage B could not name at all.
+    """
+
+    root = Path(config.output_root)
+    episodes = group_delisting_episodes(load_stage_a_filings(root))
+    by_key = {(e.cik, e.delisted_on.isoformat()): e for e in episodes}
+    entity_types = {
+        (str(row["cik"]), str(row["delisted_on"])): str(row.get("entity_type", ""))
+        for row in _read_jsonl(root / _STAGE_B_RESOLUTIONS)
+    }
+    filings_by_key: dict[tuple[str, str], list[DelistingFiling]] = {}
+    for filing in load_stage_a_filings(root):
+        for key, episode in by_key.items():
+            if filing.cik == episode.cik and (
+                episode.delisted_on <= filing.filed <= episode.last_filed_on
+            ):
+                filings_by_key.setdefault(key, []).append(filing)
+
+    done = {
+        (str(row["cik"]), str(row["delisted_on"]))
+        for row in _read_jsonl(root / _STAGE_C_ATTRIBUTIONS)
+    }
+    pending = []
+    for key, episode in sorted(by_key.items(), key=lambda kv: kv[1].delisted_on):
+        if episode.delisted_on < config.resolve_from or key in done:
+            continue
+        known = entity_types.get(key, "")
+        # An unknown type cannot be filtered here; stage C settles it after one
+        # small submissions fetch rather than guessing.
+        if known and not _in_entity_scope(config.entity_scope, known):
+            continue
+        pending.append((key, episode))
+    if config.max_resolutions > 0:
+        pending = pending[: config.max_resolutions]
+
+    if config.mode == "dry_run":
+        return {
+            "record_type": "delisting_stage_c_summary",
+            "mode": "dry_run",
+            "network_access_attempted": False,
+            "entity_scope": config.entity_scope,
+            "episodes_to_attribute": len(pending),
+        }
+
+    fetch = http_get or edgar_get
+    pacer = _Pacer(config.request_interval_seconds)
+    counts: dict[str, int] = {}
+    for key, episode in pending:
+        row = _attribute_episode(
+            config,
+            episode,
+            filings=filings_by_key.get(key, ()),
+            entity_type=entity_types.get(key, ""),
+            fetch=fetch,
+            pacer=pacer,
+            root=root,
+        )
+        counts[str(row["attribution"])] = counts.get(str(row["attribution"]), 0) + 1
+        _append_jsonl(root / _STAGE_C_ATTRIBUTIONS, row)
+    return {
+        "record_type": "delisting_stage_c_summary",
+        "mode": "live_fetch",
+        "network_access_attempted": True,
+        "entity_scope": config.entity_scope,
+        "episodes_attributed": len(pending),
+        "attributions": dict(sorted(counts.items())),
+        "attributions_path": str(root / _STAGE_C_ATTRIBUTIONS),
+    }
+
+
+def _in_entity_scope(scope: str, entity_type: str) -> bool:
+    if scope == "all":
+        return True
+    if scope == "investment":
+        return entity_type == "investment"
+    return entity_type != "investment"
+
+
+def _accession_from_archive_path(archive_path: str) -> str:
+    return archive_path.rsplit("/", 1)[-1].removesuffix(".txt")
+
+
+def _attribute_episode(
+    config: DelistingPipelineConfig,
+    episode: DelistingEpisode,
+    *,
+    filings: Sequence[DelistingFiling],
+    entity_type: str,
+    fetch: Callable[[str, str, str], bytes],
+    pacer: _Pacer,
+    root: Path,
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "cik": episode.cik,
+        "company": episode.company,
+        "delisted_on": episode.delisted_on.isoformat(),
+        "entity_type": entity_type,
+        "delisted_classes": [],
+        "symbols": [],
+        "exchange": "",
+        "route": "",
+        "candidate_count": 0,
+        "attributed_at": datetime.now(UTC).isoformat(),
+    }
+
+    classes: list[str] = []
+    for filing in filings:
+        accession = _accession_from_archive_path(filing.archive_path)
+        path = (
+            f"/Archives/edgar/data/{int(episode.cik)}/"
+            f"{accession.replace('-', '')}/primary_doc.xml"
+        )
+        payload = _try_fetch(config, path, fetch=fetch, pacer=pacer, root=root,
+                             cik=episode.cik, kind="document")
+        if payload is None:
+            continue
+        described = parse_form25_security(payload)["description_class_security"]
+        if described and described not in classes:
+            classes.append(described)
+    row["delisted_classes"] = list(classes)
+    if not classes:
+        row["attribution"] = "form25_class_unreadable"
+        return row
+
+    # Fetched here rather than taken from stage B, so stage C can cover
+    # episodes stage B never classified — the fund route reads filing headers,
+    # which reach back to 2006, where the cover-page route starts in 2019.
+    payload = _try_fetch(
+        config, f"/submissions/CIK{episode.cik}.json", fetch=fetch, pacer=pacer,
+        root=root, cik=episode.cik, kind="submissions", host=DATA_HOST,
+    )
+    submissions: Mapping[str, object] = {}
+    if payload is not None:
+        try:
+            submissions = json.loads(payload)
+        except json.JSONDecodeError:
+            submissions = {}
+    if not submissions:
+        row["attribution"] = "no_candidate_classes"
+        row["route"] = "submissions_unavailable"
+        return row
+    entity_type = entity_type or str(submissions.get("entityType", ""))
+    row["entity_type"] = entity_type
+    if not _in_entity_scope(config.entity_scope, entity_type):
+        # Only knowable after the submissions fetch for episodes stage B never
+        # classified. Stopping here costs one small request, not a document.
+        row["attribution"] = "out_of_entity_scope"
+        row["route"] = "skipped"
+        return row
+
+    if entity_type == "investment":
+        candidates, route = _fund_series_candidates(
+            config, episode, classes, submissions,
+            fetch=fetch, pacer=pacer, root=root,
+        )
+        cover: Sequence[object] = ()
+    else:
+        cover, route = _cover_page_candidates(
+            config, episode, submissions, fetch=fetch, pacer=pacer, root=root
+        )
+        candidates = ()
+    row["route"] = route
+
+    symbols: list[str] = []
+    exchange = ""
+    attributions: list[str] = []
+    candidate_count = 0
+    for described in classes:
+        result = attribute_delisted_symbols(
+            described,
+            cover_page_classes=cover,
+            fund_series=candidates,
+            # A filing header lists only its own filing's series, so a single
+            # hit there is "one was found", not "only one exists".
+            candidates_are_complete=entity_type != "investment",
+        )
+        attributions.append(str(result["attribution"]))
+        candidate_count = max(candidate_count, int(result["candidate_count"]))
+        for symbol in result["symbols"]:
+            if symbol not in symbols:
+                symbols.append(str(symbol))
+        exchange = exchange or str(result.get("exchange", ""))
+    row["symbols"] = symbols
+    row["exchange"] = exchange
+    row["candidate_count"] = candidate_count
+    row["ticker_recoverable"] = bool(symbols)
+    # The episode's outcome is its best per-class outcome: one identified class
+    # is a real result even when a sibling class stayed ambiguous.
+    for preferred in (
+        "matched_multiple_classes",
+        "matched_delisted_class",
+        "sole_registered_class",
+        "ambiguous_class_match",
+        "unmatched_delisted_class",
+        "no_candidate_classes",
+    ):
+        if preferred in attributions:
+            row["attribution"] = preferred
+            break
+    else:
+        row["attribution"] = "no_candidate_classes"
+    return row
+
+
+def _cover_page_candidates(
+    config: DelistingPipelineConfig,
+    episode: DelistingEpisode,
+    submissions: Mapping[str, object],
+    *,
+    fetch: Callable[[str, str, str], bytes],
+    pacer: _Pacer,
+    root: Path,
+) -> tuple[Sequence[object], str]:
+    filings, _ = _recent_filings(submissions, episode.delisted_on)
+    chosen = select_symbol_source_filing(filings, delisted_on=episode.delisted_on)
+    if chosen is None or not str(chosen["primary"]).strip():
+        return (), "no_eligible_periodic_report"
+    path = (
+        f"/Archives/edgar/data/{int(episode.cik)}/"
+        f"{str(chosen['accession']).replace('-', '')}/{chosen['primary']}"
+    )
+    document = _try_fetch(config, path, fetch=fetch, pacer=pacer, root=root,
+                          cik=episode.cik, kind="document")
+    if document is None:
+        return (), "document_unavailable"
+    return extract_cover_page_classes(document), "cover_page"
+
+
+def _fund_series_candidates(
+    config: DelistingPipelineConfig,
+    episode: DelistingEpisode,
+    classes: Sequence[str],
+    submissions: Mapping[str, object],
+    *,
+    fetch: Callable[[str, str, str], bytes],
+    pacer: _Pacer,
+    root: Path,
+) -> tuple[Sequence[FundSeries], str]:
+    """Find the fund series behind a delisting.
+
+    Submission headers carry it: a few kilobytes each, and EDGAR's series data
+    reaches back to 2006 where N-CEN begins only in 2018. Each header names
+    only its own filing's series, so several are scanned until one matches the
+    delisted class.
+    """
+
+    forms, dates, accessions = _filing_columns(submissions)
+    if not _window_reaches(dates, episode.delisted_on):
+        # `recent` caps at a thousand filings, so a prolific trust's window can
+        # begin after the delisting. The older pages are where its history is.
+        for page in _older_submission_pages(submissions):
+            payload = _try_fetch(
+                config, f"/submissions/{page}", fetch=fetch, pacer=pacer, root=root,
+                cik=episode.cik, kind="submissions", host=DATA_HOST,
+            )
+            if payload is None:
+                continue
+            try:
+                older = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            more_forms, more_dates, more_accessions = _filing_columns(
+                {"filings": {"recent": older}}
+            )
+            forms += more_forms
+            dates += more_dates
+            accessions += more_accessions
+            if _window_reaches(dates, episode.delisted_on):
+                break
+
+    eligible = []
+    for form, filed, accession in zip(forms, dates, accessions, strict=False):
+        try:
+            filed_on = date.fromisoformat(str(filed))
+        except ValueError:
+            continue
+        if filed_on > episode.delisted_on or str(form) in DELISTING_FORMS:
+            continue
+        # Series/class data rides on fund filings; notices and certifications
+        # carry none, and scanning them wastes the budget.
+        rank = 0 if str(form) in _SERIES_BEARING_FORMS else 1
+        eligible.append((rank, -filed_on.toordinal(), str(accession)))
+    eligible = [(item[0], item[1], item[2]) for item in sorted(eligible)]
+    if not eligible:
+        # EDGAR caps `recent` at a thousand filings. A prolific trust's window
+        # can start after the delisting, which is a different answer from
+        # "this trust filed nothing", and is recorded as one.
+        return (), "submissions_window_insufficient"
+
+    seen: list[FundSeries] = []
+    for _, _, accession in eligible[: config.max_header_scans]:
+        path = (
+            f"/Archives/edgar/data/{int(episode.cik)}/"
+            f"{accession.replace('-', '')}/{accession}-index-headers.html"
+        )
+        header = _try_fetch(config, path, fetch=fetch, pacer=pacer, root=root,
+                            cik=episode.cik, kind="document")
+        if header is None:
+            continue
+        for series in parse_filing_header_series(header):
+            if series.symbols and series.name not in {s.name for s in seen}:
+                seen.append(series)
+        if any(
+            attribute_delisted_symbols(
+                described, fund_series=seen, candidates_are_complete=False
+            )["symbols"]
+            for described in classes
+        ):
+            return tuple(seen), "filing_header"
+    return tuple(seen), "filing_header_exhausted"
+
+
+def _try_fetch(
+    config: DelistingPipelineConfig,
+    path: str,
+    *,
+    fetch: Callable[[str, str, str], bytes],
+    pacer: _Pacer,
+    root: Path,
+    cik: str,
+    kind: str,
+    host: str = ARCHIVE_HOST,
+) -> bytes | None:
+    request = {
+        "kind": kind,
+        "method": "GET",
+        "url": f"https://{host}{path}",
+        "destination_host": host,
+        "destination_allowlist_match": host in (ARCHIVE_HOST, DATA_HOST),
+    }
+    pacer.wait()
+    try:
+        payload = fetch(host, path, config.user_agent)
+    except (OSError, ValidationError):
+        return None
+    _record_request(root, request, payload, cik)
+    return payload
 
 
 def export_registry(root: Path | str) -> dict[str, object]:
@@ -636,8 +1047,13 @@ def _read_jsonl(path: Path) -> Iterator[dict[str, object]]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--stage", required=True, choices=("a", "b", "summary", "export")
+        "--stage", required=True, choices=("a", "b", "c", "summary", "export")
     )
+    parser.add_argument(
+        "--entity-scope", default="all",
+        choices=("all", "investment", "non_investment"),
+    )
+    parser.add_argument("--max-header-scans", type=int, default=8)
     parser.add_argument("--user-agent", required=True)
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--mode", default="dry_run", choices=("dry_run", "live_fetch"))
@@ -681,8 +1097,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             resolve_from=date.fromisoformat(args.resolve_from),
             max_resolutions=args.max_resolutions,
             request_interval_seconds=args.request_interval_seconds,
+            entity_scope=args.entity_scope,
+            max_header_scans=args.max_header_scans,
         )
-        summary = run_stage_a(config) if args.stage == "a" else run_stage_b(config)
+        runner = {"a": run_stage_a, "b": run_stage_b, "c": run_stage_c}[args.stage]
+        summary = runner(config)
     except (OSError, ValidationError, ValueError) as exc:
         print(f"delisting_pipeline_status=blocked:{exc}")
         return 2

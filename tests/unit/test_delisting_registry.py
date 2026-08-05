@@ -375,6 +375,56 @@ def test_a_delisted_fund_resolves_through_the_header_route() -> None:
     assert result["attribution"] == "sole_registered_class"
 
 
+def test_sole_candidate_is_refused_when_the_list_is_incomplete() -> None:
+    """A header scan that surfaced one series does not mean one series exists.
+
+    Taking the shortcut on a partial list attributed CACG, a live ETF, to a
+    delisting of three unrelated Diversified Core funds.
+    """
+
+    partial = (subject.FundSeries("ClearBridge All Cap Growth ETF", "S1", "", ("CACG",)),)
+
+    complete_list = subject.attribute_delisted_symbols(
+        "Legg Mason US Diversified Core ETF", fund_series=partial
+    )
+    partial_list = subject.attribute_delisted_symbols(
+        "Legg Mason US Diversified Core ETF",
+        fund_series=partial,
+        candidates_are_complete=False,
+    )
+
+    assert complete_list["attribution"] == "sole_registered_class"
+    assert partial_list["symbols"] == ()
+    assert partial_list["attribution"] == "unmatched_delisted_class"
+
+
+def test_one_form25_naming_several_funds_resolves_each_of_them() -> None:
+    """Sponsors close groups of funds on one day, in one Form 25."""
+
+    series = (
+        subject.FundSeries("Gabelli Food of All Nations NextShares", "S1", "", ("FOANC",)),
+        subject.FundSeries("Gabelli RBI NextShares", "S2", "", ("RBIQC",)),
+        subject.FundSeries("Gabelli Unrelated Fund", "S3", "", ("ZZZZ",)),
+    )
+
+    result = subject.attribute_delisted_symbols(
+        "Gabelli Food of All Nations NextShares & Gabelli RBI NextShares",
+        fund_series=series,
+        candidates_are_complete=False,
+    )
+
+    assert set(result["symbols"]) == {"FOANC", "RBIQC"}
+    assert "ZZZZ" not in result["symbols"]
+    assert result["attribution"] == "matched_multiple_classes"
+
+
+def test_class_descriptions_split_on_the_separators_filers_use() -> None:
+    assert subject.split_delisted_classes(
+        "Alpha ETF, Beta ETF; Gamma ETF & Delta ETF"
+    ) == ("Alpha ETF", "Beta ETF", "Gamma ETF", "Delta ETF")
+    assert subject.split_delisted_classes("") == ()
+
+
 def test_a_name_matching_several_classes_is_refused() -> None:
     ambiguous = (
         '<ix:nonNumeric contextRef="c1" name="dei:Security12bTitle">Growth Fund</ix:nonNumeric>'
