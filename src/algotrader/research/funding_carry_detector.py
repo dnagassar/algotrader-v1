@@ -39,7 +39,7 @@ __all__ = [
     "run_funding_carry_detector",
 ]
 
-PROTOCOL_ID = "v5_99_funding_carry_detector_v1"
+PROTOCOL_ID = "v6_00_funding_carry_synchronized_v1"
 SYMBOLS = ("BTC-PERPETUAL", "ETH-PERPETUAL", "SOL_USDC-PERPETUAL")
 _HOUR_MS = 3_600_000
 _INTERVAL_MS = 8 * _HOUR_MS
@@ -55,13 +55,18 @@ _REQUIRED_POSITIVE_SYMBOLS = 2
 # which made the scored result meaningless. The ratio is now a precondition
 # rather than a diagnostic somebody has to remember to run.
 _MAX_BASIS_TO_FUNDING_RATIO = 10.0
+# Deribit chart ticks are bar OPEN times, so the close at tick T is the price
+# at T + 1h. The perpetual mark for funding timestamp T is therefore the close
+# at tick T - 1h. Established in V6.00 by level agreement (3.8 bps mean premium
+# at this offset versus ~0.4% at every other), not by tuning any result.
+_PERP_TICK_OFFSET_MS = _HOUR_MS
 
-_ROOT = Path("runs/v5_99_funding_carry_detector")
-_CANONICAL = _ROOT / "canonical"
+_ROOT = Path("runs/v6_00_funding_carry_synchronized")
+_CANONICAL = Path("runs/v5_99_funding_carry_detector/canonical")
 _OUTPUT = _ROOT / "evaluation"
 _ENGINE = Path("src/algotrader/research/funding_carry_detector.py")
-_PROTOCOL = Path("docs/design/v5_99_funding_carry_detector_preregistration.md")
-_PROTOCOL_HASH = "cac1d9121b3c4cc7e9f722835f7a1b02d2ef255902258f24f9d1dc78a114caf1"
+_PROTOCOL = Path("docs/design/v6_00_funding_carry_synchronized_preregistration.md")
+_PROTOCOL_HASH = "ed86af5bc319d79da1e720e5cb1afe87bbea8010933bf900e4a4112168fe9f17"
 
 
 def build_detector_preregistration() -> dict[str, object]:
@@ -75,6 +80,7 @@ def build_detector_preregistration() -> dict[str, object]:
         "symbols": list(SYMBOLS),
         "venue": "deribit",
         "venue_amendment": "binance_returned_http_451_before_any_scoring",
+        "perp_mark_alignment": "chart_close_at_tick_minus_one_hour",
         "funding_settlement_amendment": (
             "hourly_funding_summed_within_frozen_eight_hour_interval"
         ),
@@ -388,15 +394,16 @@ def _load_symbol(symbol: str) -> dict[int, dict[str, float]]:
         ]
         if any(item is None for item in window):
             continue
-        if timestamp not in perp:
+        mark = perp.get(timestamp - _PERP_TICK_OFFSET_MS)
+        if mark is None:
             continue
         index_price = float(hourly[timestamp][1])
-        if index_price <= 0.0 or perp[timestamp] <= 0.0:
+        if index_price <= 0.0 or mark <= 0.0:
             continue
         panel[timestamp] = {
             "funding": math.fsum(float(item[0]) for item in window),
             "index": index_price,
-            "perp": perp[timestamp],
+            "perp": mark,
         }
     if not panel:
         raise ValidationError(f"{symbol} produced no admissible intervals.")
