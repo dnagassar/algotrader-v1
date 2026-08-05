@@ -35,6 +35,7 @@ from algotrader.errors import ValidationError
 __all__ = [
     "SYMBOLS",
     "build_detector_preregistration",
+    "validate_signal_to_noise",
     "run_funding_carry_detector",
 ]
 
@@ -49,6 +50,11 @@ _LEGS = 2
 _DRAWDOWN_CEILING = 0.15
 _REQUIRED_POSITIVE_QUARTERS = 3
 _REQUIRED_POSITIVE_SYMBOLS = 2
+# A delta-neutral perp/spot pair must have basis noise small relative to the
+# funding it is measuring. V5.99 shipped with basis noise ~100x the signal,
+# which made the scored result meaningless. The ratio is now a precondition
+# rather than a diagnostic somebody has to remember to run.
+_MAX_BASIS_TO_FUNDING_RATIO = 10.0
 
 _ROOT = Path("runs/v5_99_funding_carry_detector")
 _CANONICAL = _ROOT / "canonical"
@@ -114,6 +120,9 @@ def _canonical_replay(
     preregistration: Mapping[str, object],
 ) -> dict[str, object]:
     panels = {symbol: _load_symbol(symbol) for symbol in SYMBOLS}
+    signal_to_noise = {
+        symbol: validate_signal_to_noise(panels[symbol]) for symbol in SYMBOLS
+    }
     grid = sorted(set.intersection(*(set(panel) for panel in panels.values())))
     if len(grid) < _MINIMUM_INTERVALS:
         raise ValidationError(
@@ -213,6 +222,7 @@ def _canonical_replay(
             "last": _iso(grid[-1]),
             "years": _number(len(grid) / _INTERVALS_PER_YEAR),
         },
+        "signal_to_noise": signal_to_noise,
         "per_symbol": per_symbol,
         "portfolio_metrics": portfolio_metrics,
         "quarters": quarters,
@@ -312,6 +322,53 @@ def _compound(values: Sequence[float]) -> float:
     for value in values:
         total *= 1.0 + value
     return total - 1.0
+
+
+def validate_signal_to_noise(
+    panel: Mapping[int, Mapping[str, float]],
+    *,
+    maximum_ratio: float = _MAX_BASIS_TO_FUNDING_RATIO,
+) -> dict[str, object]:
+    """Refuse a panel whose basis noise swamps the funding signal.
+
+    For a genuinely delta-neutral pair the per-interval basis should be a small
+    multiple of the funding being collected. When it is orders of magnitude
+    larger, the two price series are not synchronised and no amount of
+    simulation recovers the signal — the honest response is to block rather
+    than to report a number.
+    """
+
+    stamps = sorted(panel)
+    if len(stamps) < 2:
+        raise ValidationError("panel is too short to assess signal-to-noise.")
+    basis: list[float] = []
+    funding: list[float] = []
+    for index in range(1, len(stamps)):
+        previous, current = panel[stamps[index - 1]], panel[stamps[index]]
+        basis.append(
+            (current["index"] / previous["index"] - 1.0)
+            - (current["perp"] / previous["perp"] - 1.0)
+        )
+        funding.append(current["funding"])
+    mean_absolute_basis = mean(abs(value) for value in basis)
+    mean_absolute_funding = mean(abs(value) for value in funding)
+    if mean_absolute_funding <= 0.0:
+        raise ValidationError("panel carries no funding signal.")
+    ratio = mean_absolute_basis / mean_absolute_funding
+    report = {
+        "mean_absolute_basis": _number(mean_absolute_basis),
+        "mean_absolute_funding": _number(mean_absolute_funding),
+        "basis_to_funding_ratio": _number(ratio),
+        "maximum_ratio": _number(maximum_ratio),
+        "sufficient": ratio <= maximum_ratio,
+    }
+    if ratio > maximum_ratio:
+        raise ValidationError(
+            "basis noise swamps the funding signal "
+            f"(ratio {ratio:.1f} exceeds {maximum_ratio:.1f}); the price series "
+            "are not synchronised and the carry cannot be measured."
+        )
+    return report
 
 
 def _load_symbol(symbol: str) -> dict[int, dict[str, float]]:
