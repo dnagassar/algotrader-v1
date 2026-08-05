@@ -771,6 +771,9 @@ def _attribute_episode(
     exchange = ""
     attributions: list[str] = []
     candidate_count = 0
+    # symbol -> the security it names, so later work can classify a ticker
+    # without guessing from the episode's other funds.
+    symbol_classes: dict[str, str] = {}
     for described in classes:
         result = attribute_delisted_symbols(
             described,
@@ -785,8 +788,12 @@ def _attribute_episode(
         for symbol in result["symbols"]:
             if symbol not in symbols:
                 symbols.append(str(symbol))
+        for title, matched in result.get("matched_pairs", ()):
+            for symbol in matched:
+                symbol_classes.setdefault(str(symbol), str(title))
         exchange = exchange or str(result.get("exchange", ""))
     row["symbols"] = symbols
+    row["symbol_classes"] = symbol_classes
     row["exchange"] = exchange
     row["candidate_count"] = candidate_count
     row["ticker_recoverable"] = bool(symbols)

@@ -79,19 +79,33 @@ class SurvivorshipInflation:
         }
 
 
+# A security that keeps trading well past its Form 25 did not die. Form 25 is
+# a notification of removal from *a listing*, which an exchange transfer also
+# triggers, so the filing alone cannot distinguish a closure from a move.
+CONTINUATION_GRACE_DAYS = 90
+
+
 def admit_symbol_observation(
     *,
     symbol: str,
     first_bar: date | None,
     last_bar: date | None,
     delisted_on: date | None,
+    grace_days: int = CONTINUATION_GRACE_DAYS,
 ) -> dict[str, object]:
     """Decide whether a price series may represent this symbol's listed life.
 
-    A series that begins after the security stopped trading belongs to a
-    different company that now holds the ticker. `HAO` delisted in 2019 and its
-    series begins in 2024 under an unrelated issuer; admitting it would splice
-    two securities exactly as `BBBY` did.
+    Three ways a claimed delisting fails to be a death, each seen in real data:
+
+    - **Ticker reuse.** The series begins after the security stopped trading,
+      so it belongs to whoever holds the symbol now. `HAO` delisted in 2019 and
+      its series begins in 2024 under an unrelated issuer.
+    - **Continued trading.** The series runs on past the filing. `NORW` has an
+      unbroken series through 2026 despite a 2021 Form 25, because the filing
+      recorded a change of listing rather than a closure. Counting it as a
+      casualty would put a live fund's truncated return into the dead pool.
+    - **No history at all.** The vendor never served it, so it cannot be
+      measured either way.
     """
 
     if first_bar is None or last_bar is None:
@@ -100,6 +114,12 @@ def admit_symbol_observation(
         return {"admitted": True, "reason": "listed", "admit_through": None}
     if first_bar > delisted_on:
         return {"admitted": False, "reason": "ticker_reused_after_delisting"}
+    if (last_bar - delisted_on).days > grace_days:
+        return {
+            "admitted": False,
+            "reason": "continued_trading_after_delisting",
+            "traded_through": last_bar.isoformat(),
+        }
     return {"admitted": True, "reason": "truncated_at_delisting",
             "admit_through": delisted_on.isoformat()}
 

@@ -416,6 +416,12 @@ def test_one_form25_naming_several_funds_resolves_each_of_them() -> None:
     assert set(result["symbols"]) == {"FOANC", "RBIQC"}
     assert "ZZZZ" not in result["symbols"]
     assert result["attribution"] == "matched_multiple_classes"
+    # Each ticker stays beside the fund it names. Unioning them is what let an
+    # emerging-markets bond ETF be classified as country equity.
+    assert dict(result["matched_pairs"]) == {
+        "Gabelli Food of All Nations NextShares": ("FOANC",),
+        "Gabelli RBI NextShares": ("RBIQC",),
+    }
 
 
 def test_class_descriptions_split_on_the_separators_filers_use() -> None:

@@ -699,6 +699,10 @@ def attribute_delisted_symbols(
         elif len(hits) > 1:
             ambiguous = True
 
+    # Each symbol is kept beside the security it belongs to. Unioning them
+    # loses which fund a ticker actually names, which makes any later
+    # classification of the result unsound.
+    pairs = tuple((title, tuple(syms)) for title, syms, _ in resolved)
     if len(resolved) == 1:
         title, symbols, exchange = resolved[0]
         return {
@@ -707,6 +711,7 @@ def attribute_delisted_symbols(
             "attribution": "matched_delisted_class",
             "candidate_count": len(candidates),
             "matched_class": title,
+            "matched_pairs": pairs,
         }
     if len(resolved) > 1:
         # A sponsor closing a group of funds on one day is one Form 25 and
@@ -718,6 +723,7 @@ def attribute_delisted_symbols(
             "exchange": next((item[2] for item in resolved if item[2]), ""),
             "attribution": "matched_multiple_classes",
             "candidate_count": len(candidates),
+            "matched_pairs": pairs,
         }
     return {
         "symbols": (),

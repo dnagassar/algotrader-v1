@@ -115,6 +115,40 @@ def test_a_live_symbol_needs_no_truncation() -> None:
     assert verdict["admit_through"] is None
 
 
+def test_a_security_still_trading_after_its_form25_is_not_a_casualty() -> None:
+    """NORW filed a Form 25 in 2021 and has an unbroken series through 2026.
+
+    Form 25 notifies removal from a listing, which an exchange transfer also
+    triggers. Counting that as a death would put a live fund's arbitrarily
+    truncated return into the dead pool and overstate the measured inflation.
+    """
+
+    verdict = subject.admit_symbol_observation(
+        symbol="NORW",
+        first_bar=date(2009, 8, 19),
+        last_bar=date(2026, 8, 4),
+        delisted_on=date(2021, 10, 22),
+    )
+
+    assert verdict["admitted"] is False
+    assert verdict["reason"] == "continued_trading_after_delisting"
+    assert verdict["traded_through"] == "2026-08-04"
+
+
+def test_a_short_data_tail_after_the_filing_is_still_a_delisting() -> None:
+    """Settlement and final NAV bars land days after the notice, not months."""
+
+    verdict = subject.admit_symbol_observation(
+        symbol="FRN",
+        first_bar=date(2008, 6, 13),
+        last_bar=date(2020, 3, 2),
+        delisted_on=date(2020, 2, 14),
+    )
+
+    assert verdict["admitted"] is True
+    assert verdict["reason"] == "truncated_at_delisting"
+
+
 def test_a_symbol_the_vendor_does_not_serve_is_not_invented() -> None:
     verdict = subject.admit_symbol_observation(
         symbol="SIVB", first_bar=None, last_bar=None, delisted_on=date(2023, 5, 2)
