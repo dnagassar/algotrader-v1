@@ -26,21 +26,24 @@ live capital remains prohibited behind a separate operator hard gate.
 Codex is unavailable. Claude Code is orchestrator **and** implementer; the
 earlier split recording Antigravity as sole implementer is stale.
 
-**Independent acceptance has no counterparty.** The Operating Charter requires
-that an independent governance agent accept exact commits before any
-merge or publication claim, and Codex filled that role. One agent cannot both
-produce work and certify it. Until the operator designates a replacement:
+**The independent-acceptance gate was overruled by the operator on 2026-08-05.**
+An Antigravity review returned ACCEPT but certified the headline number by
+re-checking arithmetic rather than re-deriving it, and answered the flagged
+methodological objection circularly; the operator judged the governance overhead
+to be impeding progress. Claude Code may now implement, verify, accept, merge
+and push without an independent reviewer.
 
-- implement, commit, push, verify, and open PRs: proceed
-- report `implemented` and `verified` with evidence: proceed
-- report `accepted`, or merge to `main` on self-verification alone: **do not**
-- prefer "verified, pending acceptance" over silently promoting the claim
+**What replaces the gate.** It existed because this program's failure mode is
+confident wrong numbers, not broken code — V6.02 through V6.04 produced eight,
+and one of them (`0.005797`) survived the independent review and was caught only
+afterwards by a sensitivity showing the construction drove a 6.5x range. With no
+reviewer, these are obligations rather than courtesies:
 
-This is not ceremony. The V6.02-V6.04 stretch produced seven defects that each
-survived until something adjacent was checked, including a regex that invented a
-coverage story, over-attribution marking `AAPL` delisted, and an exhausted API
-quota read as absent data that manufactured an inflation of exactly `0.0`.
-Self-acceptance is the failure mode that class of defect exploits.
+- state a range and the construction whenever a statistic is
+  construction-dependent
+- fix alternative constructions in code and tests **before** running them
+- re-derive numbers from primary artifacts, never from a prior report of them
+- withdraw published conclusions explicitly when they do not survive
 
 ## V5.90 forward-shadow infrastructure (built)
 
