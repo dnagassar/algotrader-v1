@@ -726,7 +726,53 @@ whose daily change *is* the delta-neutral carry, benchmarked against a flat
 no metric (`verdict_available: false`), backfill before the registration date is
 refused, and re-registration at the root is refused.
 
-**The single follow-on task, and the only one permitted:** a daily collector
+## V6.05a collector built; the shadow is blocked by SOL's basis noise
+
+The collector exists and works. Its first live run also produced an honest
+blocker, and a mistake of mine worth recording.
+
+- `src/algotrader/research/funding_carry_index.py` (pure index construction),
+  `src/algotrader/execution/funding_carry_collector.py` (network via the audited
+  `perp_funding_refresh_adapter`), `scripts/run_funding_carry_collector.ps1`,
+  31 tests.
+- The collector never appends to the shadow ledger. Collection and observation
+  stay separate, so a collector cannot re-record a session after seeing it.
+
+**The preregistration mandates `validate_signal_to_noise` and my first
+implementation omitted it.** A live run wrote `SOLCARRY` at a ratio of 11.1
+against a 10.0 ceiling — the V5.99 shape that produced a confident `-6.3%`
+before that guard existed. Now applied per leg, and because the registered
+universe is frozen at three legs, a blocked leg blocks the whole collection
+rather than writing a two-leg book that is a different hypothesis.
+
+**Live state: `blocked_incomplete_universe`, no CSV written, exit 3.**
+
+| leg | mean\|funding\| 8h | mean\|basis\| | ratio | annualised funding |
+| --- | ---: | ---: | ---: | ---: |
+| BTC | `0.00004165` | `0.00017346` | 4.17 | +4.56% |
+| ETH | `0.00003695` | `0.00018794` | 5.09 | +4.03% |
+| SOL | `0.00003722` | `0.00041219` | **11.07** | +4.08% |
+
+Diagnosed rather than assumed. Tick alignment is **correct**: the outcome-blind
+level criterion V6.00 used picks `+1h` decisively for all three (2.47, 2.40 and
+3.69 bps mean premium, against 30+ bps at every other offset). SOL's funding is
+normal and positive, essentially identical to ETH. **SOL's basis is 2.3x
+noisier**, which is a property of the `SOL_USDC-PERPETUAL` contract's index
+tracking, not a pipeline defect and not a low-funding artifact.
+
+**My error:** I froze a three-leg universe without first measuring whether every
+leg could clear the precondition. SOL sits marginally the wrong side of it
+(11.07 against 10.0), so the shadow accrues nothing until either SOL's tracking
+tightens or funding rises enough to lower the ratio.
+
+**Do not "fix" this by editing the registration, the universe, or the
+threshold.** Any of those voids the fingerprint, and dropping SOL is additionally
+contaminated: its ten-day carry level was visible before the guard was added, so
+an exclusion now cannot be shown to be outcome-blind even though the criterion
+is. This is an operator decision, and the options are to wait, or to register a
+fresh two-leg shadow with the contamination disclosed on its face.
+
+**The follow-on task as originally stated:** a daily collector
 producing the four canonical series from the existing
 `perp_funding_refresh_adapter`, carrying V6.00's `_PERP_TICK_OFFSET_MS`
 alignment and its `validate_signal_to_noise` precondition. The ledger begins
