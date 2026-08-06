@@ -12,10 +12,38 @@ live capital remains prohibited behind a separate operator hard gate.
 
 ## Checkout and writer ownership
 
-- Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
-- Branch: `claude/v5.92-vault-volatility-managed-triage`, branched from the
-  V5.91 tip after that merged to `main`.
+- Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`. The
+  `.codex` path is a legacy directory name; it sits on `claude/*` branches and
+  Codex does not own it.
 - Exactly one implementation writer at a time.
+- That checkout is also the only one carrying the gitignored `runs/` data the
+  prior-milestone replay tests need, so it is where `verify_offline.ps1 -Full`
+  can return PASS. Run it there on a **named branch** — the readiness-trial test
+  asserts a non-empty branch name and fails in any detached checkout.
+
+## Agent roles as of 2026-08-05
+
+Codex is unavailable. Claude Code is orchestrator **and** implementer; the
+earlier split recording Antigravity as sole implementer is stale.
+
+**The independent-acceptance gate was overruled by the operator on 2026-08-05.**
+An Antigravity review returned ACCEPT but certified the headline number by
+re-checking arithmetic rather than re-deriving it, and answered the flagged
+methodological objection circularly; the operator judged the governance overhead
+to be impeding progress. Claude Code may now implement, verify, accept, merge
+and push without an independent reviewer.
+
+**What replaces the gate.** It existed because this program's failure mode is
+confident wrong numbers, not broken code — V6.02 through V6.04 produced eight,
+and one of them (`0.005797`) survived the independent review and was caught only
+afterwards by a sensitivity showing the construction drove a 6.5x range. With no
+reviewer, these are obligations rather than courtesies:
+
+- state a range and the construction whenever a statistic is
+  construction-dependent
+- fix alternative constructions in code and tests **before** running them
+- re-derive numbers from primary artifacts, never from a prior report of them
+- withdraw published conclusions explicitly when they do not survive
 
 ## V5.90 forward-shadow infrastructure (built)
 
@@ -477,8 +505,105 @@ gives ~14x, so the faithful full fetch was affordable.
 - `docs/design/v6_03_full_history_delisting_registry.md`.
 
 Output (gitignored, local): `runs/v6_03_full_history_delisting_registry/`,
-including `delisting_registry.jsonl` — 15,191 records each carrying the window
-in which its ticker's price series can be trusted.
+including `delisting_registry.jsonl` — 15,191 delisting events.
+
+## V6.03a DEFECT: the registry may not be joined to a price universe
+
+Found immediately afterwards, when the operator asked for the survivorship
+measurement. **The registry records which CIK delisted and when. It does not
+record which security delisted.** Cover pages tag every registered class, and
+all of them were attributed to the episode.
+
+- **620 of 6,318 symbols (9.8%) are marked delisted on more than one date**,
+  including `AAPL` and `ABBV`, which have never delisted.
+- `price_admission_window` as it stands would truncate Apple's series in 2022 —
+  a worse and quieter failure than the `BBBY` splice this was built to fix.
+- The recovery rates are still correct: they measure recall. **Precision was
+  never measured.** That is the defect, and it is the same family as the V6.02
+  parser — a number that describes something other than what it appears to.
+
+**The fix is verified feasible, not built.** V6.02 concluded Form 25 carries no
+ticker, which is true, and stopped one step short: `primary_doc.xml` is ~1 KB
+and carries `descriptionClassSecurity` (e.g. `ProShares Ultra Australian
+Dollar`). The cover page supplies the other half — each class's facts share an
+XBRL `contextRef`, so title/ticker/exchange group into per-class triples, 20 of
+20 complete on the ProShares cover page. Exact attribution is a title match
+between the two. It needs `extract_trading_symbols` to return context-grouped
+triples instead of a flat list, plus one extra ~1 KB fetch per Form 25.
+
+**A second, independent blocker.** Every universe this program has tested is an
+ETF universe, and registered funds file N-CSR / N-PORT, so
+`entityType=investment` resolves 0 of 302. No dead ETF or ETN ticker is in the
+registry at all — `XIV`, `TVIX`, `UWT`, `DWT`, `JNUG`, `DGAZ`, `UGAZ`, `NUGT`
+are all absent. Fixing attribution does not fix this; it needs the accepted
+source-filing forms extended to the fund reports.
+
+Both were addressed in V6.04 below, and the measurement was run.
+
+## V6.04 survivorship inflation, measured
+
+**Between `0.0057` and `0.0368` annualised — 0.6 to 3.7 points a year — for
+single-country equity ETFs over 2019-2026, depending on construction. All lower
+bounds.** `0.005797` was originally reported as *the* answer; it is the lowest
+of every construction tried.
+
+| construction | inflation |
+| --- | ---: |
+| equal-weighted mean of annualised returns | `+0.005694` |
+| ...requiring at least 2 years of history | `+0.013526` |
+| length-weighted | `+0.008489` |
+| terminal wealth, dead funds liquidating to cash | `+0.036822` |
+
+Annualising a short life magnifies it: `XINA` lived 0.41 years and annualises to
+`+0.6104`. Under equal weighting those extremes enter the dead pool at full
+weight and pull its mean up, masking the bias. **Terminal wealth is the
+construction that answers the portfolio question** — buy all equally, hold, dead
+funds liquidate to cash — and it gives 3.7 points a year, compounding to roughly
+a quarter of terminal wealth over this window.
+
+**Withdrawn:** the earlier conclusion that a survivor-only ETF universe "is not
+badly biased" and that the registry "buys less than it cost". It rested on the
+single lowest construction. Constructions were fixed in code and tests before
+being run, so this is disclosure rather than selection.
+
+Attribution repaired first: Form 25 `primary_doc.xml` names the delisted class,
+cover-page facts group into per-class triples by XBRL `contextRef`, and fund
+series come from SGML filing headers. Fund recovery went from **0 of 302 to 214
+of 302**, yielding 376 dead-fund tickers. `SVXY`/`UVXY`/`VIXY` are no longer
+attributed to a ProShares delisting; `OILD` and `OILU` are.
+
+**Three ways a delisting is not a death**, all confirmed in price data:
+ticker reuse (`HAO` delisted 2019, series begins 2024 under another issuer);
+still trading (9 of 39, up to 2,592 days past the filing — **Form 25 is a
+notification of removal from a *listing*, which an exchange transfer also
+triggers**); and too little history.
+
+**The first answer, `0.002777`, was wrong**, and finding out why exposed a
+defect in the registry's episode logic: every security in an episode was stamped
+with the episode's earliest Form 25 date, though a sponsor winding down a fund
+range files across months. `FRN` was dated 2019-02-28 and traded to 2020-02-14.
+Each symbol now carries `symbol_delisted_on`. Admitted deaths rose 19 -> 27 and
+the figure roughly doubled.
+
+**What it means.** 0.58 points a year is real but small, and it neither rescues
+nor condemns any prior milestone — V5.91 and V5.92 rejected their candidates by
+far larger margins, so survivorship was never why they failed. The useful
+finding is negative: **a survivor-only ETF universe is not badly biased**,
+because closing funds are ordinary funds that failed to gather assets, several
+profitable at closure (`FM` `+0.0361`, `RWED` `+0.0331`). That is unlike
+single-stock survivorship, where the missing names include bankruptcies — and it
+means this registry buys less for ETF universes than it cost. Its value is
+higher for equity universes, which this program does not currently use.
+
+See `docs/design/v6_04_survivorship_inflation_measurement.md`.
+
+**Defects found in this stretch, all caught before publication:** the V6.02
+regex; over-attribution marking `AAPL` and `ABBV` delisted; the
+`sole_registered_class` shortcut attributing the live `CACG`; HTTP 429 read as
+"no data", which manufactured an inflation of exactly `0.0`; a cohort classifier
+matching an episode's combined fund names, which labelled a bond ETF as country
+equity; Form-25-as-death, caught by `NORW`; and the episode date-stamping above.
+Seven. Every one produced a plausible number.
 
 ## Verification
 
@@ -568,6 +693,138 @@ in which its ticker's price series can be trusted.
   controlled no rank, gate, or route.
 - Existing caps, receipts, reconciliation, sleeve ownership, and live
   prohibitions are unchanged.
+
+## V6.05 forward shadow REGISTERED — the loop is now open
+
+The V5.90 registry was built and left pointing at nothing for six milestones.
+It now holds one hypothesis, and no further hypothesis may be registered until
+this window closes.
+
+- root: `forward_shadow/v6_05_continuously_held_funding_carry/` (tracked in git,
+  deliberately not under gitignored `runs/`)
+- registered_at `2026-08-06T11:18:10Z`; first admissible session strictly after
+  `2026-08-06`
+- `registration_fingerprint` `22acff75e16d4e7ae8285c226649810efad6479c92e7a756c47b6945657b316c`
+- `rule_fingerprint` `85f03ee2439ca6d051c0f83ad8872043369675cd51ea43d29451fd956dfb8838`
+  (sha256 of the preregistration document, so the rule text is bound)
+- classification `accruing_untouched_forward_evidence`, 0 of 8 decisions
+
+**Hypothesis.** Holding the perpetual funding carry continuously, rather than
+switching on the sign of funding, earns a positive risk-adjusted excess after
+costs. Chosen because V6.00 is the only milestone in twenty-eight where the
+economics were confirmed and only the implementation failed — funding positive
+in 72/65/59% of intervals, 21-49% collected, lost entirely to 667-733 flips.
+**It is not a fix to V6.00**, whose rule stays closed.
+
+**Representation.** The registry models long-only weights on daily bars, so a
+short-perpetual book cannot be a negative weight. It is represented as weight
+1/3 in each of three synthetic carry indices `BTCCARRY`/`ETHCARRY`/`SOLCARRY`,
+whose daily change *is* the delta-neutral carry, benchmarked against a flat
+`USDCASH`. The construction is frozen in the preregistration.
+
+**Guarantees verified after registration**, not assumed: early evaluation leaks
+no metric (`verdict_available: false`), backfill before the registration date is
+refused, and re-registration at the root is refused.
+
+## V6.06 two-leg shadow REGISTERED and collectable
+
+Registered at the operator's direction to keep the programme moving while V6.05
+stays blocked. V6.05 is **not** withdrawn, edited, or re-pointed.
+
+- root `forward_shadow/v6_06_two_leg_funding_carry/`, tracked in git
+- registered `2026-08-06T17:32:39Z`; first admissible session strictly after
+  `2026-08-06`
+- `registration_fingerprint` `1ad93d6bf95c5cbf1ed96be1ffbaf6431b83b46d71219169b81efa7149b37679`
+- `rule_fingerprint` `f11dc92244d608b38628c837efe7f89ce1a74a993b9bf032d4f856aaa90fde37`
+- universe `BTCCARRY` / `ETHCARRY` at weight one half each, benchmark `USDCASH`
+- gates, index construction, cost and decision model identical to V6.05 and
+  **not loosened** for the smaller book
+
+**The exclusion of SOL is disclosed as sequence-contaminated on the face of the
+preregistration**, not in a commit message. Before the precondition was wired
+in, all three legs' ten-day carry levels were visible, and SOL was the worst
+(`-0.0452` against BTC `+0.0165` and ETH `-0.0039`). The stated criterion —
+basis-to-funding ratio against a ceiling frozen in V5.99 — is outcome-blind, and
+ETH was retained despite being mildly negative, which is what a
+performance-driven exclusion would not have done. The criterion is defensible;
+the sequence is not. A reader is entitled to discount it.
+
+Collection verified live for the two-leg universe: `state: collected`, 10
+sessions, 30 rows, BTC ratio 4.17 and ETH 5.09 both sufficient. **Those sessions
+are all on or before the registration date and are therefore inadmissible** —
+the ledger begins with the first session after 2026-08-06, exactly as the
+backfill guard requires.
+
+If SOL later clears the precondition, V6.05 begins accruing on its own terms and
+the two become separate hypotheses on overlapping data, which must be disclosed
+as multiplicity if both ever report. **No third funding-carry shadow may be
+registered.**
+
+## Scheduled: re-check SOL on or after 2026-08-20
+
+Two weeks from registration, per operator direction. Re-run the three-leg
+collection and read the ratio only:
+
+```
+scripts\run_funding_carry_collector.ps1 -Mode live_market_data_fetch `
+  -LiveMarketDataFetchAuthorized -LookbackDays 14
+```
+
+If `SOLCARRY` reports `sufficient: true`, V6.05 starts accruing from that point
+with no edit to its registration. If it stays blocked, leave it blocked — do not
+adjust the ceiling, the universe, or the offset.
+
+## V6.05a collector built; the shadow is blocked by SOL's basis noise
+
+The collector exists and works. Its first live run also produced an honest
+blocker, and a mistake of mine worth recording.
+
+- `src/algotrader/research/funding_carry_index.py` (pure index construction),
+  `src/algotrader/execution/funding_carry_collector.py` (network via the audited
+  `perp_funding_refresh_adapter`), `scripts/run_funding_carry_collector.ps1`,
+  31 tests.
+- The collector never appends to the shadow ledger. Collection and observation
+  stay separate, so a collector cannot re-record a session after seeing it.
+
+**The preregistration mandates `validate_signal_to_noise` and my first
+implementation omitted it.** A live run wrote `SOLCARRY` at a ratio of 11.1
+against a 10.0 ceiling — the V5.99 shape that produced a confident `-6.3%`
+before that guard existed. Now applied per leg, and because the registered
+universe is frozen at three legs, a blocked leg blocks the whole collection
+rather than writing a two-leg book that is a different hypothesis.
+
+**Live state: `blocked_incomplete_universe`, no CSV written, exit 3.**
+
+| leg | mean\|funding\| 8h | mean\|basis\| | ratio | annualised funding |
+| --- | ---: | ---: | ---: | ---: |
+| BTC | `0.00004165` | `0.00017346` | 4.17 | +4.56% |
+| ETH | `0.00003695` | `0.00018794` | 5.09 | +4.03% |
+| SOL | `0.00003722` | `0.00041219` | **11.07** | +4.08% |
+
+Diagnosed rather than assumed. Tick alignment is **correct**: the outcome-blind
+level criterion V6.00 used picks `+1h` decisively for all three (2.47, 2.40 and
+3.69 bps mean premium, against 30+ bps at every other offset). SOL's funding is
+normal and positive, essentially identical to ETH. **SOL's basis is 2.3x
+noisier**, which is a property of the `SOL_USDC-PERPETUAL` contract's index
+tracking, not a pipeline defect and not a low-funding artifact.
+
+**My error:** I froze a three-leg universe without first measuring whether every
+leg could clear the precondition. SOL sits marginally the wrong side of it
+(11.07 against 10.0), so the shadow accrues nothing until either SOL's tracking
+tightens or funding rises enough to lower the ratio.
+
+**Do not "fix" this by editing the registration, the universe, or the
+threshold.** Any of those voids the fingerprint, and dropping SOL is additionally
+contaminated: its ten-day carry level was visible before the guard was added, so
+an exclusion now cannot be shown to be outcome-blind even though the criterion
+is. This is an operator decision, and the options are to wait, or to register a
+fresh two-leg shadow with the contamination disclosed on its face.
+
+**The follow-on task as originally stated:** a daily collector
+producing the four canonical series from the existing
+`perp_funding_refresh_adapter`, carrying V6.00's `_PERP_TICK_OFFSET_MS`
+alignment and its `validate_signal_to_noise` precondition. The ledger begins
+when that collector starts; the gap is not backfillable, which is correct.
 
 ## Exact next action
 

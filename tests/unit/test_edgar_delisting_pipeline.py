@@ -259,6 +259,26 @@ def test_stage_b_resolves_symbols_wrapped_in_presentation_markup(
     assert summary["outcomes"]["resolved"] >= 1
 
 
+def test_each_symbol_carries_the_date_of_the_filing_that_removed_it(
+    tmp_path: Path,
+) -> None:
+    """An episode spans a year of filings; the funds inside it die on their own
+    dates. Stamping all with the episode's earliest truncates real history —
+    FRN's Form 25 is dated 2019-02-28 and it traded until 2020-02-14."""
+
+    _, rows, _ = _run_stage_c(tmp_path)
+
+    svb = next(row for row in rows if row["cik"] == "0000719739")
+    assert svb["symbol_delisted_on"], "per-symbol delisting dates are missing"
+    # SVB's episode has Form 25s on 2023-05-02 and 2023-05-04; the symbol is
+    # stamped with the filing that named it, not the episode's opening date.
+    assert set(svb["symbol_delisted_on"]) == set(svb["symbols"])
+    assert all(
+        value in ("2023-05-02", "2023-05-04")
+        for value in svb["symbol_delisted_on"].values()
+    )
+
+
 def test_two_form_25_filings_days_apart_are_one_delisting_episode(
     tmp_path: Path,
 ) -> None:
@@ -526,6 +546,222 @@ def test_summary_of_an_unstarted_run_is_empty_rather_than_an_error(
     tmp_path: Path,
 ) -> None:
     assert subject.summarize_stage_b(tmp_path)["total"] == 0
+
+
+# --- stage C: exact per-security attribution -------------------------------
+#
+# Stage B attached every cover-page ticker to the delisting, which marked live
+# tickers as dead. These pin that stage C attributes only the delisted class,
+# and that it declines rather than guesses.
+
+_FORM25_UGL = """<?xml version="1.0"?>
+<edgarSubmission>
+  <issuerName>SVB FINANCIAL GROUP</issuerName>
+  <fileNumber>001-34200</fileNumber>
+  <descriptionClassSecurity>Ultra Gold</descriptionClassSecurity>
+</edgarSubmission>
+"""
+
+_TWO_CLASS_COVER = (
+    '<ix:nonNumeric contextRef="a" name="dei:Security12bTitle">Ultra Gold</ix:nonNumeric>'
+    '<ix:nonNumeric contextRef="a" name="dei:TradingSymbol"><b>UGL</b></ix:nonNumeric>'
+    '<ix:nonNumeric contextRef="a" name="dei:SecurityExchangeName">NYSEARCA</ix:nonNumeric>'
+    '<ix:nonNumeric contextRef="b" name="dei:Security12bTitle">Short VIX Futures</ix:nonNumeric>'
+    '<ix:nonNumeric contextRef="b" name="dei:TradingSymbol"><span>SVXY</span></ix:nonNumeric>'
+).encode()
+
+_FUND_HEADER = b"""<SEC-HEADER>
+<SERIES-AND-CLASSES-CONTRACTS-DATA>
+<EXISTING-SERIES-AND-CLASSES-CONTRACTS>
+<SERIES>
+<SERIES-ID>S000067929
+<SERIES-NAME>Ultra Gold
+<CLASS-CONTRACT>
+<CLASS-CONTRACT-TICKER-SYMBOL>UGL
+</CLASS-CONTRACT>
+</SERIES>
+</EXISTING-SERIES-AND-CLASSES-CONTRACTS>
+</SERIES-AND-CLASSES-CONTRACTS-DATA>
+</SEC-HEADER>
+"""
+
+
+def _stage_c_fetcher(calls: list[str], *, entity: str = "operating"):
+    submissions = json.dumps(
+        {
+            "entityType": entity,
+            "filings": {
+                "recent": {
+                    "form": ["10-K", "497"],
+                    "filingDate": ["2023-02-24", "2023-02-01"],
+                    "accessionNumber": [
+                        "0000719739-23-000021",
+                        "0000719739-23-000019",
+                    ],
+                    "primaryDocument": ["sivb-20221231.htm", "f497.htm"],
+                }
+            },
+        }
+    ).encode()
+
+    def fetch(host: str, path: str, user_agent: str) -> bytes:
+        calls.append(path)
+        if path.endswith("primary_doc.xml"):
+            return _FORM25_UGL.encode()
+        if path.startswith("/submissions/"):
+            return submissions
+        if path.endswith("-index-headers.html"):
+            return _FUND_HEADER
+        return _TWO_CLASS_COVER
+
+    return fetch
+
+
+def _stage_b_fetcher_with_entity(entity: str):
+    """Stage C scopes on the entity type stage B recorded, so it must match."""
+
+    submissions = json.loads(_SUBMISSIONS)
+    submissions["entityType"] = entity
+    payload = json.dumps(submissions).encode()
+
+    def fetch(host: str, path: str, user_agent: str) -> bytes:
+        return payload if path.startswith("/submissions/") else _DOCUMENT
+
+    return fetch
+
+
+def _read_rows(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def _run_stage_c(tmp_path: Path, **overrides: object):
+    entity = str(overrides.pop("entity", "operating"))
+    subject.run_stage_a(_config(tmp_path), http_get=_index_fetcher([]))
+    subject.run_stage_b(
+        _config(tmp_path, resolve_from=date(2019, 1, 1)),
+        http_get=_stage_b_fetcher_with_entity(entity),
+    )
+    calls: list[str] = []
+    summary = subject.run_stage_c(
+        _config(tmp_path, resolve_from=date(2019, 1, 1), **overrides),  # type: ignore[arg-type]
+        http_get=_stage_c_fetcher(calls, entity=entity),
+    )
+    return summary, _read_rows(tmp_path / "stage_c_attributions.jsonl"), calls
+
+
+def test_stage_c_attributes_only_the_delisted_class(tmp_path: Path) -> None:
+    """The V6.03a defect end to end: SVXY must not inherit UGL's delisting."""
+
+    _, rows, _ = _run_stage_c(tmp_path)
+
+    svb = next(row for row in rows if row["cik"] == "0000719739")
+    assert svb["symbols"] == ["UGL"]
+    assert "SVXY" not in svb["symbols"]
+    assert svb["delisted_classes"] == ["Ultra Gold"]
+    assert svb["attribution"] == "matched_delisted_class"
+    assert svb["candidate_count"] == 2
+
+
+def test_stage_c_reads_the_form25_for_every_filing_in_the_episode(
+    tmp_path: Path,
+) -> None:
+    _, _, calls = _run_stage_c(tmp_path)
+
+    # SVB's episode has two Form 25 filings; both must be consulted.
+    assert sum(1 for path in calls if path.endswith("primary_doc.xml")) >= 2
+
+
+def test_stage_c_routes_funds_through_filing_headers(tmp_path: Path) -> None:
+    """Registered funds have no usable cover page; headers are the only route."""
+
+    _, rows, calls = _run_stage_c(tmp_path, entity="investment", entity_scope="investment")
+
+    assert rows, "no investment-scoped episodes were attributed"
+    assert all(row["route"] == "filing_header" for row in rows)
+    assert all(row["symbols"] == ["UGL"] for row in rows)
+    assert any(path.endswith("-index-headers.html") for path in calls)
+    # The megabyte cover-page route must not be used for funds.
+    assert not any(path.endswith("sivb-20221231.htm") for path in calls)
+
+
+def test_entity_scope_selects_which_episodes_are_attributed(tmp_path: Path) -> None:
+    """Scoping to funds must skip operating companies without fetching them."""
+
+    summary, rows, calls = _run_stage_c(
+        tmp_path, entity="operating", entity_scope="investment"
+    )
+
+    assert rows == []
+    assert summary["episodes_attributed"] == 0
+    assert calls == []
+
+
+def test_stage_c_declines_when_the_class_cannot_be_matched(tmp_path: Path) -> None:
+    def fetch(host: str, path: str, user_agent: str) -> bytes:
+        if path.endswith("primary_doc.xml"):
+            return b"<edgarSubmission><descriptionClassSecurity>Something Else"\
+                   b"</descriptionClassSecurity></edgarSubmission>"
+        if path.startswith("/submissions/"):
+            return json.dumps(
+                {
+                    "entityType": "operating",
+                    "filings": {
+                        "recent": {
+                            "form": ["10-K"],
+                            "filingDate": ["2023-02-24"],
+                            "accessionNumber": ["0000719739-23-000021"],
+                            "primaryDocument": ["c.htm"],
+                        }
+                    },
+                }
+            ).encode()
+        return _TWO_CLASS_COVER
+
+    subject.run_stage_a(_config(tmp_path), http_get=_index_fetcher([]))
+    subject.run_stage_c(
+        _config(tmp_path, resolve_from=date(2019, 1, 1)), http_get=fetch
+    )
+
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "stage_c_attributions.jsonl").read_text().splitlines()
+    ]
+    assert rows
+    assert all(row["symbols"] == [] for row in rows)
+    assert all(row["attribution"] == "unmatched_delisted_class" for row in rows)
+
+
+def test_an_unreadable_form25_yields_no_symbols(tmp_path: Path) -> None:
+    def fetch(host: str, path: str, user_agent: str) -> bytes:
+        if path.endswith("primary_doc.xml"):
+            return b"<edgarSubmission></edgarSubmission>"
+        raise AssertionError("nothing else should be fetched")
+
+    subject.run_stage_a(_config(tmp_path), http_get=_index_fetcher([]))
+    subject.run_stage_c(
+        _config(tmp_path, resolve_from=date(2019, 1, 1)), http_get=fetch
+    )
+
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "stage_c_attributions.jsonl").read_text().splitlines()
+    ]
+    assert all(row["attribution"] == "form25_class_unreadable" for row in rows)
+    assert all(row["symbols"] == [] for row in rows)
+
+
+def test_stage_c_resumes_without_reattributing(tmp_path: Path) -> None:
+    _, rows, _ = _run_stage_c(tmp_path)
+    again = subject.run_stage_c(
+        _config(tmp_path, resolve_from=date(2019, 1, 1)),
+        http_get=_stage_c_fetcher([]),
+    )
+
+    assert again["episodes_attributed"] == 0
+    rerun = (tmp_path / "stage_c_attributions.jsonl").read_text().splitlines()
+    assert len(rerun) == len(rows)
 
 
 # --- the exported registry -------------------------------------------------
