@@ -33,7 +33,9 @@ __all__ = [
     "SymbolReturn",
     "SurvivorshipInflation",
     "admit_symbol_observation",
+    "measure_length_weighted_inflation",
     "measure_survivorship_inflation",
+    "measure_terminal_wealth_inflation",
 ]
 
 
@@ -153,6 +155,79 @@ def measure_survivorship_inflation(
         discarded_count=discarded,
         survivor_mean=survivor_mean,
         combined_mean=combined_mean,
+    )
+
+
+def measure_length_weighted_inflation(
+    observations: Sequence[SymbolReturn],
+    *,
+    discarded: int = 0,
+) -> SurvivorshipInflation:
+    """Weight each symbol by how long it actually existed.
+
+    The equal-weighted mean gives a fund that lived five months the same say as
+    one that lived seven years, and annualising a five-month return is noisy.
+    Because short-lived funds are systematically the failures, that noise is not
+    symmetric — it lands mostly in the dead pool.
+    """
+
+    survivors = [item for item in observations if item.survived]
+    delisted = [item for item in observations if not item.survived]
+    if not survivors:
+        raise ValidationError("no surviving symbols to compare against.")
+
+    def weighted(group: Sequence[SymbolReturn]) -> float:
+        total = sum(item.years for item in group)
+        if total <= 0:
+            raise ValidationError("total lifetime must be positive.")
+        return sum(item.annualized_return * item.years for item in group) / total
+
+    return SurvivorshipInflation(
+        survivor_count=len(survivors),
+        delisted_count=len(delisted),
+        discarded_count=discarded,
+        survivor_mean=weighted(survivors),
+        combined_mean=weighted(survivors + delisted),
+    )
+
+
+def measure_terminal_wealth_inflation(
+    observations: Sequence[SymbolReturn],
+    *,
+    window_years: float,
+    discarded: int = 0,
+) -> SurvivorshipInflation:
+    """Compare what an equal-weighted holding would actually have been worth.
+
+    This is the portfolio question rather than the average-of-averages question:
+    buy every fund at the window's start, hold, and let the dead ones liquidate
+    at net asset value into cash for the remainder. Lifespans become comparable
+    because every symbol is carried to the same end date.
+    """
+
+    if window_years <= 0:
+        raise ValidationError("window_years must be positive.")
+    survivors = [item for item in observations if item.survived]
+    delisted = [item for item in observations if not item.survived]
+    if not survivors:
+        raise ValidationError("no surviving symbols to compare against.")
+
+    def terminal(group: Sequence[SymbolReturn]) -> float:
+        # Growth over the life it had; cash, meaning no further change, after.
+        multiples = [
+            (1.0 + item.annualized_return) ** item.years for item in group
+        ]
+        mean_multiple = sum(multiples) / len(multiples)
+        if mean_multiple <= 0:
+            raise ValidationError("terminal wealth must be positive.")
+        return mean_multiple ** (1.0 / window_years) - 1.0
+
+    return SurvivorshipInflation(
+        survivor_count=len(survivors),
+        delisted_count=len(delisted),
+        discarded_count=discarded,
+        survivor_mean=terminal(survivors),
+        combined_mean=terminal(survivors + delisted),
     )
 
 

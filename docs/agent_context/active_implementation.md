@@ -539,9 +539,29 @@ Both were addressed in V6.04 below, and the measurement was run.
 
 ## V6.04 survivorship inflation, measured
 
-**`0.005797` annualised — about 0.58 points a year — for single-country equity
-ETFs over 2019-2026. A lower bound.** 36 surviving ETFs mean `0.108520479656`;
-adding 27 recovered dead funds gives `0.102723933243`.
+**Between `0.0057` and `0.0368` annualised — 0.6 to 3.7 points a year — for
+single-country equity ETFs over 2019-2026, depending on construction. All lower
+bounds.** `0.005797` was originally reported as *the* answer; it is the lowest
+of every construction tried.
+
+| construction | inflation |
+| --- | ---: |
+| equal-weighted mean of annualised returns | `+0.005694` |
+| ...requiring at least 2 years of history | `+0.013526` |
+| length-weighted | `+0.008489` |
+| terminal wealth, dead funds liquidating to cash | `+0.036822` |
+
+Annualising a short life magnifies it: `XINA` lived 0.41 years and annualises to
+`+0.6104`. Under equal weighting those extremes enter the dead pool at full
+weight and pull its mean up, masking the bias. **Terminal wealth is the
+construction that answers the portfolio question** — buy all equally, hold, dead
+funds liquidate to cash — and it gives 3.7 points a year, compounding to roughly
+a quarter of terminal wealth over this window.
+
+**Withdrawn:** the earlier conclusion that a survivor-only ETF universe "is not
+badly biased" and that the registry "buys less than it cost". It rested on the
+single lowest construction. Constructions were fixed in code and tests before
+being run, so this is disclosure rather than selection.
 
 Attribution repaired first: Form 25 `primary_doc.xml` names the delisted class,
 cover-page facts group into per-class triples by XBRL `contextRef`, and fund

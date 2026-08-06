@@ -4,8 +4,16 @@ The first number this program has produced about its own bias rather than about
 a strategy. It answers one question: how much does building a universe from
 securities that still exist overstate that universe's return?
 
-**Answer, for single-country equity ETFs over 2019-2026: `0.005797` annualised,
-about 0.58 percentage points a year. It is a lower bound.**
+**Answer: between `0.0057` and `0.0368` annualised — 0.6 to 3.7 percentage
+points a year — depending on how the average is constructed. All are lower
+bounds. See the sensitivity below before quoting any single figure.**
+
+> **Correction.** This note originally reported `0.005797` as *the* answer and
+> concluded a survivor-only ETF universe "is not badly biased". A sensitivity
+> across constructions, run after an independent reviewer declined to interrogate
+> the weighting, shows that figure is the **lowest of every construction tried**
+> and that the conclusion drawn from it was not supported. The body below has
+> been corrected; the original framing is preserved in git history.
 
 ## What was compared
 
@@ -86,21 +94,59 @@ symbol now carries `symbol_delisted_on`, the date of the Form 25 that named it.
    form. Funds that died earlier are not counted, and the program's backtests
    run from 2000.
 
+## Sensitivity: the answer depends on the construction, by 6.5x
+
+Constructions and history filters were fixed in
+`algotrader.research.survivorship_inflation` and its tests **before** being run,
+so this is disclosure rather than selection.
+
+| construction | inflation |
+| --- | ---: |
+| equal-weighted mean of annualised returns | `+0.005694` |
+| ...requiring at least 1 year of history | `+0.011619` |
+| ...requiring at least 2 years of history | `+0.013526` |
+| length-weighted mean of annualised returns | `+0.008489` |
+| terminal wealth, dead funds liquidating to cash | `+0.036822` |
+
+Window 2019-01-01 to 2026-08-05 (7.59 years), 62 symbols admitted of which 27
+are dead, 13 discarded.
+
+**Why the equal-weighted figure is the lowest.** Annualising a short life
+magnifies whatever happened in it. `XINA` lived 0.41 years and annualises to
+`+0.6104`; `CNHX` `+0.3616` over 1.01 years; `BCNA` `+0.2184` over 0.80. Under
+equal weighting those extreme positives enter the dead pool at full weight and
+pull its mean up, masking the bias. Requiring two years of history roughly
+doubles the measured inflation, which is the signature of exactly that effect.
+
+This was anticipated as a weakness but the direction was guessed wrong: the
+concern was that short-lived failures would drag the dead pool down. They lift
+it instead.
+
+**The terminal-wealth construction is the one that answers the portfolio
+question.** Buy every fund equally at the window's start, hold, and let the dead
+liquidate at net asset value into cash. Every symbol is then carried to the same
+end date, so lifespans are comparable and no annualisation artefact arises. It
+gives `+0.036822` — about **3.7 points a year**.
+
 ## What it means
 
-**0.58 points a year is real but small**, and it does not rescue or condemn any
-prior milestone. For context, V5.91 and V5.92 rejected their candidates by
-margins far larger than this. Survivorship was never the reason those failed.
+**The honest statement is a range, 0.6 to 3.7 points a year, and the
+construction matters more than anything else measured here.** Anyone quoting a
+single number must say which construction produced it.
 
-The more useful finding is the negative one: **a survivor-only ETF universe is
-not badly biased**, because closing funds are not disproportionately
-catastrophic. They are ordinary funds that failed to gather assets, and several
-were profitable when they closed. This is materially unlike single-stock
-survivorship, where the missing names include bankruptcies.
+Under the most economically meaningful construction the effect is **not small**.
+3.7 points a year compounds to roughly a quarter of terminal wealth over this
+window, which is enough to matter to any universe-level claim this program
+makes.
 
-That also means the delisting registry, as applied to ETF universes, buys less
-than the effort it cost. Its value is higher for equity universes, which this
-program does not currently use.
+The earlier conclusion — that a survivor-only ETF universe "is not badly biased"
+and that the registry "buys less than it cost" — **is withdrawn**. It rested on
+the single lowest construction. Closing funds still are not disproportionately
+catastrophic in the way delisted single stocks are, but that observation does
+not license the conclusion that was drawn from it.
+
+What survives unchanged: this does not rescue or condemn V5.91 or V5.92, which
+rejected their candidates by margins far larger than even 3.7 points.
 
 ## Safety
 

@@ -73,6 +73,69 @@ def test_measuring_without_any_survivor_is_refused() -> None:
         subject.measure_survivorship_inflation([_ret("D", 0.1, dead=date(2020, 1, 1))])
 
 
+# --- alternative constructions, defined before they were run ---------------
+#
+# The equal-weighted mean of annualised returns was flagged as the most likely
+# reason to reject the headline figure: a fund that lived five months enters at
+# full weight with a noisy annualised number, and short-lived funds are
+# systematically the failures. These constructions exist so the result can be
+# reported under all of them rather than under whichever flatters.
+
+
+def test_length_weighting_discounts_a_short_lived_outlier() -> None:
+    """SCIN contributed -0.1722 from 0.45 years at full equal weight."""
+
+    observations = [
+        _ret("LONG", 0.10, years=7.0),
+        _ret("SHORT", -0.90, years=0.5, dead=date(2019, 6, 21)),
+    ]
+
+    equal = subject.measure_survivorship_inflation(observations)
+    weighted = subject.measure_length_weighted_inflation(observations)
+
+    # Equal weighting: (0.10 + -0.90)/2 = -0.40 combined, so inflation 0.50.
+    assert equal.inflation == pytest.approx(0.50)
+    # Length weighting: (0.10*7 + -0.90*0.5)/7.5 = 0.03333 combined.
+    assert weighted.combined_mean == pytest.approx(0.0333333, abs=1e-6)
+    assert weighted.inflation == pytest.approx(0.0666667, abs=1e-6)
+    assert weighted.inflation < equal.inflation
+
+
+def test_terminal_wealth_carries_dead_funds_to_the_window_end() -> None:
+    """A closed fund liquidates at NAV; the proceeds then sit in cash."""
+
+    observations = [
+        _ret("ALIVE", 0.10, years=4.0),
+        _ret("DEAD", 0.0, years=2.0, dead=date(2021, 1, 1)),
+    ]
+
+    result = subject.measure_terminal_wealth_inflation(observations, window_years=4.0)
+
+    # ALIVE: 1.10^4 = 1.4641. DEAD: 1.0^2 = 1.0, held flat to the end.
+    # survivors mean 1.4641 -> 1.4641^(1/4)-1 = 0.10
+    assert result.survivor_mean == pytest.approx(0.10, abs=1e-9)
+    # combined mean (1.4641+1.0)/2 = 1.23205 -> ^(1/4)-1
+    assert result.combined_mean == pytest.approx(1.23205 ** 0.25 - 1, abs=1e-9)
+    assert result.inflation > 0
+
+
+def test_terminal_wealth_refuses_a_nonpositive_window() -> None:
+    with pytest.raises(ValidationError, match="window_years must be positive"):
+        subject.measure_terminal_wealth_inflation([_ret("A", 0.1)], window_years=0.0)
+
+
+def test_every_construction_refuses_a_universe_with_no_survivors() -> None:
+    dead_only = [_ret("D", 0.1, dead=date(2020, 1, 1))]
+
+    for call in (
+        lambda: subject.measure_survivorship_inflation(dead_only),
+        lambda: subject.measure_length_weighted_inflation(dead_only),
+        lambda: subject.measure_terminal_wealth_inflation(dead_only, window_years=5.0),
+    ):
+        with pytest.raises(ValidationError, match="no surviving symbols"):
+            call()
+
+
 # --- the ticker-reuse rule, pinned -----------------------------------------
 
 
