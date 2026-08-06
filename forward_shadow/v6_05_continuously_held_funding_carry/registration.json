@@ -1,0 +1,59 @@
+{
+  "benchmark_symbol": "USDCASH",
+  "cohort_binding": {
+    "cohort_fingerprint": "",
+    "cohort_id": "",
+    "correction": "none",
+    "effective_alpha": "0.050000000000",
+    "family_wise_alpha": "0.050000000000",
+    "planned_member_count": 1
+  },
+  "cost_bps_per_one_way_turnover": "5.000000000000",
+  "first_admissible_session_exclusive": "2026-08-06",
+  "gates": {
+    "maximum_drawdown": "0.150000000000",
+    "minimum_annualized_return": "0.020000000000",
+    "minimum_benchmark_annualized_return_delta": "0.020000000000",
+    "minimum_benchmark_sharpe_delta": "0.500000000000",
+    "minimum_decisions": 8,
+    "minimum_sharpe_ratio": "0.500000000000",
+    "sequential": {
+      "alpha": "0.050000000000",
+      "beta": "0.200000000000",
+      "minimum_decisions_before_stopping": 8,
+      "minimum_excess_per_decision": "0.010000000000",
+      "reference_excess_sigma": "0.040000000000",
+      "test": "wald_sprt_normal_mean_on_per_decision_excess_return"
+    }
+  },
+  "hypothesis_id": "v6_05_continuously_held_funding_carry",
+  "hypothesis_statement": "Holding the perpetual funding carry continuously, rather than switching on the sign of funding, earns a positive risk-adjusted excess after costs.",
+  "policy_fingerprint": "ccd2cb78a81bd746692d20077541cfbdc7902b138cbb778595a3b7685d25d332",
+  "record_type": "forward_shadow_registration",
+  "registered_at": "2026-08-06T11:18:10.265520+00:00",
+  "registration_date": "2026-08-06",
+  "registration_fingerprint": "22acff75e16d4e7ae8285c226649810efad6479c92e7a756c47b6945657b316c",
+  "rule_fingerprint": "85f03ee2439ca6d051c0f83ad8872043369675cd51ea43d29451fd956dfb8838",
+  "rule_reference": "docs/design/v6_05_continuously_held_funding_carry_preregistration.md",
+  "safety": {
+    "broker_mutation_performed": false,
+    "broker_read_performed": false,
+    "capital_allocation_authorized": false,
+    "credential_access_performed": false,
+    "live_activity_performed": false,
+    "live_authorized": false,
+    "market_data_fetch_performed": false,
+    "network_access_performed": false,
+    "paper_mutation_performed": false,
+    "paper_submit_authorized": false,
+    "paper_submit_performed": false,
+    "profit_claim_made": false
+  },
+  "schema_version": "v5_90_forward_shadow_registry_v2",
+  "universe": [
+    "BTCCARRY",
+    "ETHCARRY",
+    "SOLCARRY",
+    "USDCASH"
+  ]
+}

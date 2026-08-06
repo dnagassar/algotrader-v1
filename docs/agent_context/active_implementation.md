@@ -694,6 +694,44 @@ Seven. Every one produced a plausible number.
 - Existing caps, receipts, reconciliation, sleeve ownership, and live
   prohibitions are unchanged.
 
+## V6.05 forward shadow REGISTERED — the loop is now open
+
+The V5.90 registry was built and left pointing at nothing for six milestones.
+It now holds one hypothesis, and no further hypothesis may be registered until
+this window closes.
+
+- root: `forward_shadow/v6_05_continuously_held_funding_carry/` (tracked in git,
+  deliberately not under gitignored `runs/`)
+- registered_at `2026-08-06T11:18:10Z`; first admissible session strictly after
+  `2026-08-06`
+- `registration_fingerprint` `22acff75e16d4e7ae8285c226649810efad6479c92e7a756c47b6945657b316c`
+- `rule_fingerprint` `85f03ee2439ca6d051c0f83ad8872043369675cd51ea43d29451fd956dfb8838`
+  (sha256 of the preregistration document, so the rule text is bound)
+- classification `accruing_untouched_forward_evidence`, 0 of 8 decisions
+
+**Hypothesis.** Holding the perpetual funding carry continuously, rather than
+switching on the sign of funding, earns a positive risk-adjusted excess after
+costs. Chosen because V6.00 is the only milestone in twenty-eight where the
+economics were confirmed and only the implementation failed — funding positive
+in 72/65/59% of intervals, 21-49% collected, lost entirely to 667-733 flips.
+**It is not a fix to V6.00**, whose rule stays closed.
+
+**Representation.** The registry models long-only weights on daily bars, so a
+short-perpetual book cannot be a negative weight. It is represented as weight
+1/3 in each of three synthetic carry indices `BTCCARRY`/`ETHCARRY`/`SOLCARRY`,
+whose daily change *is* the delta-neutral carry, benchmarked against a flat
+`USDCASH`. The construction is frozen in the preregistration.
+
+**Guarantees verified after registration**, not assumed: early evaluation leaks
+no metric (`verdict_available: false`), backfill before the registration date is
+refused, and re-registration at the root is refused.
+
+**The single follow-on task, and the only one permitted:** a daily collector
+producing the four canonical series from the existing
+`perp_funding_refresh_adapter`, carrying V6.00's `_PERP_TICK_OFFSET_MS`
+alignment and its `validate_signal_to_noise` precondition. The ledger begins
+when that collector starts; the gap is not backfillable, which is correct.
+
 ## Exact next action
 
 Operator decision. Twenty-eight milestones, zero validated alpha.
