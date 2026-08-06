@@ -12,10 +12,35 @@ live capital remains prohibited behind a separate operator hard gate.
 
 ## Checkout and writer ownership
 
-- Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`.
-- Branch: `claude/v5.92-vault-volatility-managed-triage`, branched from the
-  V5.91 tip after that merged to `main`.
+- Writer checkout: `C:\Users\danie\.codex\worktrees\c029\algo_trader`. The
+  `.codex` path is a legacy directory name; it sits on `claude/*` branches and
+  Codex does not own it.
 - Exactly one implementation writer at a time.
+- That checkout is also the only one carrying the gitignored `runs/` data the
+  prior-milestone replay tests need, so it is where `verify_offline.ps1 -Full`
+  can return PASS. Run it there on a **named branch** — the readiness-trial test
+  asserts a non-empty branch name and fails in any detached checkout.
+
+## Agent roles as of 2026-08-05
+
+Codex is unavailable. Claude Code is orchestrator **and** implementer; the
+earlier split recording Antigravity as sole implementer is stale.
+
+**Independent acceptance has no counterparty.** The Operating Charter requires
+that an independent governance agent accept exact commits before any
+merge or publication claim, and Codex filled that role. One agent cannot both
+produce work and certify it. Until the operator designates a replacement:
+
+- implement, commit, push, verify, and open PRs: proceed
+- report `implemented` and `verified` with evidence: proceed
+- report `accepted`, or merge to `main` on self-verification alone: **do not**
+- prefer "verified, pending acceptance" over silently promoting the claim
+
+This is not ceremony. The V6.02-V6.04 stretch produced seven defects that each
+survived until something adjacent was checked, including a regex that invented a
+coverage story, over-attribution marking `AAPL` delisted, and an exhausted API
+quota read as absent data that manufactured an inflation of exactly `0.0`.
+Self-acceptance is the failure mode that class of defect exploits.
 
 ## V5.90 forward-shadow infrastructure (built)
 
