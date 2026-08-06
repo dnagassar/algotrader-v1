@@ -726,6 +726,54 @@ whose daily change *is* the delta-neutral carry, benchmarked against a flat
 no metric (`verdict_available: false`), backfill before the registration date is
 refused, and re-registration at the root is refused.
 
+## V6.06 two-leg shadow REGISTERED and collectable
+
+Registered at the operator's direction to keep the programme moving while V6.05
+stays blocked. V6.05 is **not** withdrawn, edited, or re-pointed.
+
+- root `forward_shadow/v6_06_two_leg_funding_carry/`, tracked in git
+- registered `2026-08-06T17:32:39Z`; first admissible session strictly after
+  `2026-08-06`
+- `registration_fingerprint` `1ad93d6bf95c5cbf1ed96be1ffbaf6431b83b46d71219169b81efa7149b37679`
+- `rule_fingerprint` `f11dc92244d608b38628c837efe7f89ce1a74a993b9bf032d4f856aaa90fde37`
+- universe `BTCCARRY` / `ETHCARRY` at weight one half each, benchmark `USDCASH`
+- gates, index construction, cost and decision model identical to V6.05 and
+  **not loosened** for the smaller book
+
+**The exclusion of SOL is disclosed as sequence-contaminated on the face of the
+preregistration**, not in a commit message. Before the precondition was wired
+in, all three legs' ten-day carry levels were visible, and SOL was the worst
+(`-0.0452` against BTC `+0.0165` and ETH `-0.0039`). The stated criterion —
+basis-to-funding ratio against a ceiling frozen in V5.99 — is outcome-blind, and
+ETH was retained despite being mildly negative, which is what a
+performance-driven exclusion would not have done. The criterion is defensible;
+the sequence is not. A reader is entitled to discount it.
+
+Collection verified live for the two-leg universe: `state: collected`, 10
+sessions, 30 rows, BTC ratio 4.17 and ETH 5.09 both sufficient. **Those sessions
+are all on or before the registration date and are therefore inadmissible** —
+the ledger begins with the first session after 2026-08-06, exactly as the
+backfill guard requires.
+
+If SOL later clears the precondition, V6.05 begins accruing on its own terms and
+the two become separate hypotheses on overlapping data, which must be disclosed
+as multiplicity if both ever report. **No third funding-carry shadow may be
+registered.**
+
+## Scheduled: re-check SOL on or after 2026-08-20
+
+Two weeks from registration, per operator direction. Re-run the three-leg
+collection and read the ratio only:
+
+```
+scripts\run_funding_carry_collector.ps1 -Mode live_market_data_fetch `
+  -LiveMarketDataFetchAuthorized -LookbackDays 14
+```
+
+If `SOLCARRY` reports `sufficient: true`, V6.05 starts accruing from that point
+with no edit to its registration. If it stays blocked, leave it blocked — do not
+adjust the ceiling, the universe, or the offset.
+
 ## V6.05a collector built; the shadow is blocked by SOL's basis noise
 
 The collector exists and works. Its first live run also produced an honest

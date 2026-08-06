@@ -70,8 +70,21 @@ class FundingCarryCollectorConfig:
     lookback_days: int = 14
     live_market_data_fetch_authorized: bool = False
     cost_bps_per_leg: float = 5.0
+    # Which registered universe this pass serves. Defaults to all three legs;
+    # V6.06 registered a two-leg book after SOL failed the precondition, and the
+    # collection must match the registration it feeds rather than approximate it.
+    instruments: tuple[str, ...] = tuple(CARRY_SYMBOL_BY_INSTRUMENT)
 
     def __post_init__(self) -> None:
+        chosen = tuple(self.instruments)
+        if not chosen:
+            raise ValidationError("at least one instrument is required.")
+        unknown = [item for item in chosen if item not in CARRY_SYMBOL_BY_INSTRUMENT]
+        if unknown:
+            raise ValidationError(f"instruments are not approved: {unknown}")
+        if len(set(chosen)) != len(chosen):
+            raise ValidationError("instruments contain duplicates.")
+        object.__setattr__(self, "instruments", chosen)
         if self.mode not in ("dry_run", "live_market_data_fetch"):
             raise ValidationError(f"unsupported mode: {self.mode}")
         if self.mode == "live_market_data_fetch" and not self.live_market_data_fetch_authorized:
@@ -142,7 +155,7 @@ def run_funding_carry_collector(
         "record_type": "funding_carry_collection_receipt",
         "schema_version": 1,
         "mode": config.mode,
-        "instruments": list(CARRY_SYMBOL_BY_INSTRUMENT),
+        "instruments": list(config.instruments),
         "lookback_days": config.lookback_days,
         "credential_access_attempted": False,
         "credential_values_exposed": False,
@@ -159,7 +172,7 @@ def run_funding_carry_collector(
             {
                 "network_access_attempted": False,
                 "state": "dry_run_plan_built",
-                "planned_requests": len(CARRY_SYMBOL_BY_INSTRUMENT) * 2,
+                "planned_requests": len(config.instruments) * 2,
             }
         )
         return receipt
@@ -167,7 +180,8 @@ def run_funding_carry_collector(
     per_symbol: dict[str, dict[int, dict[str, float]]] = {}
     blocked: dict[str, str] = {}
     signal_to_noise: dict[str, object] = {}
-    for instrument, carry_symbol in CARRY_SYMBOL_BY_INSTRUMENT.items():
+    for instrument in config.instruments:
+        carry_symbol = CARRY_SYMBOL_BY_INSTRUMENT[instrument]
         if instrument not in APPROVED_PERP_SYMBOLS:
             raise ValidationError(f"instrument is not approved: {instrument}")
         funding_rows = _fetch_series(
@@ -219,7 +233,7 @@ def run_funding_carry_collector(
     # than quietly writing a smaller one.
     missing = [
         symbol
-        for symbol in CARRY_SYMBOL_BY_INSTRUMENT.values()
+        for symbol in (CARRY_SYMBOL_BY_INSTRUMENT[i] for i in config.instruments)
         if symbol not in diagnostics
     ]
     if not rows or missing:
@@ -336,6 +350,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--lookback-days", type=int, default=14)
     parser.add_argument("--live-market-data-fetch-authorized", action="store_true")
+    parser.add_argument(
+        "--instrument",
+        action="append",
+        dest="instruments",
+        choices=sorted(CARRY_SYMBOL_BY_INSTRUMENT),
+        help=(
+            "Restrict collection to a registered universe. Repeat per leg. "
+            "Defaults to all three, which is V6.05; V6.06 is BTC and ETH."
+        ),
+    )
     return parser
 
 
@@ -349,6 +373,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=args.mode,
                 lookback_days=args.lookback_days,
                 live_market_data_fetch_authorized=args.live_market_data_fetch_authorized,
+                instruments=(
+                    tuple(args.instruments)
+                    if args.instruments
+                    else tuple(CARRY_SYMBOL_BY_INSTRUMENT)
+                ),
             )
         )
     except (OSError, ValidationError, ValueError) as exc:
